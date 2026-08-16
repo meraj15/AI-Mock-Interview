@@ -1,0 +1,14 @@
+import { Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import React from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppHeader, ChoiceRow, Screen } from '@/components/ui';
+import { useApp, type AppTheme } from '@/context/AppContext';
+import { useColors } from '@/hooks/useColors';
+
+export default function Settings() {
+  const colors = useColors();
+  const { theme, setTheme } = useApp();
+  return <Screen><AppHeader title="Settings" onBack={() => router.back()} /><Text style={[styles.group, { color: colors.mutedForeground }]}>APPEARANCE</Text><View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }]}>{[['system', 'System', 'Follow your device'], ['light', 'Light', 'Bright and focused'], ['dark', 'Dark', 'Easy on the eyes']].map(([value, label, detail]) => <ChoiceRow key={value} label={label} detail={detail} selected={theme === value} onPress={() => setTheme(value as AppTheme)} />)}</View><Text style={[styles.group, { color: colors.mutedForeground }]}>PREFERENCES</Text>{[['bell', 'Notifications', 'Practice reminders and updates'], ['globe', 'Language', 'English (US)'], ['mic', 'AI interviewer voice', 'Calm · neutral']].map(([icon, title, detail]) => <Pressable key={title} style={[styles.row, { borderBottomColor: colors.border }]}><View style={[styles.rowIcon, { backgroundColor: colors.secondary }]}><Feather name={icon as keyof typeof Feather.glyphMap} size={17} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.title, { color: colors.foreground }]}>{title}</Text><Text style={[styles.detail, { color: colors.mutedForeground }]}>{detail}</Text></View><Feather name="chevron-right" size={16} color={colors.mutedForeground} /></Pressable>)}<Text style={[styles.group, { color: colors.mutedForeground }]}>ABOUT</Text><View style={[styles.about, { backgroundColor: colors.secondary }]}><Text style={[styles.aboutTitle, { color: colors.foreground }]}>Interview Coach</Text><Text style={[styles.aboutText, { color: colors.mutedForeground }]}>Version 1.0.0 · Built for better answers.</Text></View></Screen>;
+}
+const styles = StyleSheet.create({ group: { fontFamily: 'Inter_700Bold', letterSpacing: 1.3, fontSize: 10, marginTop: 17, marginBottom: 10 }, panel: { borderRadius: 18, borderWidth: 1, padding: 9 }, row: { minHeight: 65, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' }, rowIcon: { width: 37, height: 37, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, copy: { flex: 1, marginLeft: 12 }, title: { fontFamily: 'Inter_600SemiBold', fontSize: 13 }, detail: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 }, about: { borderRadius: 18, padding: 16 }, aboutTitle: { fontFamily: 'Inter_700Bold', fontSize: 14 }, aboutText: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 6 } });
