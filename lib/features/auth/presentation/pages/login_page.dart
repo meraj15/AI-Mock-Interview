@@ -163,7 +163,14 @@ class _LoginPageState extends State<LoginPage> {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: _submit,
+                    onTap: () async {
+                      final success = await auth.signInWithGoogle();
+                      if (success && context.mounted) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                        );
+                      }
+                    },
                     borderRadius: BorderRadius.circular(15),
                     child: Ink(
                       height: 50,
@@ -192,7 +199,14 @@ class _LoginPageState extends State<LoginPage> {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: _submit,
+                    onTap: () async {
+                      final success = await auth.signInWithApple();
+                      if (success && context.mounted) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                        );
+                      }
+                    },
                     borderRadius: BorderRadius.circular(15),
                     child: Ink(
                       height: 50,
@@ -218,6 +232,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ],
           ),
+
 
           const SizedBox(height: 40),
 

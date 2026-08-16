@@ -3,16 +3,30 @@ class UserEntity {
   final String name;
   final String email;
   final String targetRole;
-  final bool isOnboarded;
-  final bool isAuthenticated;
+  final String experienceYears;
+  final String? avatarUrl;
+  final int streakDays;
+  final int weeklyGoalTarget;
+  final int interviewsCompleted;
+  final int averageScore;
+  final int bestScore;
+  final bool isEmailVerified;
+  final String bio;
 
   const UserEntity({
     required this.id,
     required this.name,
     required this.email,
     this.targetRole = 'Flutter Developer',
-    this.isOnboarded = false,
-    this.isAuthenticated = false,
+    this.experienceYears = '1.2 years',
+    this.avatarUrl,
+    this.streakDays = 4,
+    this.weeklyGoalTarget = 3,
+    this.interviewsCompleted = 12,
+    this.averageScore = 78,
+    this.bestScore = 91,
+    this.isEmailVerified = true,
+    this.bio = 'Mobile software engineer passionate about clean architecture and high-performance cross-platform applications.',
   });
 
   UserEntity copyWith({
@@ -20,16 +34,30 @@ class UserEntity {
     String? name,
     String? email,
     String? targetRole,
-    bool? isOnboarded,
-    bool? isAuthenticated,
+    String? experienceYears,
+    String? avatarUrl,
+    int? streakDays,
+    int? weeklyGoalTarget,
+    int? interviewsCompleted,
+    int? averageScore,
+    int? bestScore,
+    bool? isEmailVerified,
+    String? bio,
   }) {
     return UserEntity(
       id: id ?? this.id,
       name: name ?? this.name,
       email: email ?? this.email,
       targetRole: targetRole ?? this.targetRole,
-      isOnboarded: isOnboarded ?? this.isOnboarded,
-      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      experienceYears: experienceYears ?? this.experienceYears,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      streakDays: streakDays ?? this.streakDays,
+      weeklyGoalTarget: weeklyGoalTarget ?? this.weeklyGoalTarget,
+      interviewsCompleted: interviewsCompleted ?? this.interviewsCompleted,
+      averageScore: averageScore ?? this.averageScore,
+      bestScore: bestScore ?? this.bestScore,
+      isEmailVerified: isEmailVerified ?? this.isEmailVerified,
+      bio: bio ?? this.bio,
     );
   }
 }

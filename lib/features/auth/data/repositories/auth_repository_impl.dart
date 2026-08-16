@@ -10,6 +10,10 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<UserEntity> getAuthState() async {
+    final isAuth = await localDataSource.isAuthenticated();
+    if (!isAuth) {
+      throw Exception('Not authenticated');
+    }
     return await localDataSource.getCachedUser();
   }
 
@@ -20,8 +24,7 @@ class AuthRepositoryImpl implements AuthRepository {
       name: 'Meraj Khan',
       email: email,
       targetRole: 'Flutter Developer',
-      isOnboarded: true,
-      isAuthenticated: true,
+      experienceYears: '1.2 years',
     );
     await localDataSource.saveUser(user);
     return user;
@@ -34,8 +37,7 @@ class AuthRepositoryImpl implements AuthRepository {
       name: name,
       email: email,
       targetRole: 'Flutter Developer',
-      isOnboarded: true,
-      isAuthenticated: true,
+      experienceYears: '1.0 years',
     );
     await localDataSource.saveUser(user);
     return user;
@@ -53,7 +55,6 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> sendPasswordReset(String email) async {
-    // Simulates password reset
     await Future.delayed(const Duration(milliseconds: 600));
   }
 }

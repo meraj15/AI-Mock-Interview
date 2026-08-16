@@ -9,6 +9,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../controllers/auth_controller.dart';
+import 'email_verification_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -30,11 +31,20 @@ class _SignupPageState extends State<SignupPage> {
       _passwordController.text,
     );
     if (success && mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainNavPage()),
-        (route) => false,
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EmailVerificationPage(email: _emailController.text),
+        ),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -106,6 +116,101 @@ class _SignupPageState extends State<SignupPage> {
             icon: FeatherIcons.arrowRight,
             isLoading: auth.isLoading,
             onPress: _submit,
+          ),
+
+          // Divider
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24.0),
+            child: Row(
+              children: [
+                Expanded(child: Divider(color: colors.border, thickness: 1)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                  child: Text(
+                    'or sign up with',
+                    style: AppTypography.regular(11, color: colors.mutedForeground),
+                  ),
+                ),
+                Expanded(child: Divider(color: colors.border, thickness: 1)),
+              ],
+            ),
+          ),
+
+          // Social Row
+          Row(
+            children: [
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () async {
+                      final success = await auth.signInWithGoogle();
+                      if (success && context.mounted) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(15),
+                    child: Ink(
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: colors.card,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(FeatherIcons.chrome, size: 17, color: colors.foreground),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Google',
+                            style: AppTypography.semiBold(13, color: colors.foreground),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () async {
+                      final success = await auth.signInWithApple();
+                      if (success && context.mounted) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(15),
+                    child: Ink(
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: colors.card,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(FeatherIcons.smartphone, size: 17, color: colors.foreground),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Apple',
+                            style: AppTypography.semiBold(13, color: colors.foreground),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 20),

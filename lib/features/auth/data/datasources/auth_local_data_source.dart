@@ -7,6 +7,7 @@ abstract class AuthLocalDataSource {
   Future<void> clearAuth();
   Future<void> setOnboardingComplete();
   Future<bool> isOnboardingComplete();
+  Future<bool> isAuthenticated();
 }
 
 class AuthLocalDataSourceImpl implements AuthLocalDataSource {
@@ -15,23 +16,21 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   static const String keyOnboarding = 'interview-coach-onboarding';
   static const String keyUserName = 'interview-coach-name';
   static const String keyUserEmail = 'interview-coach-email';
+  static const String keyUserRole = 'interview-coach-role';
 
   AuthLocalDataSourceImpl({required this.sharedPreferences});
 
   @override
   Future<UserModel> getCachedUser() async {
-    final isAuth = sharedPreferences.getBool(keyAuth) ?? false;
-    final isOnboarded = sharedPreferences.getBool(keyOnboarding) ?? false;
     final name = sharedPreferences.getString(keyUserName) ?? 'Meraj Khan';
     final email = sharedPreferences.getString(keyUserEmail) ?? 'meraj.khan@email.com';
+    final role = sharedPreferences.getString(keyUserRole) ?? 'Flutter Developer';
 
     return UserModel(
       id: 'usr_1',
       name: name,
       email: email,
-      targetRole: 'Flutter Developer',
-      isOnboarded: isOnboarded,
-      isAuthenticated: isAuth,
+      targetRole: role,
     );
   }
 
@@ -40,6 +39,7 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     await sharedPreferences.setBool(keyAuth, true);
     await sharedPreferences.setString(keyUserName, user.name);
     await sharedPreferences.setString(keyUserEmail, user.email);
+    await sharedPreferences.setString(keyUserRole, user.targetRole);
   }
 
   @override
@@ -55,5 +55,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   @override
   Future<bool> isOnboardingComplete() async {
     return sharedPreferences.getBool(keyOnboarding) ?? false;
+  }
+
+  @override
+  Future<bool> isAuthenticated() async {
+    return sharedPreferences.getBool(keyAuth) ?? false;
   }
 }

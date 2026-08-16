@@ -5,12 +5,18 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/confirmation_dialog.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
+import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../../../resume/presentation/pages/resume_page.dart';
+import 'account_security_page.dart';
+import 'edit_profile_page.dart';
+import 'notification_settings_page.dart';
 import 'settings_page.dart';
+import 'voice_settings_page.dart';
 
 class ProfilePage extends StatelessWidget {
   final bool showHeader;
@@ -20,27 +26,50 @@ class ProfilePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final auth = context.watch<AuthController>();
+    final resumeCtrl = context.watch<ResumeController>();
+
     final user = auth.user;
     final userName = user?.name ?? 'Meraj Khan';
     final userEmail = user?.email ?? 'meraj.khan@email.com';
+    final targetRole = user?.targetRole ?? 'Flutter Developer';
+    final streak = user?.streakDays ?? 4;
+    final totalInterviews = user?.interviewsCompleted ?? 12;
+    final avgScore = user?.averageScore ?? 78;
+    final bestScore = user?.bestScore ?? 91;
+
+    final initials = userName.isNotEmpty
+        ? userName.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join()
+        : 'MK';
 
     final menuItems = [
       {
         'icon': FeatherIcons.fileText,
         'title': 'My resumes',
-        'detail': '1 resume saved',
+        'detail': '${resumeCtrl.resumes.length} resumes saved',
         'page': const ResumePage(),
       },
       {
+        'icon': FeatherIcons.mic,
+        'title': 'AI Interviewer Voice & Persona',
+        'detail': 'Sarah (Principal Architect)',
+        'page': const VoiceSettingsPage(),
+      },
+      {
         'icon': FeatherIcons.bell,
-        'title': 'Notifications',
-        'detail': 'Stay on track',
-        'page': const SettingsPage(),
+        'title': 'Notifications & Reminders',
+        'detail': 'Daily drill notifications active',
+        'page': const NotificationSettingsPage(),
+      },
+      {
+        'icon': FeatherIcons.shield,
+        'title': 'Account & Security',
+        'detail': 'Password, 2FA, session control',
+        'page': const AccountSecurityPage(),
       },
       {
         'icon': FeatherIcons.sliders,
-        'title': 'Preferences',
-        'detail': 'Theme, voice, language',
+        'title': 'App Preferences',
+        'detail': 'Theme switcher & appearance',
         'page': const SettingsPage(),
       },
     ];
@@ -56,63 +85,70 @@ class ProfilePage extends StatelessWidget {
             ),
           ],
 
-
           // Profile Head
-          Row(
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: colors.navy,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'MK',
-                  style: AppTypography.bold(20, color: Colors.white),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EditProfilePage()),
+                );
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: Row(
                   children: [
-                    Text(
-                      userName,
-                      style: AppTypography.bold(20, color: colors.foreground),
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: colors.navy,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        initials,
+                        style: AppTypography.bold(22, color: Colors.white),
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      userEmail,
-                      style: AppTypography.regular(11, color: colors.mutedForeground),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                userName,
+                                style: AppTypography.bold(20, color: colors.foreground),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(FeatherIcons.edit2, size: 13, color: colors.mutedForeground),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            userEmail,
+                            style: AppTypography.regular(11, color: colors.mutedForeground),
+                          ),
+                          const SizedBox(height: 8),
+                          PillBadge(label: targetRole, tone: PillTone.success),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    const PillBadge(label: 'Flutter Developer', tone: PillTone.success),
+                    IconButton(
+                      icon: Icon(FeatherIcons.settings, size: 19, color: colors.foreground),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SettingsPage()),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SettingsPage()),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Ink(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: colors.secondary,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(FeatherIcons.settings, size: 18, color: colors.foreground),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -123,7 +159,7 @@ class ProfilePage extends StatelessWidget {
               Expanded(
                 child: StatCard(
                   label: 'Interviews',
-                  value: '12',
+                  value: '$totalInterviews',
                   icon: FeatherIcons.layers,
                 ),
               ),
@@ -131,7 +167,7 @@ class ProfilePage extends StatelessWidget {
               Expanded(
                 child: StatCard(
                   label: 'Avg. score',
-                  value: '78%',
+                  value: '$avgScore%',
                   icon: FeatherIcons.trendingUp,
                 ),
               ),
@@ -143,7 +179,7 @@ class ProfilePage extends StatelessWidget {
               Expanded(
                 child: StatCard(
                   label: 'Best score',
-                  value: '91%',
+                  value: '$bestScore%',
                   icon: FeatherIcons.award,
                 ),
               ),
@@ -151,7 +187,7 @@ class ProfilePage extends StatelessWidget {
               Expanded(
                 child: StatCard(
                   label: 'Streak',
-                  value: '4 days',
+                  value: '$streak days',
                   icon: FeatherIcons.zap,
                 ),
               ),
@@ -161,7 +197,7 @@ class ProfilePage extends StatelessWidget {
           const SizedBox(height: 25),
 
           Text(
-            'Account',
+            'Account & Settings',
             style: AppTypography.bold(17, color: colors.foreground),
           ),
           const SizedBox(height: 8),
@@ -225,12 +261,21 @@ class ProfilePage extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: () async {
-                await auth.signOut();
-                if (context.mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginPage()),
-                    (route) => false,
-                  );
+                final confirm = await ConfirmationDialog.show(
+                  context,
+                  title: 'Log Out',
+                  message: 'Are you sure you want to log out of your session?',
+                  confirmLabel: 'Log Out',
+                );
+
+                if (confirm == true && context.mounted) {
+                  await auth.signOut();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LoginPage()),
+                      (route) => false,
+                    );
+                  }
                 }
               },
               borderRadius: BorderRadius.circular(12),
