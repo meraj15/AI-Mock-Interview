@@ -7,10 +7,12 @@ import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/confirmation_dialog.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../domain/entities/resume_entity.dart';
 import '../controllers/resume_controller.dart';
+import 'resume_preview_page.dart';
 
 class ResumePage extends StatefulWidget {
   const ResumePage({super.key});
@@ -27,93 +29,187 @@ class _ResumePageState extends State<ResumePage> {
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final resumeCtrl = context.watch<ResumeController>();
-    final resume = resumeCtrl.resume;
-    final isAnalyzing = resume.status == ResumeStatus.analyzing;
+    final resumes = resumeCtrl.resumes;
+    final activeResume = resumeCtrl.resume;
 
     return AppScaffold(
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppHeader(
-            title: 'My resume',
+            title: 'My Resumes',
+            subtitle: '${resumes.length} resumes managed',
             onBack: () => Navigator.of(context).pop(),
             right: IconButton(
-              icon: Icon(FeatherIcons.moreHorizontal, size: 20, color: colors.foreground),
-              onPressed: () {},
+              icon: Icon(FeatherIcons.plus, size: 20, color: colors.foreground),
+              onPressed: () => resumeCtrl.simulateUpload(),
             ),
           ),
 
-          // Resume Card
-          Container(
-            padding: const EdgeInsets.all(17),
-            decoration: BoxDecoration(
-              color: colors.navy,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: colors.mint,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  child: isAnalyzing
-                      ? SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(colors.navy),
-                          ),
-                        )
-                      : Icon(FeatherIcons.fileText, size: 24, color: colors.navy),
+          const SizedBox(height: 8),
+
+          // Multi-Resume List
+          ...resumes.map((item) {
+            final isAnalyzing = item.status == ResumeStatus.analyzing;
+            final isSelected = item.id == activeResume.id;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isSelected ? colors.navy : colors.card,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isSelected ? colors.navy : colors.border,
+                  width: 1.5,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              child: Column(
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        isAnalyzing ? 'Analyzing your resume…' : resume.name,
-                        style: AppTypography.semiBold(14, color: Colors.white),
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: isSelected ? colors.mint : colors.secondary,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        alignment: Alignment.center,
+                        child: isAnalyzing
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    isSelected ? colors.navy : colors.primary,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                FeatherIcons.fileText,
+                                size: 22,
+                                color: isSelected ? colors.navy : colors.primary,
+                              ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        isAnalyzing ? 'Extracting skills and experience' : 'Updated 4 days ago · 1.2 MB',
-                        style: AppTypography.regular(10, color: const Color(0xFFBFCBE5)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isAnalyzing ? 'Analyzing resume…' : item.name,
+                              style: AppTypography.bold(
+                                14,
+                                color: isSelected ? Colors.white : colors.foreground,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              isAnalyzing ? 'Extracting skills...' : '${item.uploadedDate} · ${item.fileSize}',
+                              style: AppTypography.regular(
+                                10,
+                                color: isSelected ? const Color(0xFFBFCBE5) : colors.mutedForeground,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 8),
                       PillBadge(
-                        label: isAnalyzing ? 'Processing' : 'Default resume',
-                        tone: PillTone.success,
+                        label: isSelected ? 'Active Default' : 'Saved',
+                        tone: isSelected ? PillTone.success : PillTone.muted,
                       ),
                     ],
                   ),
-                ),
-                Icon(
-                  isAnalyzing ? FeatherIcons.loader : FeatherIcons.checkCircle,
-                  size: 19,
-                  color: colors.mint,
-                ),
-              ],
-            ),
-          ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ResumePreviewPage(resume: item),
+                              ),
+                            );
+                          },
+                          icon: Icon(
+                            FeatherIcons.eye,
+                            size: 14,
+                            color: isSelected ? Colors.white : colors.foreground,
+                          ),
+                          label: Text(
+                            'Preview',
+                            style: AppTypography.semiBold(
+                              11,
+                              color: isSelected ? Colors.white : colors.foreground,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: isSelected ? Colors.white.withValues(alpha: 0.3) : colors.border,
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (!isSelected) ...[
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => resumeCtrl.setActiveResume(item.id),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              'Set Active',
+                              style: AppTypography.semiBold(11, color: colors.primaryForeground),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: Icon(FeatherIcons.trash2, size: 16, color: colors.destructive),
+                          onPressed: () async {
+                            final confirm = await ConfirmationDialog.show(
+                              context,
+                              title: 'Delete Resume',
+                              message: 'Are you sure you want to remove ${item.name}?',
+                              confirmLabel: 'Delete',
+                              isDestructive: true,
+                            );
+                            if (confirm == true) {
+                              resumeCtrl.deleteResume(item.id);
+                            }
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
           AppButton(
-            label: 'Upload another resume',
+            label: 'Upload new resume (PDF/DOCX)',
             icon: FeatherIcons.uploadCloud,
             variant: ButtonVariant.secondary,
             onPress: () => resumeCtrl.simulateUpload(),
           ),
 
-          const SectionTitle(title: 'Resume analysis', action: 'Edit'),
+          const SectionTitle(title: 'Active Resume Summary', action: 'Full Preview'),
 
-          // Analysis Metric Card
+          // Quick metrics of active resume
           Container(
             padding: const EdgeInsets.all(17),
             decoration: BoxDecoration(
@@ -130,69 +226,46 @@ class _ResumePageState extends State<ResumePage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          resume.experience,
-                          style: AppTypography.bold(21, color: colors.foreground),
-                        ),
+                        Text(activeResume.experience, style: AppTypography.bold(21, color: colors.foreground)),
                         const SizedBox(height: 2),
-                        Text(
-                          'Experience',
-                          style: AppTypography.regular(10, color: colors.mutedForeground),
-                        ),
+                        Text('Experience', style: AppTypography.regular(10, color: colors.mutedForeground)),
                       ],
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '${resume.projects}',
-                          style: AppTypography.bold(21, color: colors.foreground),
-                        ),
+                        Text('${activeResume.projects}', style: AppTypography.bold(21, color: colors.foreground)),
                         const SizedBox(height: 2),
-                        Text(
-                          'Projects',
-                          style: AppTypography.regular(10, color: colors.mutedForeground),
-                        ),
+                        Text('Projects', style: AppTypography.regular(10, color: colors.mutedForeground)),
                       ],
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '${resume.skills.length}',
-                          style: AppTypography.bold(21, color: colors.foreground),
-                        ),
+                        Text('${activeResume.skills.length}', style: AppTypography.bold(21, color: colors.foreground)),
                         const SizedBox(height: 2),
-                        Text(
-                          'Skills',
-                          style: AppTypography.regular(10, color: colors.mutedForeground),
-                        ),
+                        Text('Core Skills', style: AppTypography.regular(10, color: colors.mutedForeground)),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Divider(color: colors.border, thickness: 1),
-                const SizedBox(height: 14),
-                Text(
-                  'Primary skills',
-                  style: AppTypography.medium(11, color: colors.mutedForeground),
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                Text('Primary matched skills', style: AppTypography.medium(11, color: colors.mutedForeground)),
+                const SizedBox(height: 8),
                 Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: resume.skills.map((skill) {
-                    return PillBadge(label: skill, tone: PillTone.muted);
-                  }).toList(),
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: activeResume.skills.map((s) => PillBadge(label: s, tone: PillTone.muted)).toList(),
                 ),
               ],
             ),
           ),
 
-          const SectionTitle(title: 'Or paste your resume'),
+          const SectionTitle(title: 'Or Paste Resume Manually'),
           Text(
-            'No file? Paste your resume text and we’ll use the same analysis.',
+            'No file on hand? Paste your resume text and our parser will structure it into the same profile format.',
             style: AppTypography.regular(12, color: colors.mutedForeground),
           ),
           const SizedBox(height: 12),
@@ -200,14 +273,14 @@ class _ResumePageState extends State<ResumePage> {
           if (_pasteOpen) ...[
             AppTextField(
               controller: _pasteController,
-              placeholder: 'Paste your resume here…',
+              placeholder: 'Paste your resume content, experience, and projects here…',
               multiline: true,
               minLines: 4,
               maxLines: 6,
             ),
             AppButton(
-              label: 'Analyze pasted resume',
-              icon: FeatherIcons.star,
+              label: 'Parse and Save Resume',
+              icon: FeatherIcons.check,
               onPress: () {
                 resumeCtrl.simulatePaste(_pasteController.text);
                 setState(() => _pasteOpen = false);
@@ -243,7 +316,7 @@ class _ResumePageState extends State<ResumePage> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
         ],
       ),
     );

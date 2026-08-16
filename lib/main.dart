@@ -7,12 +7,12 @@ import 'features/auth/data/datasources/auth_local_data_source.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/domain/usecases/auth_usecases.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
-import 'features/auth/presentation/pages/login_page.dart';
-import 'features/auth/presentation/pages/onboarding_page.dart';
-import 'features/dashboard/presentation/pages/main_nav_page.dart';
 import 'features/interview/presentation/controllers/interview_controller.dart';
 import 'features/profile/presentation/controllers/theme_controller.dart';
 import 'features/resume/presentation/controllers/resume_controller.dart';
+import 'features/splash/presentation/pages/splash_page.dart';
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,28 +64,16 @@ class InterviewCoachApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeCtrl = context.watch<ThemeController>();
-    final authCtrl = context.watch<AuthController>();
-
-    Widget initialScreen;
-    if (authCtrl.isLoading) {
-      initialScreen = const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    } else if (!authCtrl.isOnboarded) {
-      initialScreen = const OnboardingPage();
-    } else if (!authCtrl.isAuthenticated) {
-      initialScreen = const LoginPage();
-    } else {
-      initialScreen = const MainNavPage();
-    }
 
     return MaterialApp(
+
       title: 'Interview Coach',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeCtrl.flutterThemeMode,
-      home: initialScreen,
+      home: const SplashPage(),
     );
   }
 }
+
