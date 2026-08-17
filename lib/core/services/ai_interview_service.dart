@@ -15,22 +15,110 @@ class AIQuestionPrompt {
   });
 }
 
+class StarScorecard {
+  final double situationScore;
+  final String situationFeedback;
+  final double taskScore;
+  final String taskFeedback;
+  final double actionScore;
+  final String actionFeedback;
+  final double resultScore;
+  final String resultFeedback;
+
+  const StarScorecard({
+    required this.situationScore,
+    required this.situationFeedback,
+    required this.taskScore,
+    required this.taskFeedback,
+    required this.actionScore,
+    required this.actionFeedback,
+    required this.resultScore,
+    required this.resultFeedback,
+  });
+
+  double get averageScore => (situationScore + taskScore + actionScore + resultScore) / 4;
+}
+
+class DetailedQuestionEvaluation {
+  final int questionIndex;
+  final String primaryQuestion;
+  final String category;
+  final String candidateAnswer;
+  final double score; // 0.0 - 10.0
+  final List<String> strengths;
+  final List<String> missingPoints;
+  final String idealModelAnswer;
+  final StarScorecard? starScorecard;
+  final String coachTip;
+
+  const DetailedQuestionEvaluation({
+    required this.questionIndex,
+    required this.primaryQuestion,
+    required this.category,
+    required this.candidateAnswer,
+    required this.score,
+    required this.strengths,
+    required this.missingPoints,
+    required this.idealModelAnswer,
+    this.starScorecard,
+    required this.coachTip,
+  });
+}
+
+class RoleBenchmark {
+  final int percentile; // e.g. 88 (Top 12%)
+  final int industryAverageScore; // e.g. 72
+  final String readinessLevel; // e.g. "Senior Tier Ready"
+  final String companyCultureAlignment;
+
+  const RoleBenchmark({
+    required this.percentile,
+    required this.industryAverageScore,
+    required this.readinessLevel,
+    required this.companyCultureAlignment,
+  });
+}
+
+class StudyPlanItem {
+  final String topic;
+  final String priority; // "High", "Medium"
+  final String estimatedTime;
+  final String rationale;
+  final String actionDrill;
+
+  const StudyPlanItem({
+    required this.topic,
+    required this.priority,
+    required this.estimatedTime,
+    required this.rationale,
+    required this.actionDrill,
+  });
+}
+
 class AIEvaluationResult {
   final int overallScore;
   final String performanceLabel;
+  final String hiringBand; // "Strong Hire", "Hire", "Leaning Hire", "Needs Work"
+  final RoleBenchmark benchmark;
   final Map<String, int> skillScores;
   final List<String> strengths;
   final List<String> areasToImprove;
   final List<String> recommendedTopics;
+  final List<StudyPlanItem> studyPlan;
+  final List<DetailedQuestionEvaluation> questionEvaluations;
   final String summary;
 
   const AIEvaluationResult({
     required this.overallScore,
     required this.performanceLabel,
+    required this.hiringBand,
+    required this.benchmark,
     required this.skillScores,
     required this.strengths,
     required this.areasToImprove,
     required this.recommendedTopics,
+    required this.studyPlan,
+    required this.questionEvaluations,
     required this.summary,
   });
 }
@@ -55,7 +143,6 @@ abstract class AIInterviewService {
 }
 
 class MockAIInterviewService implements AIInterviewService {
-  // Question banks keyed by focus topic / category
   static const _questionBank = <String, List<Map<String, String>>>{
     'State Management': [
       {
@@ -63,22 +150,12 @@ class MockAIInterviewService implements AIInterviewService {
         'f': 'You mentioned your state solution. How did you prevent unnecessary widget rebuilds in high-frequency data streams?',
         'hint': 'Discuss BLoC, Riverpod, or Provider — justify the selection with real trade-offs.',
       },
-      {
-        'q': 'How do you handle global auth state that must propagate instantly to all routes without triggering full tree rebuilds?',
-        'f': 'How would you test this behavior in isolation using mock repositories?',
-        'hint': 'Think about InheritedNotifier vs Provider vs reactive streams.',
-      },
     ],
     'Clean Architecture': [
       {
         'q': 'Describe how you implement the dependency rule in Clean Architecture. How do your domain entities stay free of framework dependencies?',
         'f': 'If a product manager asks you to add Firebase analytics directly in the domain layer, how do you push back with a technical argument?',
         'hint': 'Domain entities must never import Flutter or Firebase packages — explain layering.',
-      },
-      {
-        'q': 'How does your data layer handle multiple remote sources (e.g. REST + GraphQL) for the same domain entity?',
-        'f': 'What happens when the remote source returns a partial payload and the local cache has a stale record?',
-        'hint': 'Repository pattern as the single source of truth.',
       },
     ],
     'Performance Optimization': [
@@ -94,145 +171,41 @@ class MockAIInterviewService implements AIInterviewService {
         'f': 'How would you ensure exactly-once message delivery across unreliable mobile networks?',
         'hint': 'Cover WebSockets, local queue, retry exponential backoff, and idempotency keys.',
       },
-      {
-        'q': 'If you were asked to design a distributed caching layer for mobile API responses, what strategy would you choose and why?',
-        'f': 'How do you handle cache invalidation when the backend data changes without a push event?',
-        'hint': 'TTL, ETags, stale-while-revalidate are strong patterns to mention.',
-      },
-    ],
-    'API Integration & REST': [
-      {
-        'q': 'How do you handle concurrent API requests in Flutter that depend on each other, without blocking the UI thread?',
-        'f': 'If one of those concurrent requests fails and others succeed, how do you roll back or compensate?',
-        'hint': 'Dart Futures, isolates, and structured concurrency patterns.',
-      },
-    ],
-    'Testing & TDD': [
-      {
-        'q': 'Walk me through your TDD workflow. How do you write a test for a repository layer that depends on a remote data source?',
-        'f': 'How do you test the integration between your BLoC and your repository without hitting a live API?',
-        'hint': 'Mockito, mocktail, and dependency injection for test doubles.',
-      },
-    ],
-    'CI/CD & DevOps': [
-      {
-        'q': 'Describe your ideal CI/CD pipeline for a Flutter project that targets both App Store and Google Play. What stages and tools would you include?',
-        'f': 'How do you manage secrets (e.g. keystore, provisioning profiles) securely inside your CI runner?',
-        'hint': 'Fastlane, GitHub Actions, Codemagic, environment secrets.',
-      },
-    ],
-    'Behavioral (STAR)': [
-      {
-        'q': 'Describe a time when you disagreed with a technical decision made by a senior colleague. How did you handle it and what was the outcome?',
-        'f': 'Looking back, what would you do differently to influence the technical direction more effectively?',
-        'hint': 'Structure as: Situation → Task → Action → Result.',
-      },
-      {
-        'q': 'Tell me about a critical deadline you almost missed. What did you prioritize and how did you communicate the risk?',
-        'f': 'How do you proactively prevent this from repeating on future projects?',
-        'hint': 'Focus on your decision-making process and stakeholder communication.',
-      },
-    ],
-    'Concurrency & Async': [
-      {
-        'q': 'Explain how Dart\'s event loop and isolate model differs from traditional multi-threading. Where have you used isolates in production?',
-        'f': 'How would you design a background processing queue in Flutter that survives app backgrounding?',
-        'hint': 'Dart Isolate, compute(), WorkManager, and flutter_background_service.',
-      },
-    ],
-    'Security & Auth': [
-      {
-        'q': 'How do you store sensitive tokens securely on mobile devices, and what are the risks of storing them in SharedPreferences?',
-        'f': 'Walk me through how you implement token refresh transparently without the user ever seeing an auth error.',
-        'hint': 'FlutterSecureStorage, Keychain, Keystore, and Dio interceptors.',
-      },
-    ],
-    'Database & Caching': [
-      {
-        'q': 'How do you design an offline-first data architecture where the local SQLite database is the single source of truth?',
-        'f': 'How do you resolve conflicts when the backend and local store diverge during a network partition?',
-        'hint': 'Discuss sync strategies: full replace, delta sync, CRDTs, or timestamps.',
-      },
-    ],
-    'Memory Management': [
-      {
-        'q': 'How do you detect and eliminate memory leaks in a Flutter app, particularly those caused by uncancelled subscriptions or retained contexts?',
-        'f': 'What patterns do you enforce at the code review level to prevent memory leaks from shipping to production?',
-        'hint': 'StreamSubscription.cancel(), WeakReference, DevTools memory timeline.',
-      },
     ],
   };
-
-  static const _genericPool = [
-    AIQuestionPrompt(
-      primaryQuestion: 'Walk me through your most impactful project from architecture to delivery.',
-      followUpQuestion: 'What was the most difficult technical trade-off you had to negotiate on that project?',
-      category: 'Project Architecture',
-      contextHint: 'A concrete example with measurable outcomes will stand out.',
-    ),
-    AIQuestionPrompt(
-      primaryQuestion: 'How do you approach code reviews? What do you look for beyond syntactic correctness?',
-      followUpQuestion: 'Give me an example where a code review caught a critical production issue before release.',
-      category: 'Engineering Excellence',
-      contextHint: 'Think about maintainability, testability, security, and performance.',
-    ),
-    AIQuestionPrompt(
-      primaryQuestion: 'How do you balance technical debt repayment against shipping new features under pressure?',
-      followUpQuestion: 'How do you quantify technical debt to make it visible and actionable for non-technical stakeholders?',
-      category: 'Engineering Strategy',
-      contextHint: 'Discuss debt budgets, refactoring sprints, and communication with product.',
-    ),
-  ];
 
   @override
   Future<List<AIQuestionPrompt>> generateQuestions({
     required InterviewConfigEntity config,
     required ResumeEntity resume,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 600));
 
     final List<AIQuestionPrompt> result = [];
-
-    // Use focus topics from config if available
     final topics = config.focusTopics.isNotEmpty
         ? config.focusTopics
-        : ['State Management', 'Clean Architecture', 'Performance Optimization'];
-
-    final isBehavioral = config.type.toLowerCase().contains('behavioral');
-    final isSystemDesign = config.type.toLowerCase().contains('system design') ||
-        config.type.toLowerCase().contains('architecture');
-
-    // Always inject behavioral for full mock
-    final resolvedTopics = config.type.toLowerCase().contains('full mock')
-        ? [...topics, 'Behavioral (STAR)']
-        : isBehavioral
-            ? ['Behavioral (STAR)', 'Behavioral (STAR)']
-            : isSystemDesign
-                ? ['System Design', ...topics]
-                : topics;
+        : ['State Management', 'Clean Architecture', 'Performance Optimization', 'System Design'];
 
     final skills = resume.skills.take(3).join(', ');
     final candidateName = resume.candidateName.split(' ').first;
-    final codingLang = config.codingLanguage == 'Any / No Preference' ? 'Dart/Flutter' : config.codingLanguage;
 
-    // Opening personalised question
+    // 1. Warm-up
     result.add(AIQuestionPrompt(
       primaryQuestion:
           'Welcome, $candidateName! I see $skills on your profile. Walk me through a recent high-impact project where you leveraged these skills end-to-end.',
       followUpQuestion:
-          'You described a strong technical setup. What was the most difficult technical trade-off you had to make, and how did you resolve it?',
-      category: 'Intro & Project Deep-Dive',
+          'What was the most difficult technical trade-off you had to make on this architecture, and how did you resolve it?',
+      category: 'Project Architecture',
       contextHint: 'Provide a concrete example with quantified business impact.',
     ));
 
-    // Topic-based questions
-    for (final topic in resolvedTopics) {
+    // 2. Focus topic questions
+    for (final topic in topics) {
       final bank = _questionBank[topic];
       if (bank != null && bank.isNotEmpty) {
-        // Rotate through bank entries
         final entry = bank[result.length % bank.length];
         result.add(AIQuestionPrompt(
-          primaryQuestion: entry['q']!.replaceAll('{lang}', codingLang),
+          primaryQuestion: entry['q']!,
           followUpQuestion: entry['f']!,
           category: topic,
           contextHint: entry['hint']!,
@@ -241,20 +214,13 @@ class MockAIInterviewService implements AIInterviewService {
       if (result.length >= config.questions) break;
     }
 
-    // Pad with generic questions if needed
-    var gi = 0;
-    while (result.length < config.questions && gi < _genericPool.length) {
-      result.add(_genericPool[gi]);
-      gi++;
-    }
-
-    // Closing question
-    if (result.length < config.questions) {
-      result.add(const AIQuestionPrompt(
-        primaryQuestion: 'Looking back at your career so far, what is the one technical skill you wish you had invested in earlier, and what\'s your plan to close that gap?',
-        followUpQuestion: 'How do you currently stay sharp and keep up with rapidly evolving best practices in your field?',
-        category: 'Growth Mindset',
-        contextHint: 'Show self-awareness and a proactive learning mindset.',
+    // Pad if necessary
+    while (result.length < config.questions) {
+      result.add(AIQuestionPrompt(
+        primaryQuestion: 'How do you structure automated CI/CD pipelines to validate pull requests with zero flaky test tolerance?',
+        followUpQuestion: 'How do you handle credential security and code signing certificates inside automated builders?',
+        category: 'CI/CD & DevOps',
+        contextHint: 'Discuss GitHub Actions, Fastlane, and automated smoke test matrices.',
       ));
     }
 
@@ -267,22 +233,8 @@ class MockAIInterviewService implements AIInterviewService {
     required String answer,
     required String role,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 400));
-    final lower = answer.toLowerCase();
-
-    if (lower.contains('state') || lower.contains('provider') || lower.contains('riverpod')) {
-      return 'You mentioned your state solution. How did you prevent unnecessary widget rebuilds in high-frequency data streams?';
-    }
-    if (lower.contains('architecture') || lower.contains('clean') || lower.contains('domain')) {
-      return 'You described your architecture well. How do you enforce these boundaries in a team environment during code reviews?';
-    }
-    if (lower.contains('team') || lower.contains('collaboration') || lower.contains('lead')) {
-      return 'That shows strong leadership instincts. Can you give me a concrete situation where resolving that conflict directly improved a product outcome?';
-    }
-    if (lower.contains('performance') || lower.contains('optimize') || lower.contains('fps')) {
-      return 'You identified the root cause effectively. How did you validate the fix in production without relying solely on a staging environment?';
-    }
-    return 'That\'s a solid foundation. Can you go deeper on the specific technical decisions you made and how you validated them in production?';
+    await Future.delayed(const Duration(milliseconds: 350));
+    return 'You identified the root cause effectively. How did you validate this decision in production and measure the performance delta?';
   }
 
   @override
@@ -291,67 +243,150 @@ class MockAIInterviewService implements AIInterviewService {
     required List<String> questions,
     required List<String> answers,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 1400));
+    await Future.delayed(const Duration(milliseconds: 1100));
 
-    // Dynamically score based on answer depth
     int totalWords = 0;
-    int technicalTerms = 0;
-    final keywords = ['architecture', 'performance', 'state', 'async', 'test', 'layer', 'api', 'cache', 'design', 'pattern', 'isolate', 'stream', 'repository', 'inject'];
+    int techKeywordCount = 0;
+    final keywords = [
+      'architecture', 'performance', 'state', 'async', 'test', 'layer', 'api',
+      'cache', 'design', 'pattern', 'isolate', 'stream', 'repository', 'inject',
+      'crdt', 'sqlite', 'metric', 'reduced', 'latency', 'mutex', 'lock'
+    ];
+
     for (final a in answers) {
-      totalWords += a.split(' ').length;
+      totalWords += a.split(' ').where((w) => w.isNotEmpty).length;
       for (final kw in keywords) {
-        if (a.toLowerCase().contains(kw)) technicalTerms++;
+        if (a.toLowerCase().contains(kw)) techKeywordCount++;
       }
     }
 
     final avgWords = answers.isEmpty ? 0 : totalWords ~/ answers.length;
-    final depthScore = (avgWords.clamp(20, 120) / 120 * 100).toInt();
-    final techScore = (technicalTerms.clamp(0, 15) / 15 * 100).toInt();
-    final overall = ((depthScore * 0.5 + techScore * 0.5).clamp(62, 95)).toInt();
+    final depthScore = (avgWords.clamp(20, 110) / 110 * 100).toInt();
+    final techScore = (techKeywordCount.clamp(0, 16) / 16 * 100).toInt();
+    final overall = ((depthScore * 0.45 + techScore * 0.55).clamp(65, 96)).toInt();
+
+    final hiringBand = overall >= 88
+        ? 'Strong Hire'
+        : overall >= 78
+            ? 'Hire'
+            : overall >= 68
+                ? 'Leaning Hire'
+                : 'Needs Practice';
 
     final performanceLabel = overall >= 88
-        ? 'Outstanding Performance'
+        ? 'Outstanding Senior Mastery'
         : overall >= 78
-            ? 'Strong Performance'
+            ? 'Strong Candidate Profile'
             : overall >= 68
-                ? 'Good Foundation'
-                : 'Keep Practising';
+                ? 'Solid Foundations'
+                : 'Developing Practitioner';
+
+    // Detailed per-question evaluations
+    final questionEvaluations = <DetailedQuestionEvaluation>[];
+    for (int i = 0; i < questions.length; i++) {
+      final q = questions[i];
+      final ans = i < answers.length ? answers[i] : 'No response captured.';
+      final isLong = ans.split(' ').length > 40;
+      final qScore = isLong ? 8.5 + (i % 3) * 0.4 : 7.2 + (i % 2) * 0.5;
+
+      questionEvaluations.add(
+        DetailedQuestionEvaluation(
+          questionIndex: i + 1,
+          primaryQuestion: q,
+          category: i == 0 ? 'Project Architecture' : 'Core Engineering',
+          candidateAnswer: ans,
+          score: qScore.clamp(6.5, 9.8),
+          strengths: [
+            'Clear articulation of architectural separation and state predictability.',
+            'Effective explanation of data layer abstractions and repository contracts.',
+          ],
+          missingPoints: [
+            'Could have mentioned specific performance telemetry tools (e.g. Firebase Performance / Sentry).',
+            'Did not discuss handling edge cases during intermittent network packet loss.',
+          ],
+          idealModelAnswer:
+              'In my production applications, I isolate domain business rules completely from UI widgets. Using Clean Architecture, the Presentation layer interacts exclusively with UseCases, which retrieve state via Repository contracts. For offline resilience, I combine SQLite caching with a background sync queue that retries failed mutations with exponential backoff. This resulted in zero data loss and a 35% latency drop.',
+          starScorecard: StarScorecard(
+            situationScore: 8.8,
+            situationFeedback: 'Well-framed background context and problem scope.',
+            taskScore: 8.5,
+            taskFeedback: 'Clearly identified the engineering responsibility.',
+            actionScore: 8.9,
+            actionFeedback: 'Specific patterns and frameworks named effectively.',
+            resultScore: isLong ? 8.4 : 7.2,
+            resultFeedback: isLong ? 'Provided measurable business and engineering impact.' : 'Recommend closing with quantifiable metrics.',
+          ),
+          coachTip: 'Always follow up technical decisions with the metric used to measure success.',
+        ),
+      );
+    }
+
+    final benchmark = RoleBenchmark(
+      percentile: overall >= 85 ? 92 : overall >= 78 ? 84 : 71,
+      industryAverageScore: 72,
+      readinessLevel: overall >= 85
+          ? 'Ready for Senior / Staff Tier'
+          : overall >= 75
+              ? 'Ready for Mid-to-Senior Tier'
+              : 'Requires Foundational Reinforcement',
+      companyCultureAlignment:
+          'High alignment with ${config.company}\'s engineering criteria for system reliability and clean separation of concerns.',
+    );
+
+    final studyPlan = [
+      const StudyPlanItem(
+        topic: 'Offline Sync & Conflict Resolution',
+        priority: 'High',
+        estimatedTime: '2 hours',
+        rationale: 'Crucial for high-scale mobile applications handling spotty network connections.',
+        actionDrill: 'Build a sample offline-first cache using SQLite/Isar with a background mutation queue.',
+      ),
+      const StudyPlanItem(
+        topic: 'Performance Profiling & Jank Elimination',
+        priority: 'High',
+        estimatedTime: '1.5 hours',
+        rationale: 'Top tech interviewers look for mastery over DevTools, raster threads, and isolate computation.',
+        actionDrill: 'Profile an intentionally heavy list rebuild in Flutter DevTools and apply RepaintBoundary & const optimizations.',
+      ),
+      const StudyPlanItem(
+        topic: 'STAR Structured Delivery for Behavioral Rounds',
+        priority: 'Medium',
+        estimatedTime: '1 hour',
+        rationale: 'Ensures every leadership story concludes with measurable business outcomes.',
+        actionDrill: 'Prepare 3 STAR stories covering: deadline pressure, technical disagreement, and architectural refactor.',
+      ),
+    ];
 
     return AIEvaluationResult(
       overallScore: overall,
       performanceLabel: performanceLabel,
+      hiringBand: hiringBand,
+      benchmark: benchmark,
       skillScores: {
-        'Technical Knowledge': (techScore * 0.9 + 10).toInt().clamp(55, 95),
-        'Communication & Clarity': (depthScore * 0.85 + 10).toInt().clamp(55, 95),
-        'Problem Solving': (overall * 0.95 + 3).toInt().clamp(55, 95),
-        'Confidence & Delivery': (overall * 0.88 + 5).toInt().clamp(55, 95),
-        'Role Knowledge': (techScore * 0.95 + 5).toInt().clamp(55, 95),
+        'Technical Knowledge': (techScore * 0.9 + 10).toInt().clamp(60, 96),
+        'Communication & Clarity': (depthScore * 0.85 + 10).toInt().clamp(60, 95),
+        'Problem Solving & Architecture': (overall * 0.96 + 2).toInt().clamp(62, 97),
+        'Confidence & Delivery': (overall * 0.89 + 5).toInt().clamp(60, 94),
+        'Role Mastery': (techScore * 0.95 + 4).toInt().clamp(64, 98),
       },
       strengths: [
-        avgWords > 60
-            ? 'Your answers demonstrated strong narrative depth — you gave structured, well-reasoned explanations.'
-            : 'You showed clear technical familiarity with your domain tools and frameworks.',
-        technicalTerms > 8
-            ? 'You used precise technical vocabulary, signaling deep hands-on expertise to the interviewer.'
-            : 'Your answers were focused and directly addressed the question\'s core.',
-        'You maintained a professional and composed tone throughout the session.',
+        'Strong grasp of Flutter core principles and clean architectural separation.',
+        'Articulate explanation of real project workflows and repository layers.',
+        'Structured problem decomposition and composure during technical questions.',
       ],
       areasToImprove: [
-        avgWords < 50
-            ? 'Expand your answers — the interviewer expects 60–120 words with concrete examples, not just definitions.'
-            : 'Go deeper on production-grade trade-offs; mention failure modes and how you mitigated them.',
-        technicalTerms < 6
-            ? 'Incorporate more precise technical terms (e.g. idempotency, observability, backpressure) to signal seniority.'
-            : 'Tie your technical choices to measurable business outcomes (e.g. reduced crash rate by 40%).',
-        'Practise the STAR format for behavioral questions — always close with a quantified result.',
+        'Go deeper into distributed system trade-offs and offline sync edge cases.',
+        'Always quantify results (e.g. reduced app launch time by 40%).',
+        'Reference observability, crash reporting, and real user monitoring (RUM).',
       ],
       recommendedTopics: config.focusTopics.isNotEmpty
           ? config.focusTopics.take(4).toList()
-          : ['Clean Architecture', 'State Management', 'Offline Sync', 'Production Observability'],
+          : ['Clean Architecture in Mobile', 'State Management', 'Offline Sync', 'Telemetry'],
+      studyPlan: studyPlan,
+      questionEvaluations: questionEvaluations,
       summary:
-          'You demonstrated $performanceLabel across the ${config.type} session for the ${config.role} role. '
-          '${overall >= 80 ? 'Your technical depth and structured delivery stand out.' : 'Focus on providing deeper, example-driven answers with quantified outcomes.'} '
-          'Target: ${config.company}.',
+          'You demonstrated strong technical mastery for the ${config.role} position with clear architectural intuition. '
+          'Your communication is structured and professional. Deepening your explanations with measurable metrics and offline-edge cases will make your candidacy exceptional.',
     );
   }
 }

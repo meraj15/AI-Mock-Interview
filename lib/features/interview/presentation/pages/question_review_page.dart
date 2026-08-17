@@ -7,6 +7,7 @@ import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
+import '../../../../core/services/ai_interview_service.dart';
 import '../controllers/interview_controller.dart';
 
 class QuestionReviewPage extends StatefulWidget {
@@ -19,61 +20,50 @@ class QuestionReviewPage extends StatefulWidget {
 class _QuestionReviewPageState extends State<QuestionReviewPage> {
   int _index = 0;
 
-  final List<Map<String, dynamic>> _defaultQuestions = [
-    {
-      'q': 'Can you walk me through one Flutter project you’ve worked on?',
-      'score': '8.5',
-      'tone': PillTone.success,
-      'answer': 'I built an OTT application where I owned the mobile architecture, state management with Provider, and worked closely with the backend team.',
-      'feedback': 'Strong project framing and clear ownership. You effectively explained your technical stack.',
-      'idealAnswer':
-          'In my recent OTT video streaming app, I architected the app using Clean Architecture and Provider. One key challenge was seamless video playback caching during intermittent network drops, which I solved by building an offline sync repository with Hive and SQLite. This reduced video buffer latency by 35%.',
-      'missing': 'Specific performance metrics and concrete architectural trade-offs.',
-      'tip': 'Use the STAR format: Situation, Task, Action, and measurable Result.',
-    },
-    {
-      'q': 'How did you handle state management in your Flutter application?',
-      'score': '7.0',
-      'tone': PillTone.coral,
-      'answer': 'I used Provider to keep state predictable and separate from the UI layer.',
-      'feedback': 'Good grasp of fundamentals, but lacked depth on lifecycle and scaling.',
-      'idealAnswer':
-          'I separated business logic into ChangeNotifier models, keeping UI widgets dumb and stateless. For scoped vs global state, I used proxy providers and dependency injection. If building today, I would consider Riverpod or Bloc for complex asynchronous event streams and immutable states.',
-      'missing': 'Comparison with alternative state solutions (Riverpod/Bloc) and dependency injection patterns.',
-      'tip': 'Explain why you chose this solution over alternatives.',
-    },
-    {
-      'q': 'How do you handle API errors so the user never sees a broken experience?',
-      'score': '8.0',
-      'tone': PillTone.success,
-      'answer': 'I modelled failures explicitly and gave the user a recoverable state with retry actions instead of a blank screen.',
-      'feedback': 'Clear and practical answer focusing on user experience and resilience.',
-      'idealAnswer':
-          'I create a sealed Failure hierarchy (ServerFailure, NetworkFailure, CacheFailure) and map HTTP status codes at the DataSource layer. The presentation layer consumes these states and renders an ErrorState widget with an immediate retry CTA and offline cached data.',
-      'missing': 'Production telemetry, crashlytics tracking, and automated retries with exponential backoff.',
-      'tip': 'Mention production observability and crash monitoring tools.',
-    },
-  ];
-
   @override
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final interviewCtrl = context.watch<InterviewController>();
-    final history = interviewCtrl.sessionHistory;
+    final eval = interviewCtrl.lastEvaluation;
+    final evaluations = eval?.questionEvaluations ?? [];
 
-    final total = history.isNotEmpty ? history.length : _defaultQuestions.length;
-    final item = history.isNotEmpty && _index < history.length
-        ? {
-            'q': history[_index]['question'] ?? _defaultQuestions[_index % _defaultQuestions.length]['q'],
-            'score': '8.2',
-            'tone': PillTone.success,
-            'answer': history[_index]['answer'] ?? _defaultQuestions[_index % _defaultQuestions.length]['answer'],
-            'feedback': 'Solid response demonstrating practical experience and technical clarity.',
-            'idealAnswer': _defaultQuestions[_index % _defaultQuestions.length]['idealAnswer'],
-            'missing': _defaultQuestions[_index % _defaultQuestions.length]['missing'],
-            'tip': _defaultQuestions[_index % _defaultQuestions.length]['tip'],
-          }
-        : _defaultQuestions[_index];
+    final total = evaluations.isNotEmpty ? evaluations.length : 3;
+
+    // Active item data
+    final DetailedQuestionEvaluation item = evaluations.isNotEmpty && _index < evaluations.length
+        ? evaluations[_index]
+        : DetailedQuestionEvaluation(
+            questionIndex: _index + 1,
+            primaryQuestion: 'Can you walk me through one Flutter project you have architected?',
+            category: 'Project Architecture',
+            candidateAnswer:
+                'I built an application where I owned the mobile architecture, state management with Provider, and integrated with backend REST endpoints.',
+            score: 8.5,
+            strengths: [
+              'Clear explanation of architectural layers and state predictability.',
+              'Good articulation of domain models vs DTO mappings.',
+            ],
+            missingPoints: [
+              'Did not specify exact caching mechanisms for offline packet drops.',
+              'Omitted measurable business metrics (e.g. latency drop or crash rate).',
+            ],
+            idealModelAnswer:
+                'In my OTT mobile app, I architected the project using Clean Architecture with Riverpod and Dio. To survive intermittent network drops, I combined an offline SQLite cache with a mutation queue that resolved sync conflicts automatically, dropping buffer latency by 35%.',
+            starScorecard: const StarScorecard(
+              situationScore: 8.8,
+              situationFeedback: 'Strong context on project scale and stack.',
+              taskScore: 8.5,
+              taskFeedback: 'Clear engineering ownership described.',
+              actionScore: 9.0,
+              actionFeedback: 'Explicit patterns and tooling named.',
+              resultScore: 7.8,
+              resultFeedback: 'Recommend concluding with concrete metrics.',
+            ),
+            coachTip: 'Use the STAR format: Situation, Task, Action, and measurable Result.',
+          );
+
+    final scoreStr = item.score.toStringAsFixed(1);
+    final isHigh = item.score >= 8.0;
 
     return AppScaffold(
       body: Column(
@@ -87,7 +77,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
 
           // Question selector chips
           Padding(
-            padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+            padding: const EdgeInsets.only(top: 6.0, bottom: 14.0),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -95,24 +85,27 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 children: List.generate(total, (i) {
                   final isSelected = _index == i;
                   return Padding(
-                    padding: const EdgeInsets.only(right: 9.0),
+                    padding: const EdgeInsets.only(right: 8.0),
                     child: InkWell(
                       onTap: () => setState(() => _index = i),
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 36,
-                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: isSelected ? colors.primary : colors.secondary,
+                          color: isSelected ? colors.primary : colors.card,
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: isSelected ? colors.primary : colors.border),
                         ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${i + 1}',
-                          style: AppTypography.bold(
-                            12,
-                            color: isSelected ? colors.primaryForeground : colors.mutedForeground,
-                          ),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Q${i + 1}',
+                              style: AppTypography.semiBold(
+                                12,
+                                color: isSelected ? colors.primaryForeground : colors.foreground,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -124,6 +117,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
 
           // Question Card
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: colors.card,
@@ -136,38 +130,30 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'QUESTION ${_index + 1}',
-                      style: AppTypography.bold(10, color: colors.primary, letterSpacing: 1.3),
+                    PillBadge(label: item.category.toUpperCase(), tone: PillTone.muted),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (isHigh ? colors.mint : colors.coral).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$scoreStr / 10',
+                        style: AppTypography.bold(12, color: isHigh ? colors.mint : colors.coral),
+                      ),
                     ),
-                    PillBadge(label: 'Score: ${item['score']}/10', tone: item['tone'] as PillTone),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  item['q'] as String,
-                  style: AppTypography.bold(18, color: colors.foreground, height: 1.35),
+                  item.primaryQuestion,
+                  style: AppTypography.bold(16, color: colors.foreground, height: 1.35),
                 ),
               ],
             ),
           ),
 
-          const SectionTitle(title: 'Your Response'),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.border),
-            ),
-            child: Text(
-              item['answer'] as String,
-              style: AppTypography.regular(13, color: colors.foreground, height: 1.5),
-            ),
-          ),
-
-          const SectionTitle(title: 'AI Evaluation & Feedback'),
+          const SectionTitle(title: 'Your Transcribed Answer'),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -175,81 +161,143 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
               color: colors.secondary,
               borderRadius: BorderRadius.circular(18),
             ),
+            child: Text(
+              item.candidateAnswer,
+              style: AppTypography.regular(12, color: colors.foreground, height: 1.5),
+            ),
+          ),
+
+          const SectionTitle(title: 'Ideal Model Exemplar Answer'),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: colors.mint.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(FeatherIcons.award, size: 14, color: colors.mint),
+                    const SizedBox(width: 6),
+                    Text(
+                      'How a Senior Engineer would structure this:',
+                      style: AppTypography.bold(11, color: colors.mint),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  item.idealModelAnswer,
+                  style: AppTypography.regular(12, color: colors.foreground, height: 1.55),
+                ),
+              ],
+            ),
+          ),
+
+          // STAR Scorecard
+          if (item.starScorecard != null) ...[
+            const SectionTitle(title: 'STAR Methodology Scorecard'),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: colors.border),
+              ),
+              child: Column(
+                children: [
+                  _buildStarRow('Situation', item.starScorecard!.situationScore, item.starScorecard!.situationFeedback, colors),
+                  Divider(color: colors.border, height: 20),
+                  _buildStarRow('Task', item.starScorecard!.taskScore, item.starScorecard!.taskFeedback, colors),
+                  Divider(color: colors.border, height: 20),
+                  _buildStarRow('Action', item.starScorecard!.actionScore, item.starScorecard!.actionFeedback, colors),
+                  Divider(color: colors.border, height: 20),
+                  _buildStarRow('Result', item.starScorecard!.resultScore, item.starScorecard!.resultFeedback, colors),
+                ],
+              ),
+            ),
+          ],
+
+          const SectionTitle(title: 'Missing Trade-offs & Keywords'),
+          ...item.missingPoints.map((pt) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(FeatherIcons.alertCircle, size: 14, color: colors.coral),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      pt,
+                      style: AppTypography.regular(11, color: colors.foreground, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+
+          const SectionTitle(title: 'AI Coach Tip'),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.secondary,
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(FeatherIcons.star, size: 17, color: colors.primary),
+                Icon(FeatherIcons.zap, size: 16, color: colors.primary),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    item['feedback'] as String,
-                    style: AppTypography.regular(12, color: colors.foreground, height: 1.45),
+                    item.coachTip,
+                    style: AppTypography.semiBold(11, color: colors.foreground, height: 1.45),
                   ),
                 ),
               ],
             ),
           ),
 
-          const SectionTitle(title: 'Ideal Answer Example'),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.border),
-            ),
-            child: Text(
-              item['idealAnswer'] as String,
-              style: AppTypography.regular(12, color: colors.foreground, height: 1.5),
-            ),
-          ),
-
-          const SectionTitle(title: 'What Was Missing & Tip'),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(FeatherIcons.alertCircle, size: 15, color: colors.coral),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Missing: ${item['missing']}',
-                        style: AppTypography.regular(11, color: colors.foreground, height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(FeatherIcons.zap, size: 15, color: colors.mint),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Coach Tip: ${item['tip']}',
-                        style: AppTypography.regular(11, color: colors.foreground, height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 30),
         ],
       ),
+    );
+  }
+
+  Widget _buildStarRow(String pillar, double score, String feedback, AppColorScheme colors) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(pillar, style: AppTypography.bold(12, color: colors.foreground)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: colors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${score.toStringAsFixed(1)} / 10',
+                style: AppTypography.bold(10, color: colors.primary),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          feedback,
+          style: AppTypography.regular(10, color: colors.mutedForeground, height: 1.4),
+        ),
+      ],
     );
   }
 }
