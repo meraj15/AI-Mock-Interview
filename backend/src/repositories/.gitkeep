@@ -1,0 +1,2 @@
+// Repositories will be added in later phases (UserRepository, InterviewRepository, etc.)
+export {};
