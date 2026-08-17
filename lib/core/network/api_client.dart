@@ -43,7 +43,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
   }) async {
-    return _sendRequest(
+    return _sendRequestWithFallback(
       method: 'GET',
       path: path,
       headers: headers,
@@ -59,7 +59,7 @@ class ApiClient {
     bool requiresAuth = true,
     bool autoRefresh = true,
   }) async {
-    return _sendRequest(
+    return _sendRequestWithFallback(
       method: 'POST',
       path: path,
       body: body,
@@ -75,7 +75,7 @@ class ApiClient {
     Map<String, String>? headers,
     bool requiresAuth = true,
   }) async {
-    return _sendRequest(
+    return _sendRequestWithFallback(
       method: 'PUT',
       path: path,
       body: body,
@@ -90,7 +90,7 @@ class ApiClient {
     Map<String, String>? headers,
     bool requiresAuth = true,
   }) async {
-    return _sendRequest(
+    return _sendRequestWithFallback(
       method: 'PATCH',
       path: path,
       body: body,
@@ -105,7 +105,7 @@ class ApiClient {
     Map<String, String>? headers,
     bool requiresAuth = true,
   }) async {
-    return _sendRequest(
+    return _sendRequestWithFallback(
       method: 'DELETE',
       path: path,
       body: body,
@@ -114,9 +114,9 @@ class ApiClient {
     );
   }
 
-  // ── Core Request Execution ────────────────────────────────────────────────
+  // ── Candidate Host Fallback for Development (Physical Device / Emulator / Desktop) ─
 
-  Future<ApiResponse> _sendRequest({
+  Future<ApiResponse> _sendRequestWithFallback({
     required String method,
     required String path,
     Map<String, dynamic>? body,
@@ -125,7 +125,79 @@ class ApiClient {
     bool requiresAuth = true,
     bool autoRefresh = true,
   }) async {
-    final uri = _buildUri(path, queryParameters);
+    if (ApiConfig.currentEnvironment != Environment.development) {
+      return _sendSingleRequest(
+        baseUrl: ApiConfig.baseUrl,
+        method: method,
+        path: path,
+        body: body,
+        headers: headers,
+        queryParameters: queryParameters,
+        requiresAuth: requiresAuth,
+        autoRefresh: autoRefresh,
+      );
+    }
+
+    // Try current base URL first
+    final candidateHosts = [
+      ApiConfig.baseUrl,
+      ...ApiConfig.developmentCandidates.where((u) => u != ApiConfig.baseUrl),
+    ];
+
+    Exception? lastException;
+
+    for (final host in candidateHosts) {
+      try {
+        final res = await _sendSingleRequest(
+          baseUrl: host,
+          method: method,
+          path: path,
+          body: body,
+          headers: headers,
+          queryParameters: queryParameters,
+          requiresAuth: requiresAuth,
+          autoRefresh: autoRefresh,
+          customTimeout: const Duration(seconds: 4),
+        );
+        // Remember successful host
+        ApiConfig.setResolvedBaseUrl(host);
+        return res;
+      } on NetworkException catch (e) {
+        lastException = e;
+        continue;
+      } on SocketException catch (e) {
+        lastException = NetworkException(e.message);
+        continue;
+      } on TimeoutException catch (e) {
+        lastException = NetworkException(e.message ?? 'Timed out');
+        continue;
+      } catch (e) {
+        if (e is Exception && (e is AuthException || e is ValidationException || e is ServerException)) {
+          // If the server responded with an application-level error, the host is reachable!
+          ApiConfig.setResolvedBaseUrl(host);
+          rethrow;
+        }
+        lastException = NetworkException(e.toString());
+      }
+    }
+
+    throw lastException ?? NetworkException('Unable to reach backend server. Please make sure the server is running.');
+  }
+
+  // ── Core Single Request Execution ─────────────────────────────────────────
+
+  Future<ApiResponse> _sendSingleRequest({
+    required String baseUrl,
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
+    bool requiresAuth = true,
+    bool autoRefresh = true,
+    Duration? customTimeout,
+  }) async {
+    final uri = _buildUri(baseUrl, path, queryParameters);
     final requestHeaders = await _buildHeaders(headers, requiresAuth);
 
     http.Response response;
@@ -136,14 +208,15 @@ class ApiClient {
         request.body = jsonEncode(body);
       }
 
-      final streamedResponse = await _client.send(request).timeout(ApiConfig.connectTimeout);
+      final timeout = customTimeout ?? ApiConfig.connectTimeout;
+      final streamedResponse = await _client.send(request).timeout(timeout);
       response = await http.Response.fromStream(streamedResponse);
     } on SocketException {
       throw NetworkException();
     } on TimeoutException {
       throw NetworkException('Request timed out. Please check your connection.');
     } catch (e) {
-      if (e is Exception && (e is NetworkException || e is ServerException || e is AuthException)) {
+      if (e is Exception && (e is NetworkException || e is ServerException || e is AuthException || e is ValidationException)) {
         rethrow;
       }
       throw NetworkException('Network error: ${e.toString()}');
@@ -151,10 +224,10 @@ class ApiClient {
 
     // ── Handle 401 Unauthorized with Automatic Token Refresh ─────────────────
     if (response.statusCode == 401 && requiresAuth && autoRefresh) {
-      final refreshed = await _attemptTokenRefresh();
+      final refreshed = await _attemptTokenRefresh(baseUrl);
       if (refreshed) {
-        // Retry original request with newly saved access token (autoRefresh false to prevent loops)
-        return _sendRequest(
+        return _sendSingleRequest(
+          baseUrl: baseUrl,
           method: method,
           path: path,
           body: body,
@@ -175,7 +248,7 @@ class ApiClient {
 
   // ── Token Refresh Coordination (Thread-Safe Mutex) ────────────────────────
 
-  Future<bool> _attemptTokenRefresh() async {
+  Future<bool> _attemptTokenRefresh(String baseUrl) async {
     if (_isRefreshing) {
       return _refreshCompleter?.future ?? Future.value(false);
     }
@@ -190,7 +263,7 @@ class ApiClient {
         return false;
       }
 
-      final refreshUri = _buildUri(ApiConfig.refreshEndpoint, null);
+      final refreshUri = _buildUri(baseUrl, ApiConfig.refreshEndpoint, null);
       final response = await _client
           .post(
             refreshUri,
@@ -227,8 +300,8 @@ class ApiClient {
 
   // ── URI & Headers Helpers ─────────────────────────────────────────────────
 
-  Uri _buildUri(String path, Map<String, dynamic>? queryParameters) {
-    final fullUrl = path.startsWith('http') ? path : '${ApiConfig.baseUrl}$path';
+  Uri _buildUri(String baseUrl, String path, Map<String, dynamic>? queryParameters) {
+    final fullUrl = path.startsWith('http') ? path : '$baseUrl$path';
     final parsed = Uri.parse(fullUrl);
     if (queryParameters != null && queryParameters.isNotEmpty) {
       return parsed.replace(queryParameters: {

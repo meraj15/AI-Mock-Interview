@@ -64,3 +64,13 @@ class CompleteOnboardingUseCase implements UseCase<void, NoParams> {
     return repository.completeOnboarding();
   }
 }
+
+class CheckOnboardingUseCase implements UseCase<bool, NoParams> {
+  final AuthRepository repository;
+  CheckOnboardingUseCase(this.repository);
+
+  @override
+  Future<bool> call(NoParams params) {
+    return repository.isOnboardingComplete();
+  }
+}

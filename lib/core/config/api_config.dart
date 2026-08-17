@@ -8,10 +8,28 @@ class ApiConfig {
   /// Optional manual base URL override (useful for physical device LAN testing or CI)
   static String? customBaseUrl;
 
+  /// Candidate development endpoints (tested in order of priority)
+  static const List<String> developmentCandidates = [
+    'http://localhost:3000',
+    'http://192.168.0.113:3000',
+    'http://10.0.2.2:3000',
+  ];
+
+  /// Currently active discovered base URL
+  static String? _resolvedBaseUrl;
+
+  static void setResolvedBaseUrl(String url) {
+    _resolvedBaseUrl = url;
+  }
+
   /// Returns the base URL according to the current platform & environment.
   static String get baseUrl {
     if (customBaseUrl != null && customBaseUrl!.isNotEmpty) {
       return customBaseUrl!;
+    }
+
+    if (_resolvedBaseUrl != null && _resolvedBaseUrl!.isNotEmpty) {
+      return _resolvedBaseUrl!;
     }
 
     switch (currentEnvironment) {
@@ -23,11 +41,10 @@ class ApiConfig {
         if (kIsWeb) {
           return 'http://localhost:3000';
         }
-        // In Android emulator, 10.0.2.2 points to host machine's localhost
         if (defaultTargetPlatform == TargetPlatform.android) {
-          return 'http://10.0.2.2:3000';
+          // Default to localhost (works with adb reverse) or LAN IP
+          return 'http://localhost:3000';
         }
-        // iOS Simulator, Windows desktop, macOS
         return 'http://localhost:3000';
     }
   }
@@ -42,6 +59,6 @@ class ApiConfig {
   static const String logoutAllEndpoint = '/api/v1/auth/logout-all';
 
   // ── Network Timeouts ───────────────────────────────────────────────────────
-  static const Duration connectTimeout = Duration(seconds: 15);
-  static const Duration receiveTimeout = Duration(seconds: 15);
+  static const Duration connectTimeout = Duration(seconds: 10);
+  static const Duration receiveTimeout = Duration(seconds: 10);
 }

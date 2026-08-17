@@ -20,7 +20,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController(text: 'meraj.khan@email.com');
-  final _passwordController = TextEditingController(text: 'password');
+  final _passwordController = TextEditingController(text: 'Password123');
 
   void _submit() async {
     final auth = context.read<AuthController>();

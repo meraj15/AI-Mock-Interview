@@ -21,7 +21,7 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _nameController = TextEditingController(text: 'Meraj Khan');
   final _emailController = TextEditingController(text: 'meraj.khan@email.com');
-  final _passwordController = TextEditingController(text: 'password');
+  final _passwordController = TextEditingController(text: 'Password123');
 
   void _submit() async {
     final auth = context.read<AuthController>();

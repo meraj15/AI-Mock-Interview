@@ -30,6 +30,7 @@ class AuthRepositoryImpl implements AuthRepository {
       // Validate session with backend
       final remoteUser = await remoteDataSource.getCurrentUser();
       await localDataSource.saveUser(remoteUser);
+      await localDataSource.setOnboardingComplete();
       return remoteUser;
     } catch (e) {
       if (e is AuthException) {
@@ -55,8 +56,9 @@ class AuthRepositoryImpl implements AuthRepository {
       refreshToken: response.refreshToken,
     );
 
-    // Cache user locally
+    // Cache user locally and set onboarding complete
     await localDataSource.saveUser(response.user);
+    await localDataSource.setOnboardingComplete();
 
     return response.user;
   }
@@ -75,8 +77,9 @@ class AuthRepositoryImpl implements AuthRepository {
       refreshToken: response.refreshToken,
     );
 
-    // Cache user locally
+    // Cache user locally and set onboarding complete
     await localDataSource.saveUser(response.user);
+    await localDataSource.setOnboardingComplete();
 
     return response.user;
   }
@@ -99,6 +102,11 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> completeOnboarding() async {
     await localDataSource.setOnboardingComplete();
+  }
+
+  @override
+  Future<bool> isOnboardingComplete() async {
+    return await localDataSource.isOnboardingComplete();
   }
 
   @override

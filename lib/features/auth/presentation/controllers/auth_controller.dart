@@ -12,6 +12,7 @@ class AuthController extends ChangeNotifier {
   final SignUpUseCase signUpUseCase;
   final SignOutUseCase signOutUseCase;
   final CompleteOnboardingUseCase completeOnboardingUseCase;
+  final CheckOnboardingUseCase checkOnboardingUseCase;
 
   UserEntity? _user;
   AuthStatus _status = AuthStatus.initial;
@@ -24,6 +25,7 @@ class AuthController extends ChangeNotifier {
     required this.signUpUseCase,
     required this.signOutUseCase,
     required this.completeOnboardingUseCase,
+    required this.checkOnboardingUseCase,
   });
 
   UserEntity? get user => _user;
@@ -51,13 +53,13 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      _isOnboarded = await checkOnboardingUseCase(const NoParams());
       _user = await getAuthStateUseCase(const NoParams());
       _status = AuthStatus.authenticated;
       _isOnboarded = true;
     } catch (_) {
       _user = null;
       _status = AuthStatus.unauthenticated;
-      _isOnboarded = true;
     } finally {
       notifyListeners();
     }
@@ -81,6 +83,7 @@ class AuthController extends ChangeNotifier {
     try {
       _user = await signInUseCase(SignInParams(email: cleanEmail, password: cleanPassword));
       _status = AuthStatus.authenticated;
+      _isOnboarded = true;
       notifyListeners();
       return true;
     } catch (e) {
@@ -106,6 +109,7 @@ class AuthController extends ChangeNotifier {
       experienceYears: '2.0 years',
     );
     _status = AuthStatus.authenticated;
+    _isOnboarded = true;
     notifyListeners();
     return true;
   }
@@ -125,6 +129,7 @@ class AuthController extends ChangeNotifier {
       experienceYears: '2.0 years',
     );
     _status = AuthStatus.authenticated;
+    _isOnboarded = true;
     notifyListeners();
     return true;
   }
@@ -159,6 +164,7 @@ class AuthController extends ChangeNotifier {
         password: cleanPassword,
       ));
       _status = AuthStatus.authenticated;
+      _isOnboarded = true;
       notifyListeners();
       return true;
     } catch (e) {
@@ -180,6 +186,7 @@ class AuthController extends ChangeNotifier {
         _user = _user!.copyWith(isEmailVerified: true);
       }
       _status = AuthStatus.authenticated;
+      _isOnboarded = true;
       notifyListeners();
       return true;
     }

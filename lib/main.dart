@@ -41,6 +41,7 @@ void main() async {
   final signUpUseCase = SignUpUseCase(authRepository);
   final signOutUseCase = SignOutUseCase(authRepository);
   final completeOnboardingUseCase = CompleteOnboardingUseCase(authRepository);
+  final checkOnboardingUseCase = CheckOnboardingUseCase(authRepository);
 
   runApp(
     MultiProvider(
@@ -55,6 +56,7 @@ void main() async {
             signUpUseCase: signUpUseCase,
             signOutUseCase: signOutUseCase,
             completeOnboardingUseCase: completeOnboardingUseCase,
+            checkOnboardingUseCase: checkOnboardingUseCase,
           )..init(),
         ),
         ChangeNotifierProvider(

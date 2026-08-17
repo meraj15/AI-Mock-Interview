@@ -7,5 +7,6 @@ abstract class AuthRepository {
   Future<void> signOut();
   Future<void> logoutAll();
   Future<void> completeOnboarding();
+  Future<bool> isOnboardingComplete();
   Future<void> sendPasswordReset(String email);
 }

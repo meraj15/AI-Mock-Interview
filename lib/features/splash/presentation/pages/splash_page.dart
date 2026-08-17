@@ -41,10 +41,18 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
   }
 
   void _navigateNext() async {
-    await Future.delayed(const Duration(milliseconds: 1600));
+    await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted) return;
 
     final authCtrl = context.read<AuthController>();
+    // Wait for auth initialization to resolve stored tokens
+    int waited = 0;
+    while (authCtrl.isLoading && waited < 15 && mounted) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waited++;
+    }
+
+    if (!mounted) return;
 
     Widget target;
     if (!authCtrl.isOnboarded) {

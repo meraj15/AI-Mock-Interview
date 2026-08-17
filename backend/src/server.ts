@@ -4,8 +4,8 @@ import { logger } from './utils/logger';
 
 const app = createApp();
 
-const server = app.listen(config.port, () => {
-  logger.info(`🚀 Server running on http://localhost:${config.port}`);
+const server = app.listen(config.port, '0.0.0.0', () => {
+  logger.info(`🚀 Server running on http://0.0.0.0:${config.port} (accessible via localhost and 10.0.2.2)`);
   logger.info(`   Environment : ${config.nodeEnv}`);
   logger.info(`   Health check: http://localhost:${config.port}/health`);
 });
