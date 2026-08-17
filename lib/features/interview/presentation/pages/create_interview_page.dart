@@ -13,7 +13,7 @@ import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../../../resume/presentation/pages/resume_page.dart';
 import '../../domain/entities/job_role_entity.dart';
 import '../controllers/interview_controller.dart';
-import 'interview_session_page.dart';
+import 'interview_config_page.dart';
 
 class CreateInterviewPage extends StatefulWidget {
   const CreateInterviewPage({super.key});
@@ -84,9 +84,9 @@ class _CreateInterviewPageState extends State<CreateInterviewPage> {
       if (_step < totalSteps - 1) {
         setState(() => _step++);
       } else {
-        interviewCtrl.startInterview();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
+        // Phase 5: Deep config before starting session
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const InterviewConfigPage()),
         );
       }
     }
@@ -322,7 +322,7 @@ class _CreateInterviewPageState extends State<CreateInterviewPage> {
 
           // STEP 5: REVIEW & SESSION LENGTH
           if (_step == 5) ...[
-            Text('STEP 6 · FINAL REVIEW', style: AppTypography.bold(10, color: colors.primary, letterSpacing: 1.4)),
+            Text('STEP 6 · FINAL REVIEW & CONFIG', style: AppTypography.bold(10, color: colors.primary, letterSpacing: 1.4)),
             const SizedBox(height: 8),
             Text('Review your session', style: AppTypography.bold(26, color: colors.foreground)),
             const SizedBox(height: 6),
@@ -402,8 +402,8 @@ class _CreateInterviewPageState extends State<CreateInterviewPage> {
           const SizedBox(height: 32),
 
           AppButton(
-            label: _step == totalSteps - 1 ? 'Start AI Mock Interview' : 'Continue',
-            icon: FeatherIcons.arrowRight,
+            label: _step == totalSteps - 1 ? 'Advanced Config & Start →' : 'Continue',
+            icon: _step == totalSteps - 1 ? FeatherIcons.sliders : FeatherIcons.arrowRight,
             onPress: next,
           ),
           const SizedBox(height: 24),

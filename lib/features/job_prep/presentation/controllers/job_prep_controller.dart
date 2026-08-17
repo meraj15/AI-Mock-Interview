@@ -7,7 +7,7 @@ import '../../domain/entities/job_description_entity.dart';
 class JobPrepController extends ChangeNotifier {
   final JobDescriptionService _service = MockJobDescriptionService();
 
-  List<CompanyProfileEntity> _companies = CompanyProfileEntity.defaultCompanies;
+  final List<CompanyProfileEntity> _companies = CompanyProfileEntity.defaultCompanies;
   CompanyProfileEntity _selectedCompany = CompanyProfileEntity.defaultCompanies.first;
   bool _isAnalyzing = false;
   JDAnalysisResult? _analysisResult;

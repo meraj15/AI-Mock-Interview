@@ -13,7 +13,6 @@ import '../../../../core/widgets/section_title.dart';
 import '../../../interview/presentation/controllers/interview_controller.dart';
 import '../../../interview/presentation/pages/create_interview_page.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
-import '../../domain/entities/company_profile_entity.dart';
 import '../controllers/job_prep_controller.dart';
 
 class JobPrepPage extends StatefulWidget {

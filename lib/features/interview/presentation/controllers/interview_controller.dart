@@ -87,6 +87,14 @@ class InterviewController extends ChangeNotifier {
     String? difficulty,
     String? type,
     int? questions,
+    List<String>? focusTopics,
+    String? language,
+    bool? enableVoiceMode,
+    String? aiPersona,
+    int? timeLimitPerQuestion,
+    bool? showHints,
+    bool? enableFollowUps,
+    String? codingLanguage,
   }) {
     _config = _config.copyWith(
       role: role,
@@ -95,6 +103,14 @@ class InterviewController extends ChangeNotifier {
       difficulty: difficulty,
       type: type,
       questions: questions,
+      focusTopics: focusTopics,
+      language: language,
+      enableVoiceMode: enableVoiceMode,
+      aiPersona: aiPersona,
+      timeLimitPerQuestion: timeLimitPerQuestion,
+      showHints: showHints,
+      enableFollowUps: enableFollowUps,
+      codingLanguage: codingLanguage,
     );
     notifyListeners();
   }
