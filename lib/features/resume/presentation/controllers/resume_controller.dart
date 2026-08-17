@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
+import '../../../../core/services/resume_parsing_service.dart';
 import '../../domain/entities/resume_entity.dart';
 
 class ResumeController extends ChangeNotifier {
+  final ResumeParsingService _parsingService = MockResumeParsingService();
+
   List<ResumeEntity> _resumes = [
     ResumeEntity.defaultResume(),
     ResumeEntity.secondaryResume(),
   ];
 
   String _activeResumeId = 'res_default';
+  bool _isParsing = false;
+  ParsingProgress? _parsingProgress;
 
   List<ResumeEntity> get resumes => _resumes;
+  bool get isParsing => _isParsing;
+  ParsingProgress? get parsingProgress => _parsingProgress;
 
   ResumeEntity get resume {
     return _resumes.firstWhere(
@@ -25,7 +32,7 @@ class ResumeController extends ChangeNotifier {
   }
 
   void deleteResume(String id) {
-    if (_resumes.length <= 1) return; // Keep at least one
+    if (_resumes.length <= 1) return;
     _resumes.removeWhere((r) => r.id == id);
     if (_activeResumeId == id) {
       _activeResumeId = _resumes.first.id;
@@ -34,70 +41,99 @@ class ResumeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> simulateUpload({String? customName}) async {
-    final newId = 'res_${DateTime.now().millisecondsSinceEpoch}';
-    final newResume = ResumeEntity(
-      id: newId,
-      name: customName ?? 'Meraj_Senior_Resume.pdf',
-      source: ResumeSource.upload,
-      status: ResumeStatus.analyzing,
-      isDefault: true,
-      skills: ['Flutter', 'Dart', 'Riverpod', 'Clean Architecture', 'REST APIs', 'Firebase'],
-      experience: '2.5 years',
-      projects: 7,
+  Future<ResumeEntity> uploadAndParse({
+    String fileName = 'Meraj_Senior_Resume.pdf',
+    String fileSize = '1.8 MB',
+  }) async {
+    _isParsing = true;
+    _parsingProgress = const ParsingProgress(
+      stage: ParsingStage.readingDocument,
+      stageMessage: 'Uploading and extracting document…',
+      progressPercent: 0.1,
     );
-
-    _resumes.insert(0, newResume);
-    _activeResumeId = newId;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 1400));
+    final parsedResume = await _parsingService.parseDocument(
+      fileName: fileName,
+      fileSizeBytes: fileSize,
+      onProgress: (progress) {
+        _parsingProgress = progress;
+        notifyListeners();
+      },
+    );
 
-    final index = _resumes.indexWhere((r) => r.id == newId);
+    _resumes.insert(0, parsedResume);
+    _activeResumeId = parsedResume.id;
+    _isParsing = false;
+    _parsingProgress = null;
+    notifyListeners();
+
+    return parsedResume;
+  }
+
+  Future<ResumeEntity> pasteAndParse(String text) async {
+    if (text.trim().isEmpty) return resume;
+
+    _isParsing = true;
+    _parsingProgress = const ParsingProgress(
+      stage: ParsingStage.readingDocument,
+      stageMessage: 'Reading text structure…',
+      progressPercent: 0.1,
+    );
+    notifyListeners();
+
+    final parsedResume = await _parsingService.parseRawText(
+      rawText: text,
+      onProgress: (progress) {
+        _parsingProgress = progress;
+        notifyListeners();
+      },
+    );
+
+    _resumes.insert(0, parsedResume);
+    _activeResumeId = parsedResume.id;
+    _isParsing = false;
+    _parsingProgress = null;
+    notifyListeners();
+
+    return parsedResume;
+  }
+
+  void updateResume(ResumeEntity updated) {
+    final index = _resumes.indexWhere((r) => r.id == updated.id);
     if (index != -1) {
-      _resumes[index] = _resumes[index].copyWith(
-        status: ResumeStatus.ready,
-        skills: ['Flutter', 'Dart', 'Riverpod', 'Clean Architecture', 'REST APIs', 'Firebase', 'GraphQL', 'CI/CD'],
-        frameworks: ['Flutter SDK', 'Riverpod', 'BLoC', 'Fastlane'],
-        databases: ['Firebase', 'PostgreSQL', 'SQLite'],
-        tools: ['Git', 'Docker', 'Postman', 'Figma'],
-        experience: '2.5 years',
-        projects: 7,
-      );
+      _resumes[index] = updated;
       notifyListeners();
     }
   }
 
-  Future<void> simulatePaste(String text) async {
-    if (text.trim().isEmpty) return;
-    final newId = 'res_${DateTime.now().millisecondsSinceEpoch}';
-    final newResume = ResumeEntity(
-      id: newId,
-      name: 'Pasted_Text_Resume.txt',
-      source: ResumeSource.paste,
-      status: ResumeStatus.analyzing,
-      isDefault: true,
-      summary: text.length > 120 ? '${text.substring(0, 120)}...' : text,
-      skills: ['Flutter', 'Dart', 'Firebase', 'REST APIs', 'Provider', 'Supabase'],
-      experience: '1.5 years',
-      projects: 4,
-    );
-
-    _resumes.insert(0, newResume);
-    _activeResumeId = newId;
-    notifyListeners();
-
-    await Future.delayed(const Duration(milliseconds: 1400));
-
-    final index = _resumes.indexWhere((r) => r.id == newId);
+  void replaceResume(String oldId, ResumeEntity newResume) {
+    final index = _resumes.indexWhere((r) => r.id == oldId);
     if (index != -1) {
-      _resumes[index] = _resumes[index].copyWith(
-        status: ResumeStatus.ready,
-        skills: ['Flutter', 'Dart', 'State Management', 'REST APIs', 'Firebase', 'SQL'],
-        experience: '1.8 years',
-        projects: 5,
-      );
+      _resumes[index] = newResume;
+      if (_activeResumeId == oldId) {
+        _activeResumeId = newResume.id;
+      }
       notifyListeners();
     }
+  }
+
+  void addSkillToActiveResume(String skill) {
+    if (skill.trim().isEmpty) return;
+    final current = resume;
+    if (!current.skills.contains(skill.trim())) {
+      final updated = current.copyWith(
+        skills: [...current.skills, skill.trim()],
+      );
+      updateResume(updated);
+    }
+  }
+
+  void removeSkillFromActiveResume(String skill) {
+    final current = resume;
+    final updated = current.copyWith(
+      skills: current.skills.where((s) => s != skill).toList(),
+    );
+    updateResume(updated);
   }
 }

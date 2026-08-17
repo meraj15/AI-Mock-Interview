@@ -6,24 +6,16 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
-import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/confirmation_dialog.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
-import '../../domain/entities/resume_entity.dart';
 import '../controllers/resume_controller.dart';
+import 'edit_parsed_resume_page.dart';
 import 'resume_preview_page.dart';
+import 'resume_upload_page.dart';
 
-class ResumePage extends StatefulWidget {
+class ResumePage extends StatelessWidget {
   const ResumePage({super.key});
-
-  @override
-  State<ResumePage> createState() => _ResumePageState();
-}
-
-class _ResumePageState extends State<ResumePage> {
-  bool _pasteOpen = false;
-  final _pasteController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +34,11 @@ class _ResumePageState extends State<ResumePage> {
             onBack: () => Navigator.of(context).pop(),
             right: IconButton(
               icon: Icon(FeatherIcons.plus, size: 20, color: colors.foreground),
-              onPressed: () => resumeCtrl.simulateUpload(),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ResumeUploadPage()),
+                );
+              },
             ),
           ),
 
@@ -50,7 +46,6 @@ class _ResumePageState extends State<ResumePage> {
 
           // Multi-Resume List
           ...resumes.map((item) {
-            final isAnalyzing = item.status == ResumeStatus.analyzing;
             final isSelected = item.id == activeResume.id;
 
             return Container(
@@ -76,22 +71,11 @@ class _ResumePageState extends State<ResumePage> {
                           borderRadius: BorderRadius.circular(15),
                         ),
                         alignment: Alignment.center,
-                        child: isAnalyzing
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    isSelected ? colors.navy : colors.primary,
-                                  ),
-                                ),
-                              )
-                            : Icon(
-                                FeatherIcons.fileText,
-                                size: 22,
-                                color: isSelected ? colors.navy : colors.primary,
-                              ),
+                        child: Icon(
+                          FeatherIcons.fileText,
+                          size: 22,
+                          color: isSelected ? colors.navy : colors.primary,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -99,7 +83,7 @@ class _ResumePageState extends State<ResumePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isAnalyzing ? 'Analyzing resume…' : item.name,
+                              item.name,
                               style: AppTypography.bold(
                                 14,
                                 color: isSelected ? Colors.white : colors.foreground,
@@ -109,7 +93,7 @@ class _ResumePageState extends State<ResumePage> {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              isAnalyzing ? 'Extracting skills...' : '${item.uploadedDate} · ${item.fileSize}',
+                              '${item.uploadedDate} · ${item.fileSize} · ${item.confidenceScore}% confidence',
                               style: AppTypography.regular(
                                 10,
                                 color: isSelected ? const Color(0xFFBFCBE5) : colors.mutedForeground,
@@ -158,25 +142,60 @@ class _ResumePageState extends State<ResumePage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (!isSelected) ...[
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => resumeCtrl.setActiveResume(item.id),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: colors.primary,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              elevation: 0,
-                            ),
-                            child: Text(
-                              'Set Active',
-                              style: AppTypography.semiBold(11, color: colors.primaryForeground),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => EditParsedResumePage(resume: item),
+                              ),
+                            );
+                          },
+                          icon: Icon(
+                            FeatherIcons.edit3,
+                            size: 14,
+                            color: isSelected ? Colors.white : colors.foreground,
+                          ),
+                          label: Text(
+                            'Verify / Edit',
+                            style: AppTypography.semiBold(
+                              11,
+                              color: isSelected ? Colors.white : colors.foreground,
                             ),
                           ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: isSelected ? Colors.white.withValues(alpha: 0.3) : colors.border,
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
                         ),
-                        const SizedBox(width: 8),
+                      ),
+                      const SizedBox(width: 8),
+                      if (!isSelected) ...[
                         IconButton(
-                          icon: Icon(FeatherIcons.trash2, size: 16, color: colors.destructive),
+                          icon: Icon(FeatherIcons.check, size: 16, color: colors.primary),
+                          onPressed: () => resumeCtrl.setActiveResume(item.id),
+                          tooltip: 'Set as Active Default',
+                        ),
+                        IconButton(
+                          icon: Icon(FeatherIcons.refreshCw, size: 15, color: colors.mutedForeground),
+                          tooltip: 'Replace Resume',
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ResumeUploadPage(
+                                  isReplacing: true,
+                                  replaceId: item.id,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(FeatherIcons.trash2, size: 15, color: colors.destructive),
+                          tooltip: 'Delete Resume',
                           onPressed: () async {
                             final confirm = await ConfirmationDialog.show(
                               context,
@@ -201,13 +220,17 @@ class _ResumePageState extends State<ResumePage> {
           const SizedBox(height: 8),
 
           AppButton(
-            label: 'Upload new resume (PDF/DOCX)',
+            label: 'Upload & Parse New Resume',
             icon: FeatherIcons.uploadCloud,
             variant: ButtonVariant.secondary,
-            onPress: () => resumeCtrl.simulateUpload(),
+            onPress: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ResumeUploadPage()),
+              );
+            },
           ),
 
-          const SectionTitle(title: 'Active Resume Summary', action: 'Full Preview'),
+          const SectionTitle(title: 'Active Resume Summary', action: 'Verify Data'),
 
           // Quick metrics of active resume
           Container(
@@ -262,60 +285,6 @@ class _ResumePageState extends State<ResumePage> {
               ],
             ),
           ),
-
-          const SectionTitle(title: 'Or Paste Resume Manually'),
-          Text(
-            'No file on hand? Paste your resume text and our parser will structure it into the same profile format.',
-            style: AppTypography.regular(12, color: colors.mutedForeground),
-          ),
-          const SizedBox(height: 12),
-
-          if (_pasteOpen) ...[
-            AppTextField(
-              controller: _pasteController,
-              placeholder: 'Paste your resume content, experience, and projects here…',
-              multiline: true,
-              minLines: 4,
-              maxLines: 6,
-            ),
-            AppButton(
-              label: 'Parse and Save Resume',
-              icon: FeatherIcons.check,
-              onPress: () {
-                resumeCtrl.simulatePaste(_pasteController.text);
-                setState(() => _pasteOpen = false);
-              },
-            ),
-          ] else ...[
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => setState(() => _pasteOpen = true),
-                borderRadius: BorderRadius.circular(17),
-                child: Ink(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: colors.secondary,
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(color: colors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(FeatherIcons.clipboard, size: 18, color: colors.primary),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: Text(
-                          'Paste resume text',
-                          style: AppTypography.semiBold(13, color: colors.foreground),
-                        ),
-                      ),
-                      Icon(FeatherIcons.chevronRight, size: 17, color: colors.mutedForeground),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
           const SizedBox(height: 30),
         ],
       ),

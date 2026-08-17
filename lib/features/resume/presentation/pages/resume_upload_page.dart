@@ -1,0 +1,322 @@
+import 'package:feather_icons/feather_icons.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_header.dart';
+import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/progress_bar.dart';
+import '../controllers/resume_controller.dart';
+import 'edit_parsed_resume_page.dart';
+
+class ResumeUploadPage extends StatefulWidget {
+  final bool isReplacing;
+  final String? replaceId;
+
+  const ResumeUploadPage({
+    super.key,
+    this.isReplacing = false,
+    this.replaceId,
+  });
+
+  @override
+  State<ResumeUploadPage> createState() => _ResumeUploadPageState();
+}
+
+class _ResumeUploadPageState extends State<ResumeUploadPage> {
+  int _selectedTab = 0; // 0: Upload File, 1: Paste Text
+  final _pasteController = TextEditingController();
+  String _selectedFileName = 'Meraj_Senior_Flutter_Engineer.pdf';
+  String _selectedFileSize = '1.6 MB';
+
+  void _startFileUpload() async {
+    final resumeCtrl = context.read<ResumeController>();
+    final parsed = await resumeCtrl.uploadAndParse(
+      fileName: _selectedFileName,
+      fileSize: _selectedFileSize,
+    );
+
+    if (widget.isReplacing && widget.replaceId != null) {
+      resumeCtrl.replaceResume(widget.replaceId!, parsed);
+    }
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => EditParsedResumePage(resume: parsed),
+        ),
+      );
+    }
+  }
+
+  void _startTextParse() async {
+    if (_pasteController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please paste your resume text before proceeding.')),
+      );
+      return;
+    }
+
+    final resumeCtrl = context.read<ResumeController>();
+    final parsed = await resumeCtrl.pasteAndParse(_pasteController.text.trim());
+
+    if (widget.isReplacing && widget.replaceId != null) {
+      resumeCtrl.replaceResume(widget.replaceId!, parsed);
+    }
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => EditParsedResumePage(resume: parsed),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _pasteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColorScheme.of(context);
+    final resumeCtrl = context.watch<ResumeController>();
+    final isParsing = resumeCtrl.isParsing;
+    final progress = resumeCtrl.parsingProgress;
+
+    return AppScaffold(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppHeader(
+            title: widget.isReplacing ? 'Replace Resume' : 'Add Resume',
+            subtitle: 'AI Parsing Engine',
+            onBack: () => Navigator.of(context).pop(),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Parsing Live State Overlay
+          if (isParsing && progress != null) ...[
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: colors.primary.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Analyzing & Parsing Resume',
+                    style: AppTypography.bold(18, color: colors.foreground),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    progress.stageMessage,
+                    style: AppTypography.regular(12, color: colors.mutedForeground),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 18),
+                  ProgressBar(
+                    value: progress.progressPercent * 100,
+                    height: 6,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${(progress.progressPercent * 100).toInt()}% completed',
+                    style: AppTypography.bold(11, color: colors.primary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+          ] else ...[
+            // Tab Switcher
+            Container(
+              decoration: BoxDecoration(
+                color: colors.secondary,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              padding: const EdgeInsets.all(4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedTab = 0),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 0 ? colors.card : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Upload File (PDF/DOC)',
+                          style: AppTypography.semiBold(
+                            12,
+                            color: _selectedTab == 0 ? colors.foreground : colors.mutedForeground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedTab = 1),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 1 ? colors.card : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Paste Text',
+                          style: AppTypography.semiBold(
+                            12,
+                            color: _selectedTab == 1 ? colors.foreground : colors.mutedForeground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            if (_selectedTab == 0) ...[
+              // Upload File Dropzone
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    // Simulate selecting another sample file
+                    setState(() {
+                      _selectedFileName = _selectedFileName.contains('Flutter')
+                          ? 'Meraj_FullStack_Engineer.pdf'
+                          : 'Meraj_Senior_Flutter_Engineer.pdf';
+                      _selectedFileSize = '1.8 MB';
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(22),
+                  child: Ink(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: colors.primary.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: colors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(FeatherIcons.uploadCloud, size: 26, color: colors.primary),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Tap to select your resume',
+                          style: AppTypography.bold(16, color: colors.foreground),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Supports PDF, DOC, DOCX up to 10MB',
+                          style: AppTypography.regular(11, color: colors.mutedForeground),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: colors.secondary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(FeatherIcons.file, size: 14, color: colors.primary),
+                              const SizedBox(width: 6),
+                              Text(
+                                '$_selectedFileName ($_selectedFileSize)',
+                                style: AppTypography.semiBold(11, color: colors.foreground),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              AppButton(
+                label: 'Parse & Verify Resume',
+                icon: FeatherIcons.arrowRight,
+                onPress: _startFileUpload,
+              ),
+            ] else ...[
+              // Paste Text View
+              Text(
+                'Paste Resume Content',
+                style: AppTypography.semiBold(12, color: colors.foreground),
+              ),
+              const SizedBox(height: 8),
+              AppTextField(
+                controller: _pasteController,
+                placeholder: 'Paste your full resume summary, skills, experience history, and projects here…',
+                multiline: true,
+                minLines: 8,
+                maxLines: 12,
+              ),
+
+              const SizedBox(height: 16),
+
+              AppButton(
+                label: 'Extract & Structure Resume',
+                icon: FeatherIcons.cpu,
+                onPress: _startTextParse,
+              ),
+            ],
+            const SizedBox(height: 30),
+          ],
+        ],
+      ),
+    );
+  }
+}
