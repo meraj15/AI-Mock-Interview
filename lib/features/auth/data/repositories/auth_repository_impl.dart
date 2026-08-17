@@ -1,50 +1,98 @@
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/storage/token_storage.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_data_source.dart';
-import '../models/user_model.dart';
+import '../datasources/auth_remote_data_source.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
+  final AuthRemoteDataSource remoteDataSource;
   final AuthLocalDataSource localDataSource;
+  final TokenStorage tokenStorage;
 
-  AuthRepositoryImpl({required this.localDataSource});
+  AuthRepositoryImpl({
+    required this.remoteDataSource,
+    required this.localDataSource,
+    required this.tokenStorage,
+  });
 
   @override
   Future<UserEntity> getAuthState() async {
-    final isAuth = await localDataSource.isAuthenticated();
-    if (!isAuth) {
-      throw Exception('Not authenticated');
+    final hasToken = await tokenStorage.hasTokens();
+    if (!hasToken) {
+      final isLocalAuth = await localDataSource.isAuthenticated();
+      if (!isLocalAuth) {
+        throw AuthException('Not authenticated');
+      }
     }
-    return await localDataSource.getCachedUser();
+
+    try {
+      // Validate session with backend
+      final remoteUser = await remoteDataSource.getCurrentUser();
+      await localDataSource.saveUser(remoteUser);
+      return remoteUser;
+    } catch (e) {
+      if (e is AuthException) {
+        await tokenStorage.clearTokens();
+        await localDataSource.clearAuth();
+        rethrow;
+      }
+      // If offline/network failure, return cached local user if available
+      return await localDataSource.getCachedUser();
+    }
   }
 
   @override
   Future<UserEntity> signIn(String email, String password) async {
-    final user = UserModel(
-      id: 'usr_1',
-      name: 'Meraj Khan',
+    final response = await remoteDataSource.login(
       email: email,
-      targetRole: 'Flutter Developer',
-      experienceYears: '1.2 years',
+      password: password,
     );
-    await localDataSource.saveUser(user);
-    return user;
+
+    // Save tokens securely
+    await tokenStorage.saveTokens(
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+    );
+
+    // Cache user locally
+    await localDataSource.saveUser(response.user);
+
+    return response.user;
   }
 
   @override
   Future<UserEntity> signUp(String name, String email, String password) async {
-    final user = UserModel(
-      id: 'usr_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
+    final response = await remoteDataSource.register(
       email: email,
-      targetRole: 'Flutter Developer',
-      experienceYears: '1.0 years',
+      password: password,
+      firstName: name,
     );
-    await localDataSource.saveUser(user);
-    return user;
+
+    // Save tokens securely
+    await tokenStorage.saveTokens(
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+    );
+
+    // Cache user locally
+    await localDataSource.saveUser(response.user);
+
+    return response.user;
   }
 
   @override
   Future<void> signOut() async {
+    final refreshToken = await tokenStorage.getRefreshToken();
+    await remoteDataSource.logout(refreshToken: refreshToken);
+    await tokenStorage.clearTokens();
+    await localDataSource.clearAuth();
+  }
+
+  @override
+  Future<void> logoutAll() async {
+    await remoteDataSource.logoutAll();
+    await tokenStorage.clearTokens();
     await localDataSource.clearAuth();
   }
 

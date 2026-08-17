@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/network/api_client.dart';
+import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/data/datasources/auth_local_data_source.dart';
+import 'features/auth/data/datasources/auth_remote_data_source.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/domain/usecases/auth_usecases.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
@@ -17,11 +20,20 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
 
+  // Storage & Network
+  final tokenStorage = TokenStorageImpl(sharedPreferences: sharedPreferences);
+  final apiClient = ApiClient(tokenStorage: tokenStorage);
+
   // Data sources
   final authLocalDataSource = AuthLocalDataSourceImpl(sharedPreferences: sharedPreferences);
+  final authRemoteDataSource = AuthRemoteDataSourceImpl(apiClient: apiClient);
 
   // Repositories
-  final authRepository = AuthRepositoryImpl(localDataSource: authLocalDataSource);
+  final authRepository = AuthRepositoryImpl(
+    remoteDataSource: authRemoteDataSource,
+    localDataSource: authLocalDataSource,
+    tokenStorage: tokenStorage,
+  );
 
   // Use cases
   final getAuthStateUseCase = GetAuthStateUseCase(authRepository);
@@ -60,7 +72,6 @@ void main() async {
   );
 }
 
-
 class InterviewCoachApp extends StatelessWidget {
   const InterviewCoachApp({super.key});
 
@@ -69,7 +80,6 @@ class InterviewCoachApp extends StatelessWidget {
     final themeCtrl = context.watch<ThemeController>();
 
     return MaterialApp(
-
       title: 'Interview Coach',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
@@ -79,4 +89,3 @@ class InterviewCoachApp extends StatelessWidget {
     );
   }
 }
-

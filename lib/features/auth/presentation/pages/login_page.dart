@@ -29,6 +29,13 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainNavPage()),
       );
+    } else if (!success && mounted && auth.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(auth.errorMessage!),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -129,7 +136,32 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
 
-          const SizedBox(height: 22),
+          if (auth.errorMessage != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.coral.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.coral.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  Icon(FeatherIcons.alertCircle, size: 16, color: colors.coral),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      auth.errorMessage!,
+                      style: AppTypography.semiBold(11, color: colors.coral),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          const SizedBox(height: 12),
 
           AppButton(
             label: 'Sign in',

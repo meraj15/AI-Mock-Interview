@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../../core/error/exceptions.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/usecases/auth_usecases.dart';
+
+enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
 class AuthController extends ChangeNotifier {
   final GetAuthStateUseCase getAuthStateUseCase;
@@ -11,7 +14,7 @@ class AuthController extends ChangeNotifier {
   final CompleteOnboardingUseCase completeOnboardingUseCase;
 
   UserEntity? _user;
-  bool _isLoading = true;
+  AuthStatus _status = AuthStatus.initial;
   bool _isOnboarded = false;
   String? _errorMessage;
 
@@ -24,51 +27,76 @@ class AuthController extends ChangeNotifier {
   });
 
   UserEntity? get user => _user;
-  bool get isLoading => _isLoading;
+  AuthStatus get status => _status;
+  bool get isLoading => _status == AuthStatus.loading;
   bool get isOnboarded => _isOnboarded;
   bool get isAuthenticated => _user != null;
   String? get errorMessage => _errorMessage;
 
+  String _cleanErrorMessage(dynamic error) {
+    if (error is AuthException) return error.message;
+    if (error is NetworkException) return error.message;
+    if (error is ValidationException) return error.message;
+    if (error is ServerException) return error.message;
+
+    final msg = error.toString();
+    if (msg.startsWith('Exception: ')) {
+      return msg.substring(11);
+    }
+    return msg;
+  }
+
   Future<void> init() async {
-    _isLoading = true;
+    _status = AuthStatus.loading;
     notifyListeners();
 
     try {
       _user = await getAuthStateUseCase(const NoParams());
+      _status = AuthStatus.authenticated;
       _isOnboarded = true;
     } catch (_) {
       _user = null;
+      _status = AuthStatus.unauthenticated;
       _isOnboarded = true;
     } finally {
-      _isLoading = false;
       notifyListeners();
     }
   }
 
   Future<bool> signIn(String email, String password) async {
-    _isLoading = true;
+    final cleanEmail = email.trim();
+    final cleanPassword = password.trim();
+
+    if (cleanEmail.isEmpty || cleanPassword.isEmpty) {
+      _errorMessage = 'Please enter both email and password.';
+      _status = AuthStatus.error;
+      notifyListeners();
+      return false;
+    }
+
+    _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _user = await signInUseCase(SignInParams(email: email, password: password));
-      _isLoading = false;
+      _user = await signInUseCase(SignInParams(email: cleanEmail, password: cleanPassword));
+      _status = AuthStatus.authenticated;
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = e.toString();
-      _isLoading = false;
+      _errorMessage = _cleanErrorMessage(e);
+      _status = AuthStatus.error;
       notifyListeners();
       return false;
     }
   }
 
   Future<bool> signInWithGoogle() async {
-    _isLoading = true;
+    _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 900));
+    await Future.delayed(const Duration(milliseconds: 700));
 
     _user = const UserEntity(
       id: 'usr_google_1',
@@ -77,17 +105,17 @@ class AuthController extends ChangeNotifier {
       targetRole: 'Flutter Developer',
       experienceYears: '2.0 years',
     );
-    _isLoading = false;
+    _status = AuthStatus.authenticated;
     notifyListeners();
     return true;
   }
 
   Future<bool> signInWithApple() async {
-    _isLoading = true;
+    _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 900));
+    await Future.delayed(const Duration(milliseconds: 700));
 
     _user = const UserEntity(
       id: 'usr_apple_1',
@@ -96,46 +124,68 @@ class AuthController extends ChangeNotifier {
       targetRole: 'Flutter Developer',
       experienceYears: '2.0 years',
     );
-    _isLoading = false;
+    _status = AuthStatus.authenticated;
     notifyListeners();
     return true;
   }
 
   Future<bool> signUp(String name, String email, String password) async {
-    _isLoading = true;
+    final cleanName = name.trim();
+    final cleanEmail = email.trim();
+    final cleanPassword = password.trim();
+
+    if (cleanEmail.isEmpty || cleanPassword.isEmpty) {
+      _errorMessage = 'Please enter your email and a password.';
+      _status = AuthStatus.error;
+      notifyListeners();
+      return false;
+    }
+
+    if (cleanPassword.length < 8) {
+      _errorMessage = 'Password must be at least 8 characters long with uppercase, lowercase, and a number.';
+      _status = AuthStatus.error;
+      notifyListeners();
+      return false;
+    }
+
+    _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _user = await signUpUseCase(SignUpParams(name: name, email: email, password: password));
-      _isLoading = false;
+      _user = await signUpUseCase(SignUpParams(
+        name: cleanName.isNotEmpty ? cleanName : 'Candidate',
+        email: cleanEmail,
+        password: cleanPassword,
+      ));
+      _status = AuthStatus.authenticated;
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = e.toString();
-      _isLoading = false;
+      _errorMessage = _cleanErrorMessage(e);
+      _status = AuthStatus.error;
       notifyListeners();
       return false;
     }
   }
 
   Future<bool> verifyEmailOtp(String code) async {
-    _isLoading = true;
+    _status = AuthStatus.loading;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 600));
 
     if (code.length == 6) {
       if (_user != null) {
         _user = _user!.copyWith(isEmailVerified: true);
       }
-      _isLoading = false;
+      _status = AuthStatus.authenticated;
       notifyListeners();
       return true;
     }
 
     _errorMessage = 'Invalid 6-digit verification code. Please check and try again.';
-    _isLoading = false;
+    _status = AuthStatus.error;
     notifyListeners();
     return false;
   }
@@ -158,22 +208,22 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<bool> changePassword(String currentPassword, String newPassword) async {
-    _isLoading = true;
+    _status = AuthStatus.loading;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 900));
-    _isLoading = false;
+    await Future.delayed(const Duration(milliseconds: 600));
+    _status = AuthStatus.authenticated;
     notifyListeners();
     return true;
   }
 
   Future<void> signOut() async {
-    _isLoading = true;
+    _status = AuthStatus.loading;
     notifyListeners();
 
     await signOutUseCase(const NoParams());
     _user = null;
-    _isLoading = false;
+    _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
 

@@ -38,6 +38,7 @@ dependencies:
   shared_preferences: ^2.5.5
   provider: ^6.1.5+1
   feather_icons: ^1.2.0
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:

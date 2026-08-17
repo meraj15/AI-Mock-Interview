@@ -18,10 +18,14 @@ class UserModel extends UserEntity {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    final email = json['email'] as String? ?? 'user@example.com';
+    // If name is not provided in backend User model, generate a friendly initial name from email
+    final defaultName = email.contains('@') ? email.split('@').first : 'User';
+
     return UserModel(
       id: json['id'] as String? ?? 'usr_1',
-      name: json['name'] as String? ?? 'Meraj Khan',
-      email: json['email'] as String? ?? 'meraj.khan@email.com',
+      name: json['name'] as String? ?? defaultName,
+      email: email,
       targetRole: json['targetRole'] as String? ?? 'Flutter Developer',
       experienceYears: json['experienceYears'] as String? ?? '1.2 years',
       avatarUrl: json['avatarUrl'] as String?,
@@ -30,7 +34,7 @@ class UserModel extends UserEntity {
       interviewsCompleted: json['interviewsCompleted'] as int? ?? 12,
       averageScore: json['averageScore'] as int? ?? 78,
       bestScore: json['bestScore'] as int? ?? 91,
-      isEmailVerified: json['isEmailVerified'] as bool? ?? true,
+      isEmailVerified: json['isVerified'] as bool? ?? (json['isEmailVerified'] as bool? ?? true),
       bio: json['bio'] as String? ??
           'Mobile software engineer passionate about clean architecture and high-performance cross-platform applications.',
     );

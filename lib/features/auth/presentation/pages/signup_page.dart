@@ -36,6 +36,13 @@ class _SignupPageState extends State<SignupPage> {
           builder: (_) => EmailVerificationPage(email: _emailController.text),
         ),
       );
+    } else if (!success && mounted && auth.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(auth.errorMessage!),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -109,7 +116,32 @@ class _SignupPageState extends State<SignupPage> {
             obscureText: true,
           ),
 
-          const SizedBox(height: 28),
+          if (auth.errorMessage != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.coral.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.coral.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  Icon(FeatherIcons.alertCircle, size: 16, color: colors.coral),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      auth.errorMessage!,
+                      style: AppTypography.semiBold(11, color: colors.coral),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          const SizedBox(height: 12),
 
           AppButton(
             label: 'Create my account',
