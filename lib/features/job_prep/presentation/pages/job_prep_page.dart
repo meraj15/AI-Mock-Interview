@@ -8,9 +8,13 @@ import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/pill_badge.dart';
+import '../../../../core/widgets/progress_bar.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../interview/presentation/controllers/interview_controller.dart';
 import '../../../interview/presentation/pages/create_interview_page.dart';
+import '../../../resume/presentation/controllers/resume_controller.dart';
+import '../../domain/entities/company_profile_entity.dart';
+import '../controllers/job_prep_controller.dart';
 
 class JobPrepPage extends StatefulWidget {
   const JobPrepPage({super.key});
@@ -20,40 +24,70 @@ class JobPrepPage extends StatefulWidget {
 }
 
 class _JobPrepPageState extends State<JobPrepPage> {
-  String _company = 'Google';
-  final _jdController = TextEditingController(
-    text: 'We are looking for a Flutter engineer to build reliable, delightful mobile experiences. You will work with Dart, Firebase, REST APIs, and a cross-functional product team.',
-  );
-  bool _analyzing = false;
-  bool _analyzed = false;
+  late TextEditingController _jdController;
 
-  void _analyze() async {
-    setState(() => _analyzing = true);
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (mounted) {
-      setState(() {
-        _analyzing = false;
-        _analyzed = true;
-      });
+  @override
+  void initState() {
+    super.initState();
+    final jobPrepCtrl = context.read<JobPrepController>();
+    _jdController = TextEditingController(text: jobPrepCtrl.jdText);
+  }
+
+  @override
+  void dispose() {
+    _jdController.dispose();
+    super.dispose();
+  }
+
+  void _analyze() {
+    final resumeCtrl = context.read<ResumeController>();
+    final jobPrepCtrl = context.read<JobPrepController>();
+    jobPrepCtrl.updateJdText(_jdController.text);
+    jobPrepCtrl.analyzeJobDescription(resumeCtrl.resume);
+  }
+
+  void _startTailoredInterview() {
+    final jobPrepCtrl = context.read<JobPrepController>();
+    final interviewCtrl = context.read<InterviewController>();
+    final result = jobPrepCtrl.analysisResult;
+
+    if (result != null) {
+      interviewCtrl.updateConfig(
+        role: result.jobTitle,
+        company: result.companyName,
+        difficulty: 'Adaptive',
+        type: 'Technical + System Design',
+      );
     }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CreateInterviewPage()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
-    final interviewCtrl = context.read<InterviewController>();
+    final jobPrepCtrl = context.watch<JobPrepController>();
+    final resumeCtrl = context.watch<ResumeController>();
+    final activeResume = resumeCtrl.resume;
+
+    final companies = jobPrepCtrl.companies;
+    final selectedCompany = jobPrepCtrl.selectedCompany;
+    final isAnalyzing = jobPrepCtrl.isAnalyzing;
+    final result = jobPrepCtrl.analysisResult;
 
     return AppScaffold(
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppHeader(
-            title: 'Prepare for a job',
-            subtitle: 'Turn a job description into a plan',
+            title: 'Prepare for a Job',
+            subtitle: 'AI Job Description Analyzer',
             onBack: () => Navigator.of(context).pop(),
           ),
 
-          // Hero
+          // Hero Banner
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(19),
@@ -64,118 +98,150 @@ class _JobPrepPageState extends State<JobPrepPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: colors.mint,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(FeatherIcons.briefcase, size: 22, color: colors.navy),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: colors.mint,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(FeatherIcons.briefcase, size: 22, color: colors.navy),
+                    ),
+                    PillBadge(
+                      label: 'Active: ${activeResume.name}',
+                      tone: PillTone.success,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 Text(
                   'Practice for the role, not just the question.',
-                  style: AppTypography.bold(22, color: Colors.white, height: 1.22),
+                  style: AppTypography.bold(20, color: Colors.white, height: 1.25),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
-                  'We’ll compare the role requirements with your resume and highlight the gaps worth practicing.',
+                  'We compare the JD requirements directly against your active resume to pinpoint skill gaps and simulate real hiring rounds.',
                   style: AppTypography.regular(11, color: const Color(0xFFBFCBE5), height: 1.5),
                 ),
               ],
             ),
           ),
 
-          const SectionTitle(title: 'Target company'),
+          const SectionTitle(title: 'Target Company Profile'),
 
-          // Company selector
-          Row(
-            children: ['Google', 'Microsoft', 'Startup'].map((item) {
-              final isSelected = _company == item;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: InkWell(
-                  onTap: () => setState(() => _company = item),
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                    decoration: BoxDecoration(
-                      color: isSelected ? colors.primary : colors.card,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: isSelected ? colors.primary : colors.border),
-                    ),
-                    child: Text(
-                      item,
-                      style: AppTypography.semiBold(
-                        12,
-                        color: isSelected ? colors.primaryForeground : colors.foreground,
+          // Company selector horizontal chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: companies.map((comp) {
+                final isSelected = selectedCompany.id == comp.id;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: InkWell(
+                    onTap: () => jobPrepCtrl.selectCompany(comp),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? colors.primary : colors.card,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: isSelected ? colors.primary : colors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            comp.icon,
+                            size: 14,
+                            color: isSelected ? colors.primaryForeground : colors.foreground,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            comp.name,
+                            style: AppTypography.semiBold(
+                              12,
+                              color: isSelected ? colors.primaryForeground : colors.foreground,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
 
-          const SectionTitle(title: 'Job description'),
-          Text(
-            'Paste the role you’re targeting. This mock flow uses local sample analysis.',
-            style: AppTypography.regular(11, color: colors.mutedForeground),
-          ),
           const SizedBox(height: 10),
 
-          AppTextField(
-            controller: _jdController,
-            placeholder: 'Paste a job description…',
-            multiline: true,
-            minLines: 4,
-            maxLines: 6,
+          // Company Interview Focus Card
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.secondary,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(FeatherIcons.compass, size: 14, color: colors.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${selectedCompany.name} Interview Priorities',
+                      style: AppTypography.bold(12, color: colors.foreground),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  selectedCompany.interviewFocus,
+                  style: AppTypography.regular(11, color: colors.mutedForeground, height: 1.45),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: selectedCompany.cultureTags
+                      .map((tag) => PillBadge(label: tag, tone: PillTone.muted))
+                      .toList(),
+                ),
+              ],
+            ),
           ),
 
-          if (_analyzing) ...[
-            Container(
-              height: 52,
-              decoration: BoxDecoration(
-                color: colors.secondary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Analyzing role requirements…',
-                    style: AppTypography.semiBold(12, color: colors.foreground),
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            AppButton(
-              label: _analyzed ? 'Re-analyze job description' : 'Analyze job description',
-              icon: FeatherIcons.search,
-              onPress: _analyze,
-            ),
-          ],
+          const SectionTitle(title: 'Job Description (JD)'),
+          AppTextField(
+            controller: _jdController,
+            placeholder: 'Paste the target job description here…',
+            multiline: true,
+            minLines: 4,
+            maxLines: 7,
+          ),
 
-          if (_analyzed) ...[
-            const SectionTitle(title: 'Role snapshot'),
+          const SizedBox(height: 6),
 
+          AppButton(
+            label: isAnalyzing ? 'Analyzing JD & Matching Resume...' : 'Analyze JD Match & Skill Gaps',
+            icon: isAnalyzing ? FeatherIcons.loader : FeatherIcons.zap,
+            disabled: isAnalyzing,
+            onPress: _analyze,
+          ),
+
+          if (result != null) ...[
+            const SizedBox(height: 24),
+
+            // Analysis Result Card
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: colors.card,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(22),
                 border: Border.all(color: colors.border),
               ),
               child: Column(
@@ -184,102 +250,116 @@ class _JobPrepPageState extends State<JobPrepPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Flutter Engineer',
-                        style: AppTypography.bold(16, color: colors.foreground),
-                      ),
-                      const PillBadge(label: 'Good match', tone: PillTone.success),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Your resume matches 4 of 6 core skills for this role.',
-                    style: AppTypography.regular(11, color: colors.mutedForeground),
-                  ),
-                  const SizedBox(height: 12),
-
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      const PillBadge(label: 'Flutter', tone: PillTone.success),
-                      const PillBadge(label: 'Dart', tone: PillTone.success),
-                      const PillBadge(label: 'Firebase', tone: PillTone.success),
-                      const PillBadge(label: 'REST APIs', tone: PillTone.success),
-                      const PillBadge(label: 'Clean Architecture · gap', tone: PillTone.coral),
-                      const PillBadge(label: 'Testing · gap', tone: PillTone.coral),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Gap recommendation box
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colors.secondary,
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(FeatherIcons.compass, size: 16, color: colors.primary),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Recommended focus',
-                                style: AppTypography.semiBold(11, color: colors.foreground),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Practice Clean Architecture before your next interview.',
-                                style: AppTypography.regular(10, color: colors.mutedForeground),
-                              ),
-                            ],
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            result.jobTitle,
+                            style: AppTypography.bold(16, color: colors.foreground),
                           ),
+                          const SizedBox(height: 2),
+                          Text(
+                            result.companyName,
+                            style: AppTypography.regular(11, color: colors.mutedForeground),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: colors.mint.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      ],
-                    ),
+                        child: Text(
+                          '${result.matchScore}% Match',
+                          style: AppTypography.bold(13, color: colors.mint),
+                        ),
+                      ),
+                    ],
                   ),
-
-                  const SizedBox(height: 16),
-
-                  AppButton(
-                    label: 'Practice this role',
-                    icon: FeatherIcons.arrowRight,
-                    onPress: () {
-                      interviewCtrl.updateConfig(role: 'Flutter Developer', company: _company);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const CreateInterviewPage()),
-                      );
-                    },
+                  const SizedBox(height: 14),
+                  ProgressBar(value: result.matchScore.toDouble(), height: 6),
+                  const SizedBox(height: 14),
+                  Text(
+                    result.summaryAssessment,
+                    style: AppTypography.regular(11, color: colors.foreground, height: 1.5),
                   ),
                 ],
               ),
+            ),
+
+            const SectionTitle(title: 'Matched Skills (On Your Resume)'),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: result.matchedSkills
+                  .map((s) => PillBadge(label: '✓ $s', tone: PillTone.success))
+                  .toList(),
+            ),
+
+            const SectionTitle(title: 'Critical Skill Gaps (Focus Here)'),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: result.skillGaps
+                  .map((s) => PillBadge(label: '! $s', tone: PillTone.coral))
+                  .toList(),
+            ),
+
+            const SectionTitle(title: 'Preparation Roadmap'),
+            ...result.preparationRoadmap.map((step) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(FeatherIcons.arrowRight, size: 14, color: colors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        step,
+                        style: AppTypography.regular(12, color: colors.foreground, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            const SectionTitle(title: 'Tailored Interview Questions'),
+            ...result.customQuestions.map((q) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colors.secondary,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(FeatherIcons.helpCircle, size: 14, color: colors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        q,
+                        style: AppTypography.regular(11, color: colors.foreground, height: 1.45),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            const SizedBox(height: 20),
+
+            AppButton(
+              label: 'Start Tailored Mock Interview',
+              icon: FeatherIcons.arrowRight,
+              onPress: _startTailoredInterview,
             ),
           ],
-
-          const SizedBox(height: 20),
-
-          Center(
-            child: InkWell(
-              onTap: () => setState(() => _analyzed = false),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(FeatherIcons.upload, size: 14, color: colors.primary),
-                  const SizedBox(width: 7),
-                  Text(
-                    'Upload a job description instead',
-                    style: AppTypography.semiBold(11, color: colors.primary),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
         ],
       ),
     );

@@ -8,11 +8,10 @@ import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/domain/usecases/auth_usecases.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/interview/presentation/controllers/interview_controller.dart';
+import 'features/job_prep/presentation/controllers/job_prep_controller.dart';
 import 'features/profile/presentation/controllers/theme_controller.dart';
 import 'features/resume/presentation/controllers/resume_controller.dart';
 import 'features/splash/presentation/pages/splash_page.dart';
-
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,11 +51,15 @@ void main() async {
         ChangeNotifierProvider(
           create: (_) => ResumeController(),
         ),
+        ChangeNotifierProvider(
+          create: (_) => JobPrepController(),
+        ),
       ],
       child: const InterviewCoachApp(),
     ),
   );
 }
+
 
 class InterviewCoachApp extends StatelessWidget {
   const InterviewCoachApp({super.key});
