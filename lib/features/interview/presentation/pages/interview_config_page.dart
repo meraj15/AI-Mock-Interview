@@ -11,6 +11,8 @@ import '../../../../core/widgets/section_title.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_session_page.dart';
 
+import 'voice_interview_page.dart';
+
 class InterviewConfigPage extends StatefulWidget {
   const InterviewConfigPage({super.key});
 
@@ -90,7 +92,7 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
     _selectedFocusTopics.addAll(config.focusTopics);
   }
 
-  void _saveAndStart() {
+  void _saveAndStart() async {
     final interviewCtrl = context.read<InterviewController>();
     interviewCtrl.updateConfig(
       questions: _questionCount,
@@ -104,10 +106,41 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
       focusTopics: _selectedFocusTopics.toList(),
     );
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
-    );
+    if (_enableVoiceMode) {
+      // Launch Fullscreen Voice Mode
+      final prompts = [
+        'Welcome! Walk me through how you architect high-concurrency mobile applications with clean state isolation.',
+        'How do you manage offline synchronization when network availability fluctuates?',
+        'Describe a critical production bug you investigated and resolved using telemetry or memory profiling.',
+      ];
+      final categories = [
+        'Architecture & Concurrency',
+        'Offline Synchronization',
+        'Debugging & Telemetry',
+      ];
+      final hints = [
+        'Discuss repository patterns, isolates, and state notifier trees.',
+        'Explain conflict resolution with SQLite and exponential backoff retry queues.',
+        'Mention profiling tools, trace timelines, and leak remediation.',
+      ];
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => VoiceInterviewPage(
+            config: interviewCtrl.config,
+            questions: prompts,
+            categories: categories,
+            hints: hints,
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
+      );
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {

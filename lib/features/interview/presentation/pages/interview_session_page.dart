@@ -10,6 +10,7 @@ import '../../../../core/widgets/progress_bar.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_result_page.dart';
+import 'voice_interview_page.dart';
 
 class InterviewSessionPage extends StatefulWidget {
   const InterviewSessionPage({super.key});
@@ -307,9 +308,47 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                         ),
                       ],
                     ),
-                    // Session elapsed timer
                     Row(
                       children: [
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              final prompts = interviewCtrl.prompts.map((p) => p.primaryQuestion).toList();
+                              final categories = interviewCtrl.prompts.map((p) => p.category).toList();
+                              final hints = interviewCtrl.prompts.map((p) => p.contextHint).toList();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => VoiceInterviewPage(
+                                    config: config,
+                                    questions: prompts.isNotEmpty ? prompts : ['Walk me through your system architecture.'],
+                                    categories: categories.isNotEmpty ? categories : ['Architecture'],
+                                    hints: hints.isNotEmpty ? hints : ['Highlight trade-offs.'],
+                                  ),
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: colors.mint.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(FeatherIcons.mic, size: 12, color: colors.mint),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Voice Mode',
+                                    style: AppTypography.semiBold(10, color: colors.mint),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Icon(
                           FeatherIcons.clock,
                           size: 13,
