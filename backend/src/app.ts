@@ -7,6 +7,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import healthRouter from './routes/health.routes';
 import authRouter from './routes/auth.routes';
+import profileRouter from './routes/profile.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -38,6 +39,7 @@ export function createApp(): Application {
   // ── Routes ───────────────────────────────────────────────────────────────
   app.use('/health', healthRouter);
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/profile', profileRouter);
 
   // 404 fallthrough
   app.use((_req: Request, res: Response) => {

@@ -12,6 +12,7 @@ import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../../../resume/presentation/pages/resume_page.dart';
+import '../controllers/profile_controller.dart';
 import 'account_security_page.dart';
 import 'edit_profile_page.dart';
 import 'notification_settings_page.dart';
@@ -26,20 +27,22 @@ class ProfilePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final auth = context.watch<AuthController>();
+    final profileCtrl = context.watch<ProfileController>();
     final resumeCtrl = context.watch<ResumeController>();
 
-    final user = auth.user;
-    final userName = user?.name ?? 'Meraj Khan';
-    final userEmail = user?.email ?? 'meraj.khan@email.com';
-    final targetRole = user?.targetRole ?? 'Flutter Developer';
-    final streak = user?.streakDays ?? 4;
-    final totalInterviews = user?.interviewsCompleted ?? 12;
-    final avgScore = user?.averageScore ?? 78;
-    final bestScore = user?.bestScore ?? 91;
-
-    final initials = userName.isNotEmpty
-        ? userName.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join()
-        : 'MK';
+    // Real name comes from ProfileController; email always from AuthController
+    final userEmail = auth.user?.email ?? '';
+    final displayName = profileCtrl.fullName.isNotEmpty
+        ? profileCtrl.fullName
+        : userEmail.isNotEmpty
+            ? userEmail.split('@').first
+            : 'User';
+    final displayInitials = profileCtrl.initials.isNotEmpty
+        ? profileCtrl.initials
+        : displayName.isNotEmpty
+            ? displayName[0].toUpperCase()
+            : 'U';
+    final targetRole = profileCtrl.targetRole;
 
     final menuItems = [
       {
@@ -107,10 +110,19 @@ class ProfilePage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(24),
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        initials,
-                        style: AppTypography.bold(22, color: Colors.white),
-                      ),
+                      child: profileCtrl.isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              displayInitials,
+                              style: AppTypography.bold(22, color: Colors.white),
+                            ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -119,9 +131,12 @@ class ProfilePage extends StatelessWidget {
                         children: [
                           Row(
                             children: [
-                              Text(
-                                userName,
-                                style: AppTypography.bold(20, color: colors.foreground),
+                              Flexible(
+                                child: Text(
+                                  displayName,
+                                  style: AppTypography.bold(20, color: colors.foreground),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                               const SizedBox(width: 6),
                               Icon(FeatherIcons.edit2, size: 13, color: colors.mutedForeground),
@@ -133,7 +148,13 @@ class ProfilePage extends StatelessWidget {
                             style: AppTypography.regular(11, color: colors.mutedForeground),
                           ),
                           const SizedBox(height: 8),
-                          PillBadge(label: targetRole, tone: PillTone.success),
+                          if (targetRole.isNotEmpty)
+                            PillBadge(label: targetRole, tone: PillTone.success)
+                          else
+                            Text(
+                              'Tap to complete profile',
+                              style: AppTypography.regular(10, color: colors.mutedForeground),
+                            ),
                         ],
                       ),
                     ),
@@ -153,13 +174,24 @@ class ProfilePage extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Stats Rows
+          // Bio if available
+          if (!profileCtrl.isLoading && profileCtrl.bio.isNotEmpty) ...[
+            Text(
+              profileCtrl.bio,
+              style: AppTypography.regular(12, color: colors.mutedForeground),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Stats Rows — real data comes from future interview tracking; shown as placeholders
           Row(
             children: [
               Expanded(
                 child: StatCard(
                   label: 'Interviews',
-                  value: '$totalInterviews',
+                  value: '—',
                   icon: FeatherIcons.layers,
                 ),
               ),
@@ -167,7 +199,7 @@ class ProfilePage extends StatelessWidget {
               Expanded(
                 child: StatCard(
                   label: 'Avg. score',
-                  value: '$avgScore%',
+                  value: '—',
                   icon: FeatherIcons.trendingUp,
                 ),
               ),
@@ -179,16 +211,18 @@ class ProfilePage extends StatelessWidget {
               Expanded(
                 child: StatCard(
                   label: 'Best score',
-                  value: '$bestScore%',
+                  value: '—',
                   icon: FeatherIcons.award,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: StatCard(
-                  label: 'Streak',
-                  value: '$streak days',
-                  icon: FeatherIcons.zap,
+                  label: 'Experience',
+                  value: profileCtrl.experienceLabel.isNotEmpty
+                      ? profileCtrl.experienceLabel
+                      : '—',
+                  icon: FeatherIcons.briefcase,
                 ),
               ),
             ],
@@ -269,6 +303,7 @@ class ProfilePage extends StatelessWidget {
                 );
 
                 if (confirm == true && context.mounted) {
+                  context.read<ProfileController>().clear();
                   await auth.signOut();
                   if (context.mounted) {
                     Navigator.of(context).pushAndRemoveUntil(

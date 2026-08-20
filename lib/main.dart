@@ -12,6 +12,8 @@ import 'features/auth/domain/usecases/auth_usecases.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/interview/presentation/controllers/interview_controller.dart';
 import 'features/job_prep/presentation/controllers/job_prep_controller.dart';
+import 'features/profile/data/datasources/profile_remote_data_source.dart';
+import 'features/profile/presentation/controllers/profile_controller.dart';
 import 'features/profile/presentation/controllers/theme_controller.dart';
 import 'features/resume/presentation/controllers/resume_controller.dart';
 import 'features/splash/presentation/pages/splash_page.dart';
@@ -27,6 +29,7 @@ void main() async {
   // Data sources
   final authLocalDataSource = AuthLocalDataSourceImpl(sharedPreferences: sharedPreferences);
   final authRemoteDataSource = AuthRemoteDataSourceImpl(apiClient: apiClient);
+  final profileRemoteDataSource = ProfileRemoteDataSourceImpl(apiClient: apiClient);
 
   // Repositories
   final authRepository = AuthRepositoryImpl(
@@ -58,6 +61,11 @@ void main() async {
             completeOnboardingUseCase: completeOnboardingUseCase,
             checkOnboardingUseCase: checkOnboardingUseCase,
           )..init(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ProfileController(
+            dataSource: profileRemoteDataSource,
+          ),
         ),
         ChangeNotifierProvider(
           create: (_) => InterviewController(),

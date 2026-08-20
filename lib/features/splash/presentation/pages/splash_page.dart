@@ -6,6 +6,7 @@ import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
 import '../../../auth/presentation/pages/onboarding_page.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
+import '../../../profile/presentation/controllers/profile_controller.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -60,6 +61,8 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
     } else if (!authCtrl.isAuthenticated) {
       target = const LoginPage();
     } else {
+      // Load user profile in background
+      context.read<ProfileController>().loadProfile();
       target = const MainNavPage();
     }
 

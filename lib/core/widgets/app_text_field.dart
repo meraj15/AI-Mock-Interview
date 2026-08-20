@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
 
@@ -13,6 +14,7 @@ class AppTextField extends StatelessWidget {
   final TextCapitalization textCapitalization;
   final int? maxLines;
   final int? minLines;
+  final List<TextInputFormatter>? inputFormatters;
 
   const AppTextField({
     super.key,
@@ -26,6 +28,7 @@ class AppTextField extends StatelessWidget {
     this.textCapitalization = TextCapitalization.none,
     this.maxLines,
     this.minLines,
+    this.inputFormatters,
   });
 
   @override
@@ -46,6 +49,7 @@ class AppTextField extends StatelessWidget {
         obscureText: obscureText,
         keyboardType: multiline ? TextInputType.multiline : keyboardType,
         textCapitalization: textCapitalization,
+        inputFormatters: inputFormatters,
         maxLines: multiline ? (maxLines ?? 6) : 1,
         minLines: multiline ? (minLines ?? 5) : 1,
         style: AppTypography.regular(14, color: colors.foreground),

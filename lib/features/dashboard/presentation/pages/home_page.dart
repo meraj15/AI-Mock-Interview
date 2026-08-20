@@ -8,6 +8,7 @@ import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../interview/presentation/pages/create_interview_page.dart';
+import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 
 class HomePage extends StatelessWidget {
@@ -19,8 +20,18 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final auth = context.watch<AuthController>();
-    final userName = auth.user?.name ?? 'Meraj Khan';
-    final firstName = userName.split(' ').first;
+    final profileCtrl = context.watch<ProfileController>();
+
+    // Prefer real profile name, fallback to email username, then generic 'User'
+    final fullName = profileCtrl.fullName.isNotEmpty
+        ? profileCtrl.fullName
+        : auth.user?.email.split('@').first ?? 'User';
+    final firstName = fullName.split(' ').first;
+    final initials = profileCtrl.initials.isNotEmpty
+        ? profileCtrl.initials
+        : firstName.isNotEmpty
+            ? firstName[0].toUpperCase()
+            : 'U';
 
     return AppScaffold(
       body: Column(
@@ -63,7 +74,7 @@ class HomePage extends StatelessWidget {
                     ),
                     child: Center(
                       child: Text(
-                        'MK',
+                        initials,
                         style: AppTypography.bold(13, color: Colors.white),
                       ),
                     ),

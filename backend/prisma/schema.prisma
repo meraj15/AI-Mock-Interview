@@ -1,5 +1,5 @@
 // Prisma Schema — AI Mock Interview Platform
-// Phase 10 — Step 2: Authentication
+// Phase 10 — Step 4: User Profile
 
 generator client {
   provider = "prisma-client-js"
@@ -20,9 +20,28 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   lastLoginAt   DateTime?
+  profile       UserProfile?
   refreshTokens RefreshToken[]
 
   @@map("users")
+}
+
+// ── UserProfile ───────────────────────────────────────────────────────────────
+model UserProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  firstName       String?
+  lastName        String?
+  phone           String?
+  targetRole      String?
+  experienceYears Float?
+  bio             String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
 }
 
 // ── RefreshToken ──────────────────────────────────────────────────────────────
