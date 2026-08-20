@@ -154,7 +154,7 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
               const SizedBox(height: 14),
               Text(
                 'Tell us about yourself',
-                style: AppTypography.bold(30, color: colors.foreground),
+                style: AppTypography.bold(27, color: colors.foreground),
               ),
               const SizedBox(height: 8),
               Text(
@@ -166,7 +166,7 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                 ),
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
 
               // Name field
               Text(
@@ -179,7 +179,7 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                 placeholder: 'e.g. Meraj Khan',
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 10),
 
               // Role field
               Text(
@@ -192,7 +192,7 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                 placeholder: 'e.g. Flutter Developer, Backend Engineer…',
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 10),
 
               // Skills field
               Text(
@@ -205,7 +205,7 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                 placeholder: 'e.g. Flutter, Dart, REST APIs, Firebase…',
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // Experience level
               Text(
@@ -213,90 +213,7 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                 style: AppTypography.semiBold(12, color: colors.foreground),
               ),
               const SizedBox(height: 12),
-
-              ..._experienceOptions.map((opt) {
-                final label = opt['label'] as String;
-                final detail = opt['detail'] as String;
-                final icon = opt['icon'] as IconData;
-                final isSelected = _selectedExperience == label;
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => setState(() => _selectedExperience = label),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Ink(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? colors.primary.withValues(alpha: 0.08)
-                              : colors.card,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected
-                                ? colors.primary.withValues(alpha: 0.5)
-                                : colors.border,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? colors.primary.withValues(alpha: 0.12)
-                                    : colors.secondary,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                icon,
-                                size: 16,
-                                color: isSelected
-                                    ? colors.primary
-                                    : colors.mutedForeground,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    label,
-                                    style: AppTypography.semiBold(
-                                      13,
-                                      color: colors.foreground,
-                                    ),
-                                  ),
-                                  Text(
-                                    detail,
-                                    style: AppTypography.regular(
-                                      11,
-                                      color: colors.mutedForeground,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (isSelected)
-                              Icon(
-                                FeatherIcons.checkCircle,
-                                size: 18,
-                                color: colors.primary,
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
+              _buildExperienceDropdown(colors),
 
               const SizedBox(height: 28),
 
@@ -310,6 +227,125 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
               const SizedBox(height: 32),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExperienceDropdown(AppColorScheme colors) {
+    final selectedOption = _experienceOptions.firstWhere(
+      (option) => option['label'] == _selectedExperience,
+    );
+    final selectedIcon = selectedOption['icon'] as IconData;
+    final selectedDetail = selectedOption['detail'] as String;
+
+    return PopupMenuButton<String>(
+      onSelected: (value) => setState(() => _selectedExperience = value),
+      offset: const Offset(0, 56),
+      color: colors.card,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 280),
+      itemBuilder: (context) => _experienceOptions.map((option) {
+        final label = option['label'] as String;
+        final detail = option['detail'] as String;
+        final icon = option['icon'] as IconData;
+        final isSelected = label == _selectedExperience;
+
+        return PopupMenuItem<String>(
+          value: label,
+          height: 68,
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? colors.primary.withValues(alpha: 0.12)
+                      : colors.secondary,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected ? colors.primary : colors.mutedForeground,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: AppTypography.semiBold(
+                        13,
+                        color: colors.foreground,
+                      ),
+                    ),
+                    Text(
+                      detail,
+                      style: AppTypography.regular(
+                        11,
+                        color: colors.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected)
+                Icon(FeatherIcons.check, size: 17, color: colors.primary),
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: colors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(selectedIcon, size: 16, color: colors.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _selectedExperience,
+                    style: AppTypography.semiBold(13, color: colors.foreground),
+                  ),
+                  Text(
+                    selectedDetail,
+                    style: AppTypography.regular(
+                      11,
+                      color: colors.mutedForeground,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              FeatherIcons.chevronDown,
+              size: 18,
+              color: colors.mutedForeground,
+            ),
+          ],
         ),
       ),
     );
