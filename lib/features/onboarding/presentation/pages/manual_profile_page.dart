@@ -24,10 +24,26 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
   bool _isSubmitting = false;
 
   final List<Map<String, dynamic>> _experienceOptions = [
-    {'label': 'Fresher / Early Career', 'detail': '0–1 years', 'icon': FeatherIcons.sunrise},
-    {'label': '1–2 years', 'detail': 'Hands-on practitioner', 'icon': FeatherIcons.trendingUp},
-    {'label': '3–5 years', 'detail': 'Mid-level · Architecture focus', 'icon': FeatherIcons.award},
-    {'label': '5–8+ years', 'detail': 'Senior / Lead · System design', 'icon': FeatherIcons.zap},
+    {
+      'label': 'Fresher / Early Career',
+      'detail': '0–1 years',
+      'icon': FeatherIcons.sunrise,
+    },
+    {
+      'label': '1–2 years',
+      'detail': 'Hands-on practitioner',
+      'icon': FeatherIcons.trendingUp,
+    },
+    {
+      'label': '3–5 years',
+      'detail': 'Mid-level · Architecture focus',
+      'icon': FeatherIcons.award,
+    },
+    {
+      'label': '5–8+ years',
+      'detail': 'Senior / Lead · System design',
+      'icon': FeatherIcons.zap,
+    },
   ];
 
   void _submit() async {
@@ -36,7 +52,9 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
 
     if (name.isEmpty || role.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in your name and target role.')),
+        const SnackBar(
+          content: Text('Please fill in your name and target role.'),
+        ),
       );
       return;
     }
@@ -105,24 +123,32 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                     color: colors.secondary,
                     borderRadius: BorderRadius.circular(13),
                   ),
-                  child: Icon(FeatherIcons.arrowLeft,
-                      size: 18, color: colors.foreground),
+                  child: Icon(
+                    FeatherIcons.arrowLeft,
+                    size: 18,
+                    color: colors.foreground,
+                  ),
                 ),
               ),
 
               const SizedBox(height: 28),
 
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: colors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   'MANUAL SETUP',
-                  style: AppTypography.bold(10,
-                      color: colors.primary, letterSpacing: 1.4),
+                  style: AppTypography.bold(
+                    10,
+                    color: colors.primary,
+                    letterSpacing: 1.4,
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -133,15 +159,20 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
               const SizedBox(height: 8),
               Text(
                 'Fill in a few details so the AI can tailor your interview experience.',
-                style: AppTypography.regular(13,
-                    color: colors.mutedForeground, height: 1.5),
+                style: AppTypography.regular(
+                  13,
+                  color: colors.mutedForeground,
+                  height: 1.5,
+                ),
               ),
 
               const SizedBox(height: 32),
 
               // Name field
-              Text('Your name',
-                  style: AppTypography.semiBold(12, color: colors.foreground)),
+              Text(
+                'Your name',
+                style: AppTypography.semiBold(12, color: colors.foreground),
+              ),
               const SizedBox(height: 8),
               AppTextField(
                 controller: _nameController,
@@ -151,8 +182,10 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
               const SizedBox(height: 18),
 
               // Role field
-              Text('Target role',
-                  style: AppTypography.semiBold(12, color: colors.foreground)),
+              Text(
+                'Target role',
+                style: AppTypography.semiBold(12, color: colors.foreground),
+              ),
               const SizedBox(height: 8),
               AppTextField(
                 controller: _roleController,
@@ -162,8 +195,10 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
               const SizedBox(height: 18),
 
               // Skills field
-              Text('Key skills (comma-separated)',
-                  style: AppTypography.semiBold(12, color: colors.foreground)),
+              Text(
+                'Key skills (comma-separated)',
+                style: AppTypography.semiBold(12, color: colors.foreground),
+              ),
               const SizedBox(height: 8),
               AppTextField(
                 controller: _skillsController,
@@ -173,8 +208,10 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
               const SizedBox(height: 24),
 
               // Experience level
-              Text('Experience level',
-                  style: AppTypography.semiBold(12, color: colors.foreground)),
+              Text(
+                'Experience level',
+                style: AppTypography.semiBold(12, color: colors.foreground),
+              ),
               const SizedBox(height: 12),
 
               ..._experienceOptions.map((opt) {
@@ -188,12 +225,13 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () =>
-                          setState(() => _selectedExperience = label),
+                      onTap: () => setState(() => _selectedExperience = label),
                       borderRadius: BorderRadius.circular(16),
                       child: Ink(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         decoration: BoxDecoration(
                           color: isSelected
                               ? colors.primary.withValues(alpha: 0.08)
@@ -216,29 +254,42 @@ class _ManualProfilePageState extends State<ManualProfilePage> {
                                     : colors.secondary,
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Icon(icon,
-                                  size: 16,
-                                  color: isSelected
-                                      ? colors.primary
-                                      : colors.mutedForeground),
+                              child: Icon(
+                                icon,
+                                size: 16,
+                                color: isSelected
+                                    ? colors.primary
+                                    : colors.mutedForeground,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(label,
-                                      style: AppTypography.semiBold(13,
-                                          color: colors.foreground)),
-                                  Text(detail,
-                                      style: AppTypography.regular(11,
-                                          color: colors.mutedForeground)),
+                                  Text(
+                                    label,
+                                    style: AppTypography.semiBold(
+                                      13,
+                                      color: colors.foreground,
+                                    ),
+                                  ),
+                                  Text(
+                                    detail,
+                                    style: AppTypography.regular(
+                                      11,
+                                      color: colors.mutedForeground,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                             if (isSelected)
-                              Icon(FeatherIcons.checkCircle,
-                                  size: 18, color: colors.primary),
+                              Icon(
+                                FeatherIcons.checkCircle,
+                                size: 18,
+                                color: colors.primary,
+                              ),
                           ],
                         ),
                       ),

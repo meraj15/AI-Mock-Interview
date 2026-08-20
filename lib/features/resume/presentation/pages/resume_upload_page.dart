@@ -29,38 +29,40 @@ class ResumeUploadPage extends StatefulWidget {
 class _ResumeUploadPageState extends State<ResumeUploadPage> {
   int _selectedTab = 0; // 0: Upload File, 1: Paste Text
   final _pasteController = TextEditingController();
-  String _selectedFileName = 'Meraj_Senior_Flutter_Engineer.pdf';
-  String _selectedFileSize = '1.6 MB';
+  String _selectedFileName = 'No file selected';
+  String _selectedFileSize = '';
+  bool _fileSelected = false;
 
-  void _pickFile() async {
+  /// Opens the native file picker and picks a PDF/DOC/DOCX file
+  Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx'],
-        withData: true,
+        withData: true, // load bytes into memory (no permanent storage)
       );
 
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        final sizeInBytes = file.size;
-        String formattedSize;
-        if (sizeInBytes < 1024) {
-          formattedSize = '$sizeInBytes B';
-        } else if (sizeInBytes < 1024 * 1024) {
-          formattedSize = '${(sizeInBytes / 1024).toStringAsFixed(1)} KB';
-        } else {
-          formattedSize = '${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-        }
+      if (result == null || result.files.isEmpty) return; // user cancelled
 
-        setState(() {
-          _selectedFileName = file.name;
-          _selectedFileSize = formattedSize;
-        });
-      }
+      final file = result.files.first;
+      final name = file.name;
+      final sizeBytes = file.size;
+      final sizeLabel = sizeBytes >= 1048576
+          ? '${(sizeBytes / 1048576).toStringAsFixed(1)} MB'
+          : '${(sizeBytes / 1024).toStringAsFixed(0)} KB';
+
+      setState(() {
+        _selectedFileName = name;
+        _selectedFileSize = sizeLabel;
+        _fileSelected = true;
+      });
+
+      // Auto-start parsing right after file selection
+      _startFileUpload();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open file picker: $e')),
+          SnackBar(content: Text('Could not open file: $e')),
         );
       }
     }
@@ -251,18 +253,11 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
               Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () {
-                    // Simulate selecting another sample file
-                    setState(() {
-                      _selectedFileName = _selectedFileName.contains('Flutter')
-                          ? 'Meraj_FullStack_Engineer.pdf'
-                          : 'Meraj_Senior_Flutter_Engineer.pdf';
-                      _selectedFileSize = '1.8 MB';
-                    });
-                  },
+                  onTap: _pickFile,
                   borderRadius: BorderRadius.circular(22),
-                  child: Ink(
+                  child: Container(
                     padding: const EdgeInsets.all(24),
+                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: colors.card,
                       borderRadius: BorderRadius.circular(22),
@@ -277,42 +272,62 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
                           width: 58,
                           height: 58,
                           decoration: BoxDecoration(
-                            color: colors.primary.withValues(alpha: 0.1),
+                            color: _fileSelected
+                                ? colors.success.withValues(alpha: 0.1)
+                                : colors.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           alignment: Alignment.center,
-                          child: Icon(FeatherIcons.uploadCloud, size: 26, color: colors.primary),
+                          child: Icon(
+                            _fileSelected ? FeatherIcons.checkCircle : FeatherIcons.uploadCloud,
+                            size: 26,
+                            color: _fileSelected ? colors.success : colors.primary,
+                          ),
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          'Tap to select your resume',
+                          _fileSelected ? 'File Selected' : 'Tap to browse & upload',
                           style: AppTypography.bold(16, color: colors.foreground),
                         ),
-                      
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          constraints: const BoxConstraints(maxWidth: 280),
-                          decoration: BoxDecoration(
-                            color: colors.secondary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(FeatherIcons.file, size: 14, color: colors.primary),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  '$_selectedFileName ($_selectedFileSize)',
-                                  style: AppTypography.semiBold(11, color: colors.foreground),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _fileSelected
+                              ? 'Tap again to choose a different file'
+                              : 'PDF, DOC or DOCX supported',
+                          style: AppTypography.regular(11, color: colors.mutedForeground),
                         ),
+
+                        if (_fileSelected) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            constraints: const BoxConstraints(maxWidth: 280),
+                            decoration: BoxDecoration(
+                              color: colors.success.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: colors.success.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(FeatherIcons.fileText, size: 14, color: colors.success),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    _selectedFileSize.isNotEmpty
+                                        ? '$_selectedFileName  •  $_selectedFileSize'
+                                        : _selectedFileName,
+                                    style: AppTypography.semiBold(11, color: colors.success),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -322,9 +337,9 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
               const SizedBox(height: 24),
 
               AppButton(
-                label: 'Parse & Verify Resume',
-                icon: FeatherIcons.arrowRight,
-                onPress: _startFileUpload,
+                label: _fileSelected ? 'Parse & Verify Resume' : 'Browse & Choose File',
+                icon: _fileSelected ? FeatherIcons.arrowRight : FeatherIcons.folder,
+                onPress: _fileSelected ? _startFileUpload : _pickFile,
               ),
             ] else ...[
               // Paste Text View
