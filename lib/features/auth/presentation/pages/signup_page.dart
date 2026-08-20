@@ -7,9 +7,8 @@ import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../dashboard/presentation/pages/main_nav_page.dart';
+import '../../../onboarding/presentation/pages/profile_setup_page.dart';
 import '../controllers/auth_controller.dart';
-import 'email_verification_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -31,9 +30,9 @@ class _SignupPageState extends State<SignupPage> {
       _passwordController.text,
     );
     if (success && mounted) {
-      Navigator.of(context).push(
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => EmailVerificationPage(email: _emailController.text),
+          builder: (_) => const ProfileSetupPage(),
         ),
       );
     } else if (!success && mounted && auth.errorMessage != null) {
@@ -179,7 +178,7 @@ class _SignupPageState extends State<SignupPage> {
                       final success = await auth.signInWithGoogle();
                       if (success && context.mounted) {
                         Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                          MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
                         );
                       }
                     },
@@ -215,7 +214,7 @@ class _SignupPageState extends State<SignupPage> {
                       final success = await auth.signInWithApple();
                       if (success && context.mounted) {
                         Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                          MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
                         );
                       }
                     },

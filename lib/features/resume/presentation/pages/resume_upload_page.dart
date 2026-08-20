@@ -1,4 +1,5 @@
 import 'package:feather_icons/feather_icons.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -30,6 +31,40 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
   final _pasteController = TextEditingController();
   String _selectedFileName = 'Meraj_Senior_Flutter_Engineer.pdf';
   String _selectedFileSize = '1.6 MB';
+
+  void _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final sizeInBytes = file.size;
+        String formattedSize;
+        if (sizeInBytes < 1024) {
+          formattedSize = '$sizeInBytes B';
+        } else if (sizeInBytes < 1024 * 1024) {
+          formattedSize = '${(sizeInBytes / 1024).toStringAsFixed(1)} KB';
+        } else {
+          formattedSize = '${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+        }
+
+        setState(() {
+          _selectedFileName = file.name;
+          _selectedFileSize = formattedSize;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open file picker: $e')),
+        );
+      }
+    }
+  }
 
   void _startFileUpload() async {
     final resumeCtrl = context.read<ResumeController>();
@@ -253,14 +288,11 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
                           'Tap to select your resume',
                           style: AppTypography.bold(16, color: colors.foreground),
                         ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'Supports PDF, DOC, DOCX up to 10MB',
-                          style: AppTypography.regular(11, color: colors.mutedForeground),
-                        ),
-                        const SizedBox(height: 16),
+                      
+                        const SizedBox(height: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          constraints: const BoxConstraints(maxWidth: 280),
                           decoration: BoxDecoration(
                             color: colors.secondary,
                             borderRadius: BorderRadius.circular(12),
@@ -270,9 +302,13 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
                             children: [
                               Icon(FeatherIcons.file, size: 14, color: colors.primary),
                               const SizedBox(width: 6),
-                              Text(
-                                '$_selectedFileName ($_selectedFileSize)',
-                                style: AppTypography.semiBold(11, color: colors.foreground),
+                              Flexible(
+                                child: Text(
+                                  '$_selectedFileName ($_selectedFileSize)',
+                                  style: AppTypography.semiBold(11, color: colors.foreground),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ],
                           ),

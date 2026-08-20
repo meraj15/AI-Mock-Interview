@@ -6,7 +6,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
-import '../../../dashboard/presentation/pages/main_nav_page.dart';
+import '../../../onboarding/presentation/pages/profile_setup_page.dart';
 import '../controllers/auth_controller.dart';
 
 class EmailVerificationPage extends StatefulWidget {
@@ -71,7 +71,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
     if (success && mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainNavPage()),
+        MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
         (route) => false,
       );
     }

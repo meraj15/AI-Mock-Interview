@@ -7,8 +7,8 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/empty_state_widget.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
-import '../../../interview/presentation/pages/create_interview_page.dart';
 import '../../../interview/presentation/pages/interview_result_page.dart';
+import '../../../interview/presentation/pages/interview_setup_page.dart';
 
 class InterviewsPage extends StatefulWidget {
   const InterviewsPage({super.key});
@@ -144,7 +144,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
               actionLabel: 'Start New Interview',
               onAction: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CreateInterviewPage()),
+                  MaterialPageRoute(builder: (_) => const InterviewSetupPage()),
                 );
               },
             ),
@@ -233,6 +233,61 @@ class _InterviewsPageState extends State<InterviewsPage> {
               );
             }),
           ],
+          const SizedBox(height: 16),
+          // Practice Again CTA
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const InterviewSetupPage()),
+                );
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Ink(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: colors.navy,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: colors.mint.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(FeatherIcons.refreshCw,
+                          size: 20, color: colors.mint),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Practice Again',
+                            style: AppTypography.bold(15,
+                                color: Colors.white),
+                          ),
+                          Text(
+                            'Start a new mock interview session',
+                            style: AppTypography.regular(11,
+                                color: const Color(0xFFBFCBE5)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(FeatherIcons.arrowRight,
+                        size: 18, color: colors.mint),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 30),
         ],
       ),

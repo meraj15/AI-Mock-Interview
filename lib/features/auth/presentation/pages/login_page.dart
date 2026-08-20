@@ -6,8 +6,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../dashboard/presentation/pages/main_nav_page.dart';
-import '../../../profile/presentation/controllers/profile_controller.dart';
+import '../../../interview/presentation/pages/interview_setup_page.dart';
 import '../controllers/auth_controller.dart';
 import 'forgot_password_page.dart';
 import 'signup_page.dart';
@@ -27,9 +26,8 @@ class _LoginPageState extends State<LoginPage> {
     final auth = context.read<AuthController>();
     final success = await auth.signIn(_emailController.text, _passwordController.text);
     if (success && mounted) {
-      context.read<ProfileController>().loadProfile();
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavPage()),
+        MaterialPageRoute(builder: (_) => const InterviewSetupPage()),
       );
     } else if (!success && mounted && auth.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -201,7 +199,7 @@ class _LoginPageState extends State<LoginPage> {
                       final success = await auth.signInWithGoogle();
                       if (success && context.mounted) {
                         Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                          MaterialPageRoute(builder: (_) => const InterviewSetupPage()),
                         );
                       }
                     },
@@ -237,7 +235,7 @@ class _LoginPageState extends State<LoginPage> {
                       final success = await auth.signInWithApple();
                       if (success && context.mounted) {
                         Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
+                          MaterialPageRoute(builder: (_) => const InterviewSetupPage()),
                         );
                       }
                     },

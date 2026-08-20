@@ -10,6 +10,7 @@ import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../domain/entities/resume_entity.dart';
 import '../controllers/resume_controller.dart';
+import '../../../../features/onboarding/presentation/pages/profile_ready_page.dart';
 
 class EditParsedResumePage extends StatefulWidget {
   final ResumeEntity resume;
@@ -80,10 +81,18 @@ class _EditParsedResumePageState extends State<EditParsedResumePage> {
     );
 
     context.read<ResumeController>().updateResume(updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Parsed resume profile saved successfully!')),
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ProfileReadyPage(
+          name: updated.candidateName,
+          role: updated.skills.isNotEmpty ? updated.skills.first : 'Developer',
+          experience: updated.experience,
+          skills: updated.skills,
+          isFromResume: true,
+        ),
+      ),
     );
-    Navigator.of(context).pop();
   }
 
   @override

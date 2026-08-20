@@ -11,7 +11,6 @@ import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/domain/usecases/auth_usecases.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/interview/presentation/controllers/interview_controller.dart';
-import 'features/job_prep/presentation/controllers/job_prep_controller.dart';
 import 'features/profile/data/datasources/profile_remote_data_source.dart';
 import 'features/profile/presentation/controllers/profile_controller.dart';
 import 'features/profile/presentation/controllers/theme_controller.dart';
@@ -72,9 +71,6 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => ResumeController(),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => JobPrepController(),
         ),
       ],
       child: const InterviewCoachApp(),

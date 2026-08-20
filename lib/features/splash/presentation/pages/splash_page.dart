@@ -4,9 +4,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
-import '../../../auth/presentation/pages/onboarding_page.dart';
-import '../../../dashboard/presentation/pages/main_nav_page.dart';
-import '../../../profile/presentation/controllers/profile_controller.dart';
+import '../../../interview/presentation/pages/interview_setup_page.dart';
+import '../../../onboarding/presentation/pages/welcome_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -57,13 +56,13 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
 
     Widget target;
     if (!authCtrl.isOnboarded) {
-      target = const OnboardingPage();
+      // Brand new user — show welcome landing
+      target = const WelcomePage();
     } else if (!authCtrl.isAuthenticated) {
       target = const LoginPage();
     } else {
-      // Load user profile in background
-      context.read<ProfileController>().loadProfile();
-      target = const MainNavPage();
+      // Returning authenticated user — go straight to interview setup
+      target = const InterviewSetupPage();
     }
 
     Navigator.of(context).pushReplacement(

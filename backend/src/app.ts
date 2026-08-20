@@ -8,6 +8,7 @@ import { logger } from './utils/logger';
 import healthRouter from './routes/health.routes';
 import authRouter from './routes/auth.routes';
 import profileRouter from './routes/profile.routes';
+import resumeRouter from './routes/resume.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -40,6 +41,7 @@ export function createApp(): Application {
   app.use('/health', healthRouter);
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/profile', profileRouter);
+  app.use('/api/v1/resume', resumeRouter);
 
   // 404 fallthrough
   app.use((_req: Request, res: Response) => {
