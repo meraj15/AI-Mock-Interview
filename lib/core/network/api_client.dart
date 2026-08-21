@@ -361,6 +361,7 @@ class ApiClient {
     // Extract message & code from backend response
     String errorMessage = 'Request failed with status ${response.statusCode}';
     String? errorCode;
+    final List<String> validationDetails = [];
 
     if (jsonBody is Map) {
       errorMessage = jsonBody['message'] as String? ?? errorMessage;
@@ -369,6 +370,15 @@ class ApiClient {
         final nestedMsg = jsonBody['error']['message'] as String?;
         if (nestedMsg != null && nestedMsg.isNotEmpty) {
           errorMessage = nestedMsg;
+        }
+        // Parse field-level validation details: [{ "field": "password", "message": "..." }]
+        final details = jsonBody['error']['details'];
+        if (details is List) {
+          for (final d in details) {
+            if (d is Map && d['message'] is String) {
+              validationDetails.add(d['message'] as String);
+            }
+          }
         }
       }
     }
@@ -394,8 +404,12 @@ class ApiClient {
       throw AuthException(errorMessage, errorCode);
     }
 
-    if (response.statusCode == 422) {
-      throw ValidationException(errorMessage);
+    if (response.statusCode == 422 || errorCode == 'VALIDATION_ERROR') {
+      // Use detail messages when available, otherwise fall back to the top-level message
+      final displayMessage = validationDetails.isNotEmpty
+          ? validationDetails.join('\n')
+          : errorMessage;
+      throw ValidationException(displayMessage, validationDetails);
     }
 
     if (response.statusCode == 401 || response.statusCode == 403) {

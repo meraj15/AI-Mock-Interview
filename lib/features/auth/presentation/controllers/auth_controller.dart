@@ -19,6 +19,7 @@ class AuthController extends ChangeNotifier {
   bool _isOnboarded = false;
   bool _isProfileSetupComplete = false;
   String? _errorMessage;
+  List<String> _validationErrors = [];
 
   AuthController({
     required this.getAuthStateUseCase,
@@ -36,6 +37,7 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _user != null;
   bool get isProfileSetupComplete => _isProfileSetupComplete;
   String? get errorMessage => _errorMessage;
+  List<String> get validationErrors => _validationErrors;
 
   void markProfileSetupComplete() {
     _isProfileSetupComplete = true;
@@ -85,6 +87,7 @@ class AuthController extends ChangeNotifier {
 
     _status = AuthStatus.loading;
     _errorMessage = null;
+    _validationErrors = [];
     notifyListeners();
 
     try {
@@ -146,15 +149,30 @@ class AuthController extends ChangeNotifier {
     final cleanEmail = email.trim();
     final cleanPassword = password.trim();
 
-    if (cleanEmail.isEmpty || cleanPassword.isEmpty) {
-      _errorMessage = 'Please enter your email and a password.';
-      _status = AuthStatus.error;
-      notifyListeners();
-      return false;
+    // ── Client-side validation ──────────────────────────────────────────────
+    final clientErrors = <String>[];
+
+    if (cleanEmail.isEmpty) clientErrors.add('Email address is required.');
+    if (cleanPassword.isEmpty) clientErrors.add('Password is required.');
+
+    if (cleanPassword.isNotEmpty) {
+      if (cleanPassword.length < 8) {
+        clientErrors.add('Password must be at least 8 characters.');
+      }
+      if (!cleanPassword.contains(RegExp(r'[A-Z]'))) {
+        clientErrors.add('Password must contain at least one uppercase letter.');
+      }
+      if (!cleanPassword.contains(RegExp(r'[a-z]'))) {
+        clientErrors.add('Password must contain at least one lowercase letter.');
+      }
+      if (!cleanPassword.contains(RegExp(r'[0-9]'))) {
+        clientErrors.add('Password must contain at least one number.');
+      }
     }
 
-    if (cleanPassword.length < 8) {
-      _errorMessage = 'Password must be at least 8 characters long with uppercase, lowercase, and a number.';
+    if (clientErrors.isNotEmpty) {
+      _errorMessage = clientErrors.first;
+      _validationErrors = clientErrors;
       _status = AuthStatus.error;
       notifyListeners();
       return false;
@@ -162,6 +180,7 @@ class AuthController extends ChangeNotifier {
 
     _status = AuthStatus.loading;
     _errorMessage = null;
+    _validationErrors = [];
     notifyListeners();
 
     try {
@@ -172,10 +191,17 @@ class AuthController extends ChangeNotifier {
       ));
       _status = AuthStatus.authenticated;
       _isOnboarded = true;
+      _validationErrors = [];
       notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = _cleanErrorMessage(e);
+      // Propagate field-level errors from the server
+      if (e is ValidationException && e.errors.isNotEmpty) {
+        _validationErrors = e.errors;
+      } else {
+        _validationErrors = [];
+      }
       _status = AuthStatus.error;
       notifyListeners();
       return false;

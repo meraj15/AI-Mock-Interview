@@ -95,7 +95,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
     return AppScaffold(
       body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           AppHeader(
             title: 'Verify Email',
@@ -104,15 +104,17 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
           const SizedBox(height: 12),
 
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: colors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
+          Center(
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: colors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              alignment: Alignment.center,
+              child: Icon(FeatherIcons.mail, size: 28, color: colors.primary),
             ),
-            alignment: Alignment.center,
-            child: Icon(FeatherIcons.mail, size: 28, color: colors.primary),
           ),
 
           const SizedBox(height: 20),
@@ -124,6 +126,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
           Text(
             'We sent a 6-digit verification code to:\n${widget.email}',
             style: AppTypography.regular(13, color: colors.mutedForeground, height: 1.5),
+            textAlign: TextAlign.center,
           ),
 
           const SizedBox(height: 32),
@@ -161,9 +164,6 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                     } else if (val.isEmpty && index > 0) {
                       _focusNodes[index - 1].requestFocus();
                     }
-                    if (_controllers.every((c) => c.text.isNotEmpty)) {
-                      _verify();
-                    }
                   },
                 ),
               );
@@ -179,7 +179,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
             onPress: _verify,
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
 
           Center(
             child: _countdown > 0

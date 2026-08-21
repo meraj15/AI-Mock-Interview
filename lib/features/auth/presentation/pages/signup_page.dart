@@ -1,5 +1,6 @@
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -19,9 +20,36 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  final _nameController = TextEditingController(text: 'Meraj Khan');
-  final _emailController = TextEditingController(text: 'meraj.khan@email.com');
-  final _passwordController = TextEditingController(text: 'Password123');
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _passwordVisible = false;
+
+  // Live password strength state
+  bool _hasMinLength = false;
+  bool _hasUppercase = false;
+  bool _hasLowercase = false;
+  bool _hasNumber = false;
+  bool _showStrengthHints = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(_checkPasswordStrength);
+  }
+
+  void _checkPasswordStrength() {
+    final p = _passwordController.text;
+    setState(() {
+      _hasMinLength = p.length >= 8;
+      _hasUppercase = p.contains(RegExp(r'[A-Z]'));
+      _hasLowercase = p.contains(RegExp(r'[a-z]'));
+      _hasNumber = p.contains(RegExp(r'[0-9]'));
+    });
+  }
+
+  bool get _passwordStrong =>
+      _hasMinLength && _hasUppercase && _hasLowercase && _hasNumber;
 
   void _submit() async {
     final auth = context.read<AuthController>();
@@ -30,20 +58,40 @@ class _SignupPageState extends State<SignupPage> {
       _emailController.text,
       _passwordController.text,
     );
+
     if (success && mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => EmailVerificationPage(email: _emailController.text),
         ),
       );
-    } else if (!success && mounted && auth.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(auth.errorMessage!),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      return;
     }
+
+    // Show each validation error as its own toast, or a single error toast
+    if (!mounted) return;
+    final errors = auth.validationErrors;
+    if (errors.isNotEmpty) {
+      // Fire one toast per error with a small delay between them
+      for (int i = 0; i < errors.length; i++) {
+        await Future.delayed(Duration(milliseconds: i * 400));
+        _showErrorToast(errors[i]);
+      }
+    } else if (auth.errorMessage != null) {
+      _showErrorToast(auth.errorMessage!);
+    }
+  }
+
+  void _showErrorToast(String message) {
+    Fluttertoast.showToast(
+      msg: message,
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.TOP,
+      timeInSecForIosWeb: 3,
+      backgroundColor: const Color(0xFFE5534B),
+      textColor: Colors.white,
+      fontSize: 13.0,
+    );
   }
 
   @override
@@ -68,35 +116,31 @@ class _SignupPageState extends State<SignupPage> {
             onBack: () => Navigator.of(context).pop(),
           ),
 
-          const SizedBox(height: 30),
 
           Text(
             'Build your edge',
-            style: AppTypography.bold(31, color: colors.foreground),
+            style: AppTypography.bold(28, color: colors.foreground),
           ),
-          const SizedBox(height: 9),
+          const SizedBox(height: 8),
           Text(
-            'A few details and we’ll tailor every practice session to you.',
-            style: AppTypography.regular(14, color: colors.mutedForeground, height: 1.4),
+            'A few details and we\'ll tailor every session to you.',
+            style: AppTypography.regular(13, color: colors.mutedForeground, height: 1.4),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
 
-          Text(
-            'Your name',
-            style: AppTypography.semiBold(12, color: colors.foreground),
-          ),
+          // ── Name ────────────────────────────────────────────────────────
+          Text('Full name', style: AppTypography.semiBold(12, color: colors.foreground)),
           const SizedBox(height: 8),
           AppTextField(
             controller: _nameController,
-            placeholder: 'Full name',
+            placeholder: 'e.g. Alex Johnson',
           ),
 
-          const SizedBox(height: 6),
-          Text(
-            'Email address',
-            style: AppTypography.semiBold(12, color: colors.foreground),
-          ),
+          const SizedBox(height: 7),
+
+          // ── Email ────────────────────────────────────────────────────────
+          Text('Email address', style: AppTypography.semiBold(12, color: colors.foreground)),
           const SizedBox(height: 8),
           AppTextField(
             controller: _emailController,
@@ -104,45 +148,80 @@ class _SignupPageState extends State<SignupPage> {
             keyboardType: TextInputType.emailAddress,
           ),
 
-          const SizedBox(height: 6),
-          Text(
-            'Password',
-            style: AppTypography.semiBold(12, color: colors.foreground),
-          ),
+          const SizedBox(height: 7),
+
+          // ── Password ─────────────────────────────────────────────────────
+          Text('Password', style: AppTypography.semiBold(12, color: colors.foreground)),
           const SizedBox(height: 8),
-          AppTextField(
-            controller: _passwordController,
-            placeholder: 'Create a password',
-            obscureText: true,
+          Stack(
+            alignment: Alignment.centerRight,
+            children: [
+              AppTextField(
+                controller: _passwordController,
+                placeholder: 'Min 8 chars, upper, lower, number',
+                obscureText: !_passwordVisible,
+                onChanged: (_) => setState(() => _showStrengthHints = true),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: GestureDetector(
+                  onTap: () => setState(() => _passwordVisible = !_passwordVisible),
+                  child: Icon(
+                    _passwordVisible ? FeatherIcons.eyeOff : FeatherIcons.eye,
+                    size: 17,
+                    color: colors.mutedForeground,
+                  ),
+                ),
+              ),
+            ],
           ),
 
-          if (auth.errorMessage != null) ...[
+          // ── Password strength hints ─────────────────────────────────────
+          if (_showStrengthHints && !_passwordStrong) ...[
+            const SizedBox(height: 10),
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: colors.coral.withValues(alpha: 0.15),
+                color: colors.secondary,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colors.coral.withValues(alpha: 0.4)),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(FeatherIcons.alertCircle, size: 16, color: colors.coral),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      auth.errorMessage!,
-                      style: AppTypography.semiBold(11, color: colors.coral),
-                    ),
+                  Text(
+                    'Password requirements',
+                    style: AppTypography.semiBold(11, color: colors.foreground),
+                  ),
+                  const SizedBox(height: 8),
+                  _PasswordRule(
+                    met: _hasMinLength,
+                    label: 'At least 8 characters',
+                    colors: colors,
+                  ),
+                  _PasswordRule(
+                    met: _hasUppercase,
+                    label: 'One uppercase letter (A–Z)',
+                    colors: colors,
+                  ),
+                  _PasswordRule(
+                    met: _hasLowercase,
+                    label: 'One lowercase letter (a–z)',
+                    colors: colors,
+                  ),
+                  _PasswordRule(
+                    met: _hasNumber,
+                    label: 'One number (0–9)',
+                    colors: colors,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
           ],
 
-          const SizedBox(height: 12),
-
+          SizedBox(
+            height:20,
+          ),
+          // ── Submit ───────────────────────────────────────────────────────
           AppButton(
             label: 'Create my account',
             icon: FeatherIcons.arrowRight,
@@ -150,9 +229,9 @@ class _SignupPageState extends State<SignupPage> {
             onPress: _submit,
           ),
 
-          // Divider
+          // ── Divider ──────────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24.0),
+            padding: const EdgeInsets.symmetric(vertical: 22.0),
             child: Row(
               children: [
                 Expanded(child: Divider(color: colors.border, thickness: 1)),
@@ -168,85 +247,123 @@ class _SignupPageState extends State<SignupPage> {
             ),
           ),
 
-          // Social Row
+          // ── Social ───────────────────────────────────────────────────────
           Row(
             children: [
               Expanded(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () async {
-                      final success = await auth.signInWithGoogle();
-                      if (success && context.mounted) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(15),
-                    child: Ink(
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: colors.card,
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: colors.border),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(FeatherIcons.chrome, size: 17, color: colors.foreground),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Google',
-                            style: AppTypography.semiBold(13, color: colors.foreground),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                child: _SocialButton(
+                  icon: FeatherIcons.chrome,
+                  label: 'Google',
+                  colors: colors,
+                  onTap: () async {
+                    final success = await auth.signInWithGoogle();
+                    if (success && context.mounted) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const MainNavPage()),
+                      );
+                    }
+                  },
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () async {
-                      final success = await auth.signInWithApple();
-                      if (success && context.mounted) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(15),
-                    child: Ink(
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: colors.card,
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: colors.border),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(FeatherIcons.smartphone, size: 17, color: colors.foreground),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Apple',
-                            style: AppTypography.semiBold(13, color: colors.foreground),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                child: _SocialButton(
+                  icon: FeatherIcons.smartphone,
+                  label: 'Apple',
+                  colors: colors,
+                  onTap: () async {
+                    final success = await auth.signInWithApple();
+                    if (success && context.mounted) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const MainNavPage()),
+                      );
+                    }
+                  },
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+}
+
+// ── Sub-widgets ───────────────────────────────────────────────────────────────
+
+class _PasswordRule extends StatelessWidget {  final bool met;
+  final String label;
+  final AppColorScheme colors;
+
+  const _PasswordRule({
+    required this.met,
+    required this.label,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        children: [
+          Icon(
+            met ? FeatherIcons.checkCircle : FeatherIcons.circle,
+            size: 13,
+            color: met ? colors.mint : colors.mutedForeground,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: AppTypography.regular(
+              11,
+              color: met ? colors.mint : colors.mutedForeground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SocialButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final AppColorScheme colors;
+  final VoidCallback onTap;
+
+  const _SocialButton({
+    required this.icon,
+    required this.label,
+    required this.colors,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Ink(
+          height: 50,
+          decoration: BoxDecoration(
+            color: colors.card,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: colors.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 17, color: colors.foreground),
+              const SizedBox(width: 8),
+              Text(label, style: AppTypography.semiBold(13, color: colors.foreground)),
+            ],
+          ),
+        ),
       ),
     );
   }

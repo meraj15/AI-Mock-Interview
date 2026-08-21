@@ -1,5 +1,6 @@
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -27,25 +28,25 @@ class _LoginPageState extends State<LoginPage> {
   void _submit() async {
     final auth = context.read<AuthController>();
     final success = await auth.signIn(_emailController.text, _passwordController.text);
-    if (success && mounted) {
-      context.read<ProfileController>().loadProfile();
+    if (!mounted) return;
 
-      // If profile setup hasn't been completed, show the setup page first
-      if (!auth.isProfileSetupComplete) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
-        );
-      } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainNavPage()),
-        );
-      }
-    } else if (!success && mounted && auth.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(auth.errorMessage!),
-          backgroundColor: Theme.of(context).colorScheme.error,
+    if (success) {
+      context.read<ProfileController>().loadProfile();
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) =>
+              auth.isProfileSetupComplete ? const MainNavPage() : const ProfileSetupPage(),
         ),
+      );
+    } else if (auth.errorMessage != null) {
+      Fluttertoast.showToast(
+        msg: auth.errorMessage!,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.TOP,
+        timeInSecForIosWeb: 3,
+        backgroundColor: const Color(0xFFE5534B),
+        textColor: Colors.white,
+        fontSize: 13.0,
       );
     }
   }
