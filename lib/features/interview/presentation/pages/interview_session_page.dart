@@ -1,16 +1,25 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_text_field.dart';
-import '../../../../core/widgets/progress_bar.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_result_page.dart';
-import 'voice_interview_page.dart';
+
+// ── Turn state ────────────────────────────────────────────────────────────────
+
+enum _Turn {
+  loading,     // Generating questions
+  aiSpeaking,  // TTS reading the question
+  userTurn,    // Mic is hot — user speaks
+  processing,  // Submitting answer, generating next question
+  done,        // Interview finished
+}
 
 class InterviewSessionPage extends StatefulWidget {
   const InterviewSessionPage({super.key});
@@ -20,1001 +29,854 @@ class InterviewSessionPage extends StatefulWidget {
 }
 
 class _InterviewSessionPageState extends State<InterviewSessionPage>
-    with SingleTickerProviderStateMixin {
-  final _answerController = TextEditingController();
-  bool _voice = false;
-  bool _recording = false;
-  String _voiceTranscript = '';
-  bool _showHintExpanded = false;
+    with TickerProviderStateMixin {
 
-  // Per-question countdown
-  Timer? _questionTimer;
-  int _remainingSeconds = 0;
-  bool _timerExpired = false;
+  // ── TTS ───────────────────────────────────────────────────────────────────
+  final FlutterTts _tts = FlutterTts();
+  bool _ttsAvailable = false;
 
-  // Session total timer
-  Timer? _sessionTimer;
+  // ── STT ───────────────────────────────────────────────────────────────────
+  final stt.SpeechToText _stt = stt.SpeechToText();
+  bool _sttAvailable = false;
+  String _transcript = '';
+  String _partialTranscript = '';
+
+  // ── Session state ──────────────────────────────────────────────────────────
+  _Turn _turn = _Turn.loading;
   int _sessionElapsedSeconds = 0;
+  Timer? _sessionTimer;
 
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  // ── Animations ────────────────────────────────────────────────────────────
+  late AnimationController _pulseCtrl;
+  late AnimationController _waveCtrl;
+  late Animation<double> _pulseAnim;
+  late Animation<double> _waveAnim;
+
+  // Fake waveform bars
+  final List<double> _bars = List.generate(30, (_) => 0.15);
+  Timer? _barTimer;
+  final _rng = math.Random();
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
+
+    _pulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final interviewCtrl = context.read<InterviewController>();
-      final resumeCtrl = context.read<ResumeController>();
+    _waveCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
 
-      // If interview was already triggered by the setup page, just start timers
-      if (interviewCtrl.sessionStatus == SessionStatus.loading ||
-          interviewCtrl.sessionStatus == SessionStatus.active) {
-        // Wait for loading to finish before starting timers
-        void checkAndStart() {
-          if (interviewCtrl.sessionStatus == SessionStatus.active) {
-            _startPerQuestionTimer();
-            _startSessionTimer();
-          } else {
-            Future.delayed(const Duration(milliseconds: 200), checkAndStart);
-          }
-        }
-        if (interviewCtrl.sessionStatus == SessionStatus.active) {
-          _startPerQuestionTimer();
-          _startSessionTimer();
-        } else {
-          Future.delayed(const Duration(milliseconds: 200), checkAndStart);
-        }
-      } else {
-        // Start fresh
-        interviewCtrl.startInterview(resume: resumeCtrl.resume).then((_) {
-          _startPerQuestionTimer();
-          _startSessionTimer();
-        });
-      }
+    _pulseAnim = Tween<double>(begin: 0.88, end: 1.12)
+        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
-      // Respect voice mode from config
-      if (interviewCtrl.config.enableVoiceMode) {
-        setState(() => _voice = true);
+    _waveAnim = CurvedAnimation(parent: _waveCtrl, curve: Curves.linear);
+
+    _initStt();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _initTts();   // ← wait for TTS to be fully ready first
+      if (mounted) {
+        _startSession();
+        _startSessionTimer();
       }
     });
   }
 
   @override
   void dispose() {
-    _answerController.dispose();
-    _pulseController.dispose();
-    _questionTimer?.cancel();
+    _tts.stop();
+    _stt.stop();
+    _pulseCtrl.dispose();
+    _waveCtrl.dispose();
     _sessionTimer?.cancel();
+    _barTimer?.cancel();
     super.dispose();
   }
 
-  void _startPerQuestionTimer() {
-    _questionTimer?.cancel();
-    final interviewCtrl = context.read<InterviewController>();
-    final limit = interviewCtrl.config.timeLimitPerQuestion;
-    if (limit == 0) return; // No limit configured
+  // ── Init helpers ──────────────────────────────────────────────────────────
 
-    setState(() {
-      _remainingSeconds = limit;
-      _timerExpired = false;
+  Future<void> _initTts() async {
+    // Set language first — returns an integer result code on Android
+    final langResult = await _tts.setLanguage('en-US');
+    if (langResult != 1 && mounted) {
+      // Language not available — try a fallback
+      await _tts.setLanguage('en');
+    }
+
+    await _tts.setSpeechRate(0.48);
+    await _tts.setPitch(1.0);
+    await _tts.setVolume(1.0);
+
+    _tts.setCompletionHandler(() {
+      if (mounted && _turn == _Turn.aiSpeaking) {
+        _setTurn(_Turn.userTurn);
+      }
     });
 
-    _questionTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
+    _tts.setErrorHandler((msg) {
+      debugPrint('TTS error: $msg');
+      // Even on error — hand turn over to user so session doesn't freeze
+      if (mounted && _turn == _Turn.aiSpeaking) {
+        _setTurn(_Turn.userTurn);
       }
-      setState(() {
-        if (_remainingSeconds > 0) {
-          _remainingSeconds--;
-        } else {
-          _timerExpired = true;
-          t.cancel();
+    });
+
+    if (mounted) setState(() => _ttsAvailable = true);
+  }
+
+  Future<void> _initStt() async {
+    final ok = await _stt.initialize(
+      onError: (e) {
+        if (mounted && _turn == _Turn.userTurn) {
+          // Fallback — treat silence as empty answer, allow retry
+          setState(() => _partialTranscript = '');
+        }
+      },
+    );
+    if (mounted) setState(() => _sttAvailable = ok);
+  }
+
+  // ── Session flow ──────────────────────────────────────────────────────────
+
+  Future<void> _startSession() async {
+    final ic = context.read<InterviewController>();
+    final rc = context.read<ResumeController>();
+
+    if (ic.sessionStatus == SessionStatus.loading ||
+        ic.sessionStatus == SessionStatus.active) {
+      // Already started from setup page — wait for questions
+      if (ic.sessionStatus != SessionStatus.active) {
+        await _waitForQuestions(ic);
+      }
+    } else {
+      await ic.startInterview(resume: rc.resume);
+    }
+
+    if (!mounted) return;
+    _speakCurrentQuestion();
+  }
+
+  Future<void> _waitForQuestions(InterviewController ic) async {
+    int waited = 0;
+    while (ic.sessionStatus == SessionStatus.loading && waited < 30 && mounted) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      waited++;
+    }
+  }
+
+  void _speakCurrentQuestion() {
+    final ic = context.read<InterviewController>();
+    if (!mounted || ic.prompts.isEmpty) return;
+
+    _setTurn(_Turn.aiSpeaking);
+    _animateBars(calm: true);
+
+    final question = ic.currentQuestion;
+    if (_ttsAvailable) {
+      _tts.speak(question);
+    } else {
+      // No TTS — auto-advance to user turn after a delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && _turn == _Turn.aiSpeaking) {
+          _setTurn(_Turn.userTurn);
         }
       });
-    });
+    }
   }
 
-  void _startSessionTimer() {
-    _sessionTimer?.cancel();
-    setState(() => _sessionElapsedSeconds = 0);
-    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      setState(() => _sessionElapsedSeconds++);
-    });
-  }
+  // ── Mic control ───────────────────────────────────────────────────────────
 
-  String _formatTime(int seconds) {
-    final m = seconds ~/ 60;
-    final s = seconds % 60;
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  Color _timerColor(AppColorScheme colors) {
-    if (_remainingSeconds <= 0) return colors.destructive;
-    if (_remainingSeconds <= 20) return colors.coral;
-    if (_remainingSeconds <= 60) return colors.accent;
-    return colors.mint;
-  }
-
-  void _toggleVoice() {
+  Future<void> _startListening() async {
+    if (!_sttAvailable || _turn != _Turn.userTurn) return;
     setState(() {
-      _voice = !_voice;
-      _recording = false;
-      _voiceTranscript = '';
+      _transcript = '';
+      _partialTranscript = '';
     });
-  }
+    _animateBars(calm: false);
 
-  void _toggleRecording() async {
-    if (_recording) {
-      setState(() {
-        _recording = false;
-        _voiceTranscript =
-            'I separated the data layer from the UI by adopting Clean Architecture, making failures fully recoverable at each boundary.';
-      });
-    } else {
-      setState(() {
-        _recording = true;
-        _voiceTranscript = '';
-      });
-      await Future.delayed(const Duration(milliseconds: 2200));
-      if (mounted && _recording) {
+    await _stt.listen(
+      onResult: (result) {
+        if (!mounted) return;
         setState(() {
-          _recording = false;
-          _voiceTranscript =
-              'I separated the data layer from the UI by adopting Clean Architecture, making failures fully recoverable at each boundary.';
+          if (result.finalResult) {
+            _transcript = result.recognizedWords;
+            _partialTranscript = '';
+          } else {
+            _partialTranscript = result.recognizedWords;
+          }
         });
-      }
-    }
-  }
-
-  void _submit(InterviewController interviewCtrl) {
-    final answer = _voice ? _voiceTranscript : _answerController.text.trim();
-    if (answer.isEmpty) return;
-
-    _questionTimer?.cancel();
-    interviewCtrl.submitAnswer(answer);
-
-    setState(() {
-      _answerController.clear();
-      _voiceTranscript = '';
-      _recording = false;
-      _showHintExpanded = false;
-      _timerExpired = false;
-    });
-
-    // Restart per-question timer on new question
-    _startPerQuestionTimer();
-
-    if (interviewCtrl.sessionStatus == SessionStatus.complete) {
-      _navigateToResult();
-    }
-  }
-
-  void _navigateToResult() {
-    _sessionTimer?.cancel();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const InterviewResultPage()),
+      },
+      listenFor: const Duration(minutes: 5),
+      pauseFor: const Duration(seconds: 30),
+      partialResults: true,
+      listenOptions: stt.SpeechListenOptions(cancelOnError: false),
     );
   }
 
-  /// Compute a live answer quality level from 0–4
-  int _answerQuality(String text) {
-    final words = text.trim().split(' ').where((w) => w.isNotEmpty).length;
-    if (words >= 80) return 4;
-    if (words >= 50) return 3;
-    if (words >= 25) return 2;
-    if (words >= 10) return 1;
-    return 0;
+  Future<void> _stopListening() async {
+    await _stt.stop();
+    _stopBarAnimation();
+    final answer = _transcript.isNotEmpty ? _transcript : _partialTranscript;
+    if (answer.trim().isNotEmpty) {
+      _submitAnswer(answer.trim());
+    }
+    // If empty — stay on userTurn so user can try again
   }
+
+  void _submitAnswer(String answer) {
+    final ic = context.read<InterviewController>();
+    _setTurn(_Turn.processing);
+
+    ic.submitAnswer(answer);
+
+    if (ic.sessionStatus == SessionStatus.complete ||
+        ic.sessionStatus == SessionStatus.evaluating) {
+      _navigateToResult(ic);
+      return;
+    }
+
+    // Small pause then speak next question
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) _speakCurrentQuestion();
+    });
+  }
+
+  void _navigateToResult(InterviewController ic) {
+    _tts.stop();
+    _sessionTimer?.cancel();
+    // Give evaluating state time to complete
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const InterviewResultPage()),
+      );
+    });
+  }
+
+  // ── Timers & animations ───────────────────────────────────────────────────
+
+  void _startSessionTimer() {
+    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _sessionElapsedSeconds++);
+    });
+  }
+
+  void _animateBars({required bool calm}) {
+    _barTimer?.cancel();
+    _barTimer = Timer.periodic(
+      Duration(milliseconds: calm ? 120 : 60),
+      (_) {
+        if (!mounted) return;
+        setState(() {
+          for (int i = 0; i < _bars.length; i++) {
+            _bars[i] = calm
+                ? 0.1 + _rng.nextDouble() * 0.4
+                : 0.3 + _rng.nextDouble() * 0.65;
+          }
+        });
+      },
+    );
+  }
+
+  void _stopBarAnimation() {
+    _barTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        for (int i = 0; i < _bars.length; i++) {
+          _bars[i] = 0.08;
+        }
+      });
+    }
+  }
+
+  void _setTurn(_Turn t) {
+    if (!mounted) return;
+    setState(() => _turn = t);
+  }
+
+  String _formatTime(int s) {
+    final m = s ~/ 60;
+    final sec = s % 60;
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  // ── Exit ──────────────────────────────────────────────────────────────────
+
+  void _exitSession() {
+    _tts.stop();
+    _stt.stop();
+    Navigator.of(context).pop();
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColorScheme.of(context);
-    final interviewCtrl = context.watch<InterviewController>();
-    final config = interviewCtrl.config;
+    final ic = context.watch<InterviewController>();
 
-    if (interviewCtrl.sessionStatus == SessionStatus.complete) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToResult());
+    // Redirect on complete
+    if (ic.sessionStatus == SessionStatus.complete && _turn != _Turn.done) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => _turn = _Turn.done);
+          _navigateToResult(ic);
+        }
+      });
     }
 
-    if (interviewCtrl.sessionStatus == SessionStatus.evaluating) {
-      return _buildEvaluatingScreen(colors, config);
-    }
+    // Dark immersive background
+    const bg = Color(0xFF0B0F1E);
+    const navyDeep = Color(0xFF131929);
+    const mintGreen = Color(0xFF2DE4B6);
+    const coralRed = Color(0xFFFF6B6B);
+    const softWhite = Color(0xFFE8EEFF);
 
-    if (interviewCtrl.sessionStatus == SessionStatus.loading ||
-        interviewCtrl.prompts.isEmpty) {
-      return _buildLoadingScreen(colors, config);
-    }
+    final isLoading = _turn == _Turn.loading || ic.prompts.isEmpty;
+    final isAI = _turn == _Turn.aiSpeaking;
+    final isUser = _turn == _Turn.userTurn;
+    final isProcessing = _turn == _Turn.processing;
 
-    final isFollowUp = interviewCtrl.isFollowUp;
-    final question = interviewCtrl.currentQuestion;
-    final hint = interviewCtrl.currentContextHint;
-    final category = interviewCtrl.currentCategory;
-    final questionNum = interviewCtrl.questionNumber;
-    final totalQ = interviewCtrl.totalQuestions;
-    final progress = (questionNum / totalQ) * 100;
+    final questionNum = ic.questionNumber;
+    final totalQ = ic.totalQuestions;
+    final progress = totalQ > 0 ? questionNum / totalQ : 0.0;
+    final question = ic.currentQuestion;
+    final category = ic.currentCategory;
 
-    final currentText = _voice ? _voiceTranscript : _answerController.text;
-    final hasAnswer = currentText.trim().isNotEmpty;
-    final isLastQuestion = questionNum >= totalQ && isFollowUp;
-    final quality = _answerQuality(currentText);
-    final showTimerWarning =
-        _timerExpired ||
-        (config.timeLimitPerQuestion > 0 &&
-            _remainingSeconds <= 20 &&
-            _remainingSeconds > 0);
-
-    // Persona display
-    final persona = config.aiPersona;
-    final personaIcon = persona.contains('CTO')
-        ? FeatherIcons.terminal
-        : persona.contains('FAANG')
-        ? FeatherIcons.zap
-        : persona.contains('Mentor')
-        ? FeatherIcons.heart
-        : persona.contains('Strict')
-        ? FeatherIcons.alertTriangle
-        : FeatherIcons.messageCircle;
+    final displayTranscript = _transcript.isNotEmpty
+        ? _transcript
+        : _partialTranscript;
 
     return Scaffold(
-      backgroundColor: colors.background,
+      backgroundColor: bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0),
-          child: Column(
-            children: [
-              // ── Top Bar ──────────────────────────────────────
-              SizedBox(
-                height: 52,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => Navigator.of(context).pop(),
+        child: Column(
+          children: [
+            // ── Top bar ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Exit
+                  GestureDetector(
+                    onTap: _exitSession,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(6.0),
-                          child: Row(
-                            children: [
-                              Icon(
-                                FeatherIcons.x,
-                                size: 18,
-                                color: colors.foreground,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Exit',
-                                style: AppTypography.semiBold(
-                                  12,
-                                  color: colors.foreground,
-                                ),
-                              ),
-                            ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(FeatherIcons.x, size: 14, color: Colors.white54),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Exit',
+                            style: AppTypography.semiBold(11, color: Colors.white54),
                           ),
-                        ),
+                        ],
                       ),
                     ),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          config.type,
-                          style: AppTypography.bold(
-                            12,
-                            color: colors.foreground,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          isFollowUp
-                              ? 'Follow-up · Q$questionNum'
-                              : 'Question $questionNum of $totalQ',
-                          style: AppTypography.regular(
-                            10,
-                            color: colors.mutedForeground,
-                          ),
-                        ),
-                      ],
+                  ),
+                  // Question counter
+                  Column(
+                    children: [
+                      Text(
+                        isLoading
+                            ? 'Preparing…'
+                            : 'Q $questionNum of $totalQ',
+                        style: AppTypography.bold(13, color: softWhite),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        category.isNotEmpty ? category : 'Interview',
+                        style: AppTypography.regular(10, color: Colors.white38),
+                      ),
+                    ],
+                  ),
+                  // Elapsed timer
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    Row(
+                    child: Row(
                       children: [
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              final prompts = interviewCtrl.prompts.map((p) => p.primaryQuestion).toList();
-                              final categories = interviewCtrl.prompts.map((p) => p.category).toList();
-                              final hints = interviewCtrl.prompts.map((p) => p.contextHint).toList();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => VoiceInterviewPage(
-                                    config: config,
-                                    questions: prompts.isNotEmpty ? prompts : ['Walk me through your system architecture.'],
-                                    categories: categories.isNotEmpty ? categories : ['Architecture'],
-                                    hints: hints.isNotEmpty ? hints : ['Highlight trade-offs.'],
-                                  ),
-                                ),
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: colors.mint.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(FeatherIcons.mic, size: 12, color: colors.mint),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Voice Mode',
-                                    style: AppTypography.semiBold(10, color: colors.mint),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          FeatherIcons.clock,
-                          size: 13,
-                          color: colors.mutedForeground,
-                        ),
-                        const SizedBox(width: 4),
+                        const Icon(FeatherIcons.clock, size: 12, color: Colors.white38),
+                        const SizedBox(width: 5),
                         Text(
                           _formatTime(_sessionElapsedSeconds),
-                          style: AppTypography.semiBold(
-                            12,
-                            color: colors.mutedForeground,
-                          ),
+                          style: AppTypography.semiBold(11, color: Colors.white54),
                         ),
                       ],
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── Progress bar ─────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress.clamp(0.0, 1.0),
+                  minHeight: 3,
+                  backgroundColor: Colors.white.withValues(alpha: 0.07),
+                  valueColor: const AlwaysStoppedAnimation<Color>(mintGreen),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 28),
+
+            // ── Central orb ──────────────────────────────────────────
+            if (isLoading)
+              _LoadingOrb(pulseAnim: _pulseAnim)
+            else
+              _VoiceOrb(
+                pulseAnim: _pulseAnim,
+                isAI: isAI,
+                isUser: isUser,
+                isProcessing: isProcessing,
+                mintGreen: mintGreen,
+                coralRed: coralRed,
+              ),
+
+            const SizedBox(height: 14),
+
+            // ── Turn label ────────────────────────────────────────────
+            _TurnLabel(
+              turn: _turn,
+              mintGreen: mintGreen,
+              coralRed: coralRed,
+            ),
+
+            const SizedBox(height: 20),
+
+            // ── Waveform ──────────────────────────────────────────────
+            if (!isLoading)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: SizedBox(
+                  height: 52,
+                  child: AnimatedBuilder(
+                    animation: _waveAnim,
+                    builder: (_, __) => CustomPaint(
+                      painter: _WavePainter(
+                        bars: _bars,
+                        color: isUser ? coralRed : mintGreen,
+                        animValue: _waveCtrl.value,
+                      ),
+                      size: const Size(double.infinity, 52),
+                    ),
+                  ),
                 ),
               ),
 
-              // Overall session progress bar
-              ProgressBar(value: progress),
-              const SizedBox(height: 6),
+            const SizedBox(height: 24),
 
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
+            // ── Question card ─────────────────────────────────────────
+            if (!isLoading && question.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: navyDeep,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isAI
+                          ? mintGreen.withValues(alpha: 0.35)
+                          : Colors.white.withValues(alpha: 0.06),
+                    ),
+                  ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 22),
-
-                      // ── AI Persona Avatar ───────────────────
-                      Stack(
-                        clipBehavior: Clip.none,
+                      Row(
                         children: [
                           Container(
-                            width: 76,
-                            height: 76,
+                            width: 6,
+                            height: 6,
                             decoration: BoxDecoration(
-                              color: colors.navy,
-                              borderRadius: BorderRadius.circular(25),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: colors.navy.withValues(alpha: 0.3),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              personaIcon,
-                              size: 28,
-                              color: colors.mint,
+                              color: mintGreen,
+                              shape: BoxShape.circle,
                             ),
                           ),
-                          Positioned(
-                            right: -4,
-                            top: -4,
-                            child: Container(
-                              width: 14,
-                              height: 14,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: colors.mint,
-                                border: Border.all(
-                                  color: colors.background,
-                                  width: 2,
-                                ),
-                              ),
+                          const SizedBox(width: 8),
+                          Text(
+                            category.toUpperCase(),
+                            style: AppTypography.bold(
+                              9,
+                              color: mintGreen,
+                              letterSpacing: 1.3,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        persona,
-                        style: AppTypography.bold(14, color: colors.foreground),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${config.role} · ${config.difficulty} mode',
-                        style: AppTypography.regular(
-                          10,
-                          color: colors.mutedForeground,
+                        question,
+                        style: AppTypography.bold(
+                          16,
+                          color: softWhite,
+                          height: 1.45,
                         ),
                       ),
-
-                      // ── Per-Question Timer ──────────────────
-                      if (config.timeLimitPerQuestion > 0) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: showTimerWarning
-                                ? colors.coral.withValues(alpha: 0.15)
-                                : colors.secondary,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: showTimerWarning
-                                  ? colors.coral.withValues(alpha: 0.5)
-                                  : colors.border,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _timerExpired
-                                    ? FeatherIcons.alertCircle
-                                    : FeatherIcons.clock,
-                                size: 13,
-                                color: _timerColor(colors),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _timerExpired
-                                    ? "Time's up — submit your answer"
-                                    : 'Time remaining: ${_formatTime(_remainingSeconds)}',
-                                style: AppTypography.semiBold(
-                                  11,
-                                  color: _timerColor(colors),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      // ── Question Card ───────────────────────
-                      Container(
-                        margin: const EdgeInsets.only(top: 16),
-                        padding: const EdgeInsets.all(22),
-                        decoration: BoxDecoration(
-                          color: colors.card,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: colors.border),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  isFollowUp
-                                      ? 'FOLLOW-UP QUESTION'
-                                      : 'QUESTION $questionNum · ${category.toUpperCase()}',
-                                  style: AppTypography.bold(
-                                    9,
-                                    color: colors.primary,
-                                    letterSpacing: 1.3,
-                                  ),
-                                ),
-                                if (isFollowUp)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: colors.accent,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      'Dig deeper',
-                                      style: AppTypography.semiBold(
-                                        9,
-                                        color: colors.accentForeground,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Text(
-                              question,
-                              style: AppTypography.bold(
-                                20,
-                                color: colors.foreground,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-
-                            // Context Hint (togglable)
-                            if (config.showHints || _showHintExpanded) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 9,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colors.secondary,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                      FeatherIcons.info,
-                                      size: 13,
-                                      color: colors.primary,
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Expanded(
-                                      child: Text(
-                                        hint,
-                                        style: AppTypography.regular(
-                                          10,
-                                          color: colors.mutedForeground,
-                                          height: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ] else ...[
-                              // Show toggle to reveal hint
-                              InkWell(
-                                onTap: () =>
-                                    setState(() => _showHintExpanded = true),
-                                borderRadius: BorderRadius.circular(10),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      FeatherIcons.helpCircle,
-                                      size: 13,
-                                      color: colors.mutedForeground,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      'Show hint',
-                                      style: AppTypography.semiBold(
-                                        10,
-                                        color: colors.mutedForeground,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-
-                      if (isFollowUp) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colors.accent,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                FeatherIcons.checkCircle,
-                                size: 14,
-                                color: colors.accentForeground,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Initial answer captured. Now go one level deeper.',
-                                  style: AppTypography.semiBold(
-                                    10,
-                                    color: colors.accentForeground,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
               ),
 
-              // ── Answer Area ───────────────────────────────────
-              Container(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: colors.border)),
-                ),
-                padding: const EdgeInsets.only(top: 14, bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Your answer',
-                          style: AppTypography.bold(
-                            14,
-                            color: colors.foreground,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            // Live answer quality indicator
-                            if (!_voice && currentText.isNotEmpty) ...[
-                              _QualityIndicator(
-                                quality: quality,
-                                colors: colors,
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            // Voice / text toggle
-                            Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: _toggleVoice,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _voice
-                                        ? colors.accent
-                                        : colors.secondary,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        _voice
-                                            ? FeatherIcons.mic
-                                            : FeatherIcons.edit3,
-                                        size: 13,
-                                        color: _voice
-                                            ? colors.accentForeground
-                                            : colors.secondaryForeground,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Text(
-                                        _voice ? 'Voice' : 'Text',
-                                        style: AppTypography.semiBold(
-                                          10,
-                                          color: _voice
-                                              ? colors.accentForeground
-                                              : colors.secondaryForeground,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+            // ── Live transcript ───────────────────────────────────────
+            if (isUser && displayTranscript.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: coralRed.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: coralRed.withValues(alpha: 0.3),
                     ),
-                    const SizedBox(height: 10),
-
-                    if (_voice) ...[
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _toggleRecording,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            height: 110,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: _recording
-                                  ? colors.accent
-                                  : colors.secondary,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: _recording
-                                    ? colors.primary.withValues(alpha: 0.4)
-                                    : colors.border,
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _recording
-                                    ? ScaleTransition(
-                                        scale: _pulseAnimation,
-                                        child: Container(
-                                          width: 42,
-                                          height: 42,
-                                          decoration: BoxDecoration(
-                                            color: colors.coral,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Icon(
-                                            FeatherIcons.square,
-                                            size: 16,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      )
-                                    : Container(
-                                        width: 42,
-                                        height: 42,
-                                        decoration: BoxDecoration(
-                                          color: colors.primary,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: Icon(
-                                          FeatherIcons.mic,
-                                          size: 18,
-                                          color: colors.primaryForeground,
-                                        ),
-                                      ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _recording
-                                      ? 'AI is listening…'
-                                      : _voiceTranscript.isNotEmpty
-                                      ? 'Transcript ready · Tap to re-record'
-                                      : 'Tap to start voice answer',
-                                  style: AppTypography.semiBold(
-                                    12,
-                                    color: colors.foreground,
-                                  ),
-                                ),
-                                if (_voiceTranscript.isNotEmpty) ...[
-                                  const SizedBox(height: 3),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                    ),
-                                    child: Text(
-                                      _voiceTranscript,
-                                      style: AppTypography.regular(
-                                        9,
-                                        color: colors.mutedForeground,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(FeatherIcons.mic, size: 13, color: coralRed),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          displayTranscript,
+                          style: AppTypography.regular(
+                            12,
+                            color: Colors.white70,
+                            height: 1.5,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                    ] else ...[
-                      AppTextField(
-                        controller: _answerController,
-                        placeholder: 'Type your answer here…',
-                        multiline: true,
-                        minLines: 3,
-                        maxLines: 4,
-                        onChanged: (_) => setState(() {}),
                       ),
                     ],
-
-                    AppButton(
-                      label: isLastQuestion
-                          ? 'Finish interview'
-                          : isFollowUp
-                          ? 'Continue to next question'
-                          : 'Submit answer',
-                      icon: isLastQuestion
-                          ? FeatherIcons.checkCircle
-                          : FeatherIcons.arrowRight,
-                      disabled: !hasAnswer,
-                      onPress: () => _submit(interviewCtrl),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildLoadingScreen(AppColorScheme colors, dynamic config) {
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: colors.navy,
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  FeatherIcons.messageCircle,
-                  size: 32,
-                  color: colors.mint,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Preparing your interview',
-                style: AppTypography.bold(22, color: colors.foreground),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Generating ${config.questions} tailored questions\nfor ${config.role} · ${config.difficulty} mode…',
-                style: AppTypography.regular(
-                  13,
-                  color: colors.mutedForeground,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Topics: ${config.focusTopics.take(3).join(', ')}',
-                style: AppTypography.semiBold(10, color: colors.primary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+            const Spacer(),
 
-  Widget _buildEvaluatingScreen(AppColorScheme colors, dynamic config) {
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: colors.accent,
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  FeatherIcons.award,
-                  size: 32,
-                  color: colors.accentForeground,
+            // ── Mic button ────────────────────────────────────────────
+            if (!isLoading)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                child: _MicButton(
+                  turn: _turn,
+                  sttAvailable: _sttAvailable,
+                  isListening: _stt.isListening,
+                  mintGreen: mintGreen,
+                  coralRed: coralRed,
+                  onStartListening: _startListening,
+                  onStopListening: _stopListening,
+                  onSkip: () {
+                    _tts.stop();
+                    _setTurn(_Turn.userTurn);
+                    _animateBars(calm: false);
+                  },
                 ),
               ),
-              const SizedBox(height: 24),
-              Text(
-                'Interview complete! 🎉',
-                style: AppTypography.bold(24, color: colors.foreground),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Analyzing your ${config.questions} responses and\ngenerating your performance report…',
-                style: AppTypography.regular(
-                  13,
-                  color: colors.mutedForeground,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ── Live Answer Quality Indicator ────────────────────────────────────────────
+// ── Turn label ────────────────────────────────────────────────────────────────
 
-class _QualityIndicator extends StatelessWidget {
-  final int quality; // 0–4
-  final AppColorScheme colors;
+class _TurnLabel extends StatelessWidget {
+  final _Turn turn;
+  final Color mintGreen;
+  final Color coralRed;
 
-  const _QualityIndicator({required this.quality, required this.colors});
+  const _TurnLabel({
+    required this.turn,
+    required this.mintGreen,
+    required this.coralRed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final labels = ['Too short', 'Brief', 'Developing', 'Good', 'Strong'];
-    final barColors = [
-      colors.destructive,
-      colors.coral,
-      colors.accent,
-      colors.primary,
-      colors.mint,
-    ];
+    final (label, color, icon) = switch (turn) {
+      _Turn.loading     => ('Generating questions…', Colors.white38, FeatherIcons.loader),
+      _Turn.aiSpeaking  => ('AI Interviewer is speaking', mintGreen, FeatherIcons.volume2),
+      _Turn.userTurn    => ('Your turn — tap mic to answer', coralRed, FeatherIcons.mic),
+      _Turn.processing  => ('Processing your answer…', Colors.white38, FeatherIcons.cpu),
+      _Turn.done        => ('Session complete', mintGreen, FeatherIcons.checkCircle),
+    };
 
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ...List.generate(4, (i) {
-          return Container(
-            width: 6,
-            height: i < quality ? 14 : 8,
-            margin: const EdgeInsets.symmetric(horizontal: 1.5),
-            decoration: BoxDecoration(
-              color: i < quality ? barColors[quality] : colors.border,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          );
-        }),
-        const SizedBox(width: 5),
-        Text(
-          labels[quality],
-          style: AppTypography.semiBold(9, color: barColors[quality]),
-        ),
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 7),
+        Text(label, style: AppTypography.semiBold(12, color: color)),
       ],
     );
   }
 }
+
+// ── Voice orb ─────────────────────────────────────────────────────────────────
+
+class _VoiceOrb extends StatelessWidget {
+  final Animation<double> pulseAnim;
+  final bool isAI;
+  final bool isUser;
+  final bool isProcessing;
+  final Color mintGreen;
+  final Color coralRed;
+
+  const _VoiceOrb({
+    required this.pulseAnim,
+    required this.isAI,
+    required this.isUser,
+    required this.isProcessing,
+    required this.mintGreen,
+    required this.coralRed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isUser ? coralRed : mintGreen;
+    final icon = isUser
+        ? FeatherIcons.mic
+        : isProcessing
+            ? FeatherIcons.cpu
+            : FeatherIcons.messageCircle;
+
+    return ScaleTransition(
+      scale: pulseAnim,
+      child: Container(
+        width: 110,
+        height: 110,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withValues(alpha: 0.12),
+          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+        ),
+        alignment: Alignment.center,
+        child: Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                color.withValues(alpha: 0.35),
+                color.withValues(alpha: 0.08),
+              ],
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 30, color: color),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Loading orb ───────────────────────────────────────────────────────────────
+
+class _LoadingOrb extends StatelessWidget {
+  final Animation<double> pulseAnim;
+  const _LoadingOrb({required this.pulseAnim});
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: pulseAnim,
+      child: Container(
+        width: 110,
+        height: 110,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.05),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              Colors.white.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Mic button ────────────────────────────────────────────────────────────────
+
+class _MicButton extends StatelessWidget {
+  final _Turn turn;
+  final bool sttAvailable;
+  final bool isListening;
+  final Color mintGreen;
+  final Color coralRed;
+  final VoidCallback onStartListening;
+  final VoidCallback onStopListening;
+  final VoidCallback onSkip;
+
+  const _MicButton({
+    required this.turn,
+    required this.sttAvailable,
+    required this.isListening,
+    required this.mintGreen,
+    required this.coralRed,
+    required this.onStartListening,
+    required this.onStopListening,
+    required this.onSkip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (turn == _Turn.aiSpeaking) {
+      // AI speaking — show "Skip" so user can interrupt
+      return GestureDetector(
+        onTap: onSkip,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(FeatherIcons.skipForward, size: 15, color: Colors.white54),
+              const SizedBox(width: 8),
+              Text(
+                'Skip — I\'ve read it',
+                style: AppTypography.semiBold(13, color: Colors.white54),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (turn == _Turn.userTurn) {
+      final listening = isListening;
+      final label = listening ? 'Tap to stop' : 'Tap to answer';
+      final color = listening ? coralRed : mintGreen;
+
+      return Column(
+        children: [
+          // Large mic button
+          GestureDetector(
+            onTap: listening ? onStopListening : onStartListening,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: listening ? 80 : 72,
+              height: listening ? 80 : 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: 0.15),
+                border: Border.all(color: color, width: 2),
+                boxShadow: listening
+                    ? [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.35),
+                          blurRadius: 24,
+                          spreadRadius: 4,
+                        )
+                      ]
+                    : null,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                listening ? FeatherIcons.square : FeatherIcons.mic,
+                size: 26,
+                color: color,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            style: AppTypography.semiBold(12, color: color),
+          ),
+        ],
+      );
+    }
+
+    // Processing / done — show spinner
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: CircularProgressIndicator(
+        strokeWidth: 2,
+        valueColor: AlwaysStoppedAnimation<Color>(mintGreen),
+      ),
+    );
+  }
+}
+
+// ── Waveform painter ──────────────────────────────────────────────────────────
+
+class _WavePainter extends CustomPainter {
+  final List<double> bars;
+  final Color color;
+  final double animValue;
+
+  const _WavePainter({
+    required this.bars,
+    required this.color,
+    required this.animValue,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    final w = size.width / bars.length;
+    for (int i = 0; i < bars.length; i++) {
+      final amp = bars[i] *
+          (0.6 + 0.4 * math.sin(animValue * 2 * math.pi + i * 0.6));
+      final h = (amp * size.height).clamp(4.0, size.height * 0.9);
+      final x = w * i + w / 2;
+      final cy = size.height / 2;
+      canvas.drawLine(
+        Offset(x, cy - h / 2),
+        Offset(x, cy + h / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WavePainter old) => true;
+}
+
+

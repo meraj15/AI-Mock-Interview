@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Microphone — required for voice interview (speech-to-text) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Internet — required for API calls and TTS on some devices -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="Interview Coach"
         android:name="${applicationName}"

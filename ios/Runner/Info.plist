@@ -66,5 +66,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
+	<!-- Microphone — required for voice interview answers (speech-to-text) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Interview Coach needs microphone access so you can answer interview questions using your voice.</string>
+
+	<!-- Speech recognition — required for live transcription of your answers -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Interview Coach uses speech recognition to transcribe your spoken answers during voice interviews.</string>
+
 </dict>
 </plist>
