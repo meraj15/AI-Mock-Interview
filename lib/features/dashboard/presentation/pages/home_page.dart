@@ -7,7 +7,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
-import '../../../interview/presentation/pages/create_interview_page.dart';
+import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 
@@ -92,7 +92,7 @@ class HomePage extends StatelessWidget {
             child: InkWell(
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CreateInterviewPage()),
+                  MaterialPageRoute(builder: (_) => const QuickInterviewSetupPage()),
                 );
               },
               borderRadius: BorderRadius.circular(24),

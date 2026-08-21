@@ -53,10 +53,32 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final interviewCtrl = context.read<InterviewController>();
       final resumeCtrl = context.read<ResumeController>();
-      interviewCtrl.startInterview(resume: resumeCtrl.resume).then((_) {
-        _startPerQuestionTimer();
-        _startSessionTimer();
-      });
+
+      // If interview was already triggered by the setup page, just start timers
+      if (interviewCtrl.sessionStatus == SessionStatus.loading ||
+          interviewCtrl.sessionStatus == SessionStatus.active) {
+        // Wait for loading to finish before starting timers
+        void checkAndStart() {
+          if (interviewCtrl.sessionStatus == SessionStatus.active) {
+            _startPerQuestionTimer();
+            _startSessionTimer();
+          } else {
+            Future.delayed(const Duration(milliseconds: 200), checkAndStart);
+          }
+        }
+        if (interviewCtrl.sessionStatus == SessionStatus.active) {
+          _startPerQuestionTimer();
+          _startSessionTimer();
+        } else {
+          Future.delayed(const Duration(milliseconds: 200), checkAndStart);
+        }
+      } else {
+        // Start fresh
+        interviewCtrl.startInterview(resume: resumeCtrl.resume).then((_) {
+          _startPerQuestionTimer();
+          _startSessionTimer();
+        });
+      }
 
       // Respect voice mode from config
       if (interviewCtrl.config.enableVoiceMode) {

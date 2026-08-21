@@ -17,6 +17,7 @@ class AuthController extends ChangeNotifier {
   UserEntity? _user;
   AuthStatus _status = AuthStatus.initial;
   bool _isOnboarded = false;
+  bool _isProfileSetupComplete = false;
   String? _errorMessage;
 
   AuthController({
@@ -33,7 +34,13 @@ class AuthController extends ChangeNotifier {
   bool get isLoading => _status == AuthStatus.loading;
   bool get isOnboarded => _isOnboarded;
   bool get isAuthenticated => _user != null;
+  bool get isProfileSetupComplete => _isProfileSetupComplete;
   String? get errorMessage => _errorMessage;
+
+  void markProfileSetupComplete() {
+    _isProfileSetupComplete = true;
+    notifyListeners();
+  }
 
   String _cleanErrorMessage(dynamic error) {
     if (error is AuthException) return error.message;

@@ -10,6 +10,7 @@ import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../controllers/auth_controller.dart';
 import 'forgot_password_page.dart';
+import 'profile_setup_page.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -28,9 +29,17 @@ class _LoginPageState extends State<LoginPage> {
     final success = await auth.signIn(_emailController.text, _passwordController.text);
     if (success && mounted) {
       context.read<ProfileController>().loadProfile();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavPage()),
-      );
+
+      // If profile setup hasn't been completed, show the setup page first
+      if (!auth.isProfileSetupComplete) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainNavPage()),
+        );
+      }
     } else if (!success && mounted && auth.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -200,9 +209,15 @@ class _LoginPageState extends State<LoginPage> {
                     onTap: () async {
                       final success = await auth.signInWithGoogle();
                       if (success && context.mounted) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
-                        );
+                        if (!auth.isProfileSetupComplete) {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
+                          );
+                        } else {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(builder: (_) => const MainNavPage()),
+                          );
+                        }
                       }
                     },
                     borderRadius: BorderRadius.circular(15),
@@ -236,9 +251,15 @@ class _LoginPageState extends State<LoginPage> {
                     onTap: () async {
                       final success = await auth.signInWithApple();
                       if (success && context.mounted) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const MainNavPage()),
-                        );
+                        if (!auth.isProfileSetupComplete) {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
+                          );
+                        } else {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(builder: (_) => const MainNavPage()),
+                          );
+                        }
                       }
                     },
                     borderRadius: BorderRadius.circular(15),

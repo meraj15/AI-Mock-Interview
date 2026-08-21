@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../../core/services/resume_parsing_service.dart';
+import '../../../resume/data/datasources/resume_remote_data_source.dart';
 import '../../domain/entities/resume_entity.dart';
 
 class ResumeController extends ChangeNotifier {
   final ResumeParsingService _parsingService = MockResumeParsingService();
+  final ResumeRemoteDataSource? remoteDataSource;
+
+  ResumeController({this.remoteDataSource});
 
   List<ResumeEntity> _resumes = [
     ResumeEntity.defaultResume(),
@@ -13,10 +17,12 @@ class ResumeController extends ChangeNotifier {
   String _activeResumeId = 'res_default';
   bool _isParsing = false;
   ParsingProgress? _parsingProgress;
+  bool _hasUserUploadedResume = false;
 
   List<ResumeEntity> get resumes => _resumes;
   bool get isParsing => _isParsing;
   ParsingProgress? get parsingProgress => _parsingProgress;
+  bool get hasUserResume => _hasUserUploadedResume;
 
   ResumeEntity get resume {
     return _resumes.firstWhere(
@@ -135,5 +141,129 @@ class ResumeController extends ChangeNotifier {
       skills: current.skills.where((s) => s != skill).toList(),
     );
     updateResume(updated);
+  }
+
+  /// Upload a file from the device using file_picker and parse it.
+  /// Uses the real API if [remoteDataSource] is injected, otherwise falls back to mock.
+  Future<ResumeEntity> uploadFromFilePicker({
+    required String fileName,
+    String? filePath,
+    void Function(double progress)? onProgress,
+  }) async {
+    _isParsing = true;
+    _parsingProgress = const ParsingProgress(
+      stage: ParsingStage.readingDocument,
+      stageMessage: 'Uploading resume to AI…',
+      progressPercent: 0.1,
+    );
+    notifyListeners();
+
+    ResumeEntity parsedResume;
+
+    try {
+      if (remoteDataSource != null && filePath != null) {
+        // ── Real API path ─────────────────────────────────────────
+        _parsingProgress = const ParsingProgress(
+          stage: ParsingStage.readingDocument,
+          stageMessage: 'Sending resume to server…',
+          progressPercent: 0.2,
+        );
+        notifyListeners();
+
+        final profile = await remoteDataSource!.parseResume(
+          filePath: filePath,
+          fileName: fileName,
+          onProgress: (p) {
+            onProgress?.call(p);
+            _parsingProgress = ParsingProgress(
+              stage: p < 0.5
+                  ? ParsingStage.readingDocument
+                  : p < 0.8
+                      ? ParsingStage.extractingSkills
+                      : ParsingStage.finalizingProfile,
+              stageMessage: p < 0.5
+                  ? 'Extracting text from PDF…'
+                  : p < 0.8
+                      ? 'AI is building your profile…'
+                      : 'Finalizing structured profile…',
+              progressPercent: p,
+            );
+            notifyListeners();
+          },
+        );
+
+        parsedResume = profile.toResumeEntity(
+          fileName: fileName,
+          fileSize: filePath.isNotEmpty ? '—' : '—',
+        );
+      } else {
+        // ── Mock fallback ─────────────────────────────────────────
+        parsedResume = await _parsingService.parseDocument(
+          fileName: fileName,
+          fileSizeBytes: '—',
+          onProgress: (progress) {
+            _parsingProgress = progress;
+            notifyListeners();
+          },
+        );
+      }
+    } catch (e) {
+      _isParsing = false;
+      _parsingProgress = null;
+      notifyListeners();
+      rethrow;
+    }
+
+    _resumes.insert(0, parsedResume);
+    _activeResumeId = parsedResume.id;
+    _isParsing = false;
+    _parsingProgress = null;
+    _hasUserUploadedResume = true;
+    notifyListeners();
+
+    return parsedResume;
+  }
+
+  /// Add a manually entered profile as a resume.
+  void addManualProfile({
+    required String candidateName,
+    required String targetRole,
+    required String experience,
+    required List<String> skills,
+    required String summary,
+  }) {
+    final id = 'res_manual_${DateTime.now().millisecondsSinceEpoch}';
+    final manualResume = ResumeEntity(
+      id: id,
+      name: '$candidateName – $targetRole',
+      candidateName: candidateName,
+      email: '',
+      phone: '',
+      source: ResumeSource.paste,
+      status: ResumeStatus.ready,
+      isDefault: true,
+      uploadedDate: _formattedToday(),
+      fileSize: '—',
+      summary: summary,
+      skills: skills,
+      experience: experience,
+      education: '',
+      projects: 0,
+    );
+
+    _resumes.insert(0, manualResume);
+    _activeResumeId = id;
+    _resumes = _resumes.map((r) => r.copyWith(isDefault: r.id == id)).toList();
+    _hasUserUploadedResume = true;
+    notifyListeners();
+  }
+
+  String _formattedToday() {
+    final now = DateTime.now();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[now.month - 1]} ${now.day}, ${now.year}';
   }
 }

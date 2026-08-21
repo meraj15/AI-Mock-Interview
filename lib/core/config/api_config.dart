@@ -59,6 +59,9 @@ class ApiConfig {
   static const String logoutAllEndpoint = '/api/v1/auth/logout-all';
   static const String profileEndpoint = '/api/v1/profile';
 
+  // ── Resume Endpoints ───────────────────────────────────────────────────────
+  static const String resumeParseEndpoint = '/api/resume/parse';
+
   // ── Network Timeouts ───────────────────────────────────────────────────────
   static const Duration connectTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 10);

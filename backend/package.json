@@ -17,6 +17,8 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@types/multer": "^2.2.0",
+    "@types/pdf-parse": "^1.1.5",
     "argon2": "^0.41.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -24,6 +26,9 @@
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
+    "openai": "^7.5.0",
+    "pdf-parse": "^2.4.5",
     "winston": "^3.17.0",
     "zod": "^3.24.1"
   },
