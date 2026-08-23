@@ -1,8 +1,8 @@
 // pdf-parse uses CJS default export — must import this way for TypeScript compatibility
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
-import OpenAI from 'openai';
-import { config } from '../config';
+
+import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { logger } from '../utils/logger';
 
 // ── Structured profile shape returned to Flutter ──────────────────────────────
@@ -35,7 +35,7 @@ export interface ResumeProfile {
   }>;
 }
 
-// ── AI prompt ─────────────────────────────────────────────────────────────────
+// ── Gemini prompt ─────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a resume parser. Extract structured information from the resume text and return ONLY valid JSON — no markdown, no explanation, no extra text.
 
@@ -73,22 +73,32 @@ Return empty arrays [] for sections with no data. Never return null.`;
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export class ResumeService {
-  private openai: OpenAI | null = null;
+  private model: GenerativeModel | null = null;
 
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey && apiKey.trim().length > 0) {
-      this.openai = new OpenAI({ apiKey });
+      const genAI = new GoogleGenerativeAI(apiKey);
+      // gemini-2.0-flash: fastest, free-tier available, supports JSON output
+      this.model = genAI.getGenerativeModel({
+        model: 'gemini-2.0-flash',
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+        },
+        systemInstruction: SYSTEM_PROMPT,
+      });
+      logger.info('Gemini resume service initialised (gemini-2.0-flash)');
     } else {
-      logger.warn('OPENAI_API_KEY not set — resume parsing will use fallback extraction');
+      logger.warn('GEMINI_API_KEY not set — resume parsing will use fallback extraction');
     }
   }
 
   /**
-   * Parse a PDF buffer → extract text → convert to structured profile via AI.
+   * Parse a PDF/TXT buffer → extract text → convert to structured profile via Gemini.
    */
   async parseResume(fileBuffer: Buffer, fileName: string): Promise<ResumeProfile> {
-    // 1. Extract raw text from PDF
     const rawText = await this.extractText(fileBuffer);
 
     if (!rawText || rawText.trim().length < 30) {
@@ -100,10 +110,7 @@ export class ResumeService {
 
     logger.info(`Extracted ${rawText.length} characters from ${fileName}`);
 
-    // 2. Convert text → structured JSON via AI (or basic fallback)
-    const profile = await this.structureWithAI(rawText, fileName);
-
-    return profile;
+    return this.structureWithAI(rawText, fileName);
   }
 
   // ── Step 1: PDF text extraction ──────────────────────────────────────────
@@ -114,7 +121,7 @@ export class ResumeService {
       return data.text ?? '';
     } catch (err) {
       logger.error('PDF parse error:', err);
-      // For non-PDF text files (txt, doc preview), try treating buffer as UTF-8
+      // For plain text files, fall back to UTF-8 decode
       return buffer.toString('utf-8');
     }
   }
@@ -122,66 +129,60 @@ export class ResumeService {
   // ── Step 2: AI structuring ───────────────────────────────────────────────
 
   private async structureWithAI(resumeText: string, fileName: string): Promise<ResumeProfile> {
-    if (this.openai) {
-      return this.structureWithOpenAI(resumeText);
+    if (this.model) {
+      return this.structureWithGemini(resumeText);
     }
-    // Fallback: basic regex extraction when no API key
     return this.basicFallbackExtraction(resumeText, fileName);
   }
 
-  private async structureWithOpenAI(resumeText: string): Promise<ResumeProfile> {
-    // Truncate very long resumes to fit context window
-    const truncated = resumeText.length > 8000 ? resumeText.slice(0, 8000) : resumeText;
+  private async structureWithGemini(resumeText: string): Promise<ResumeProfile> {
+    // Truncate very long resumes — 12k chars is well within Gemini Flash's context
+    const truncated = resumeText.length > 12000 ? resumeText.slice(0, 12000) : resumeText;
 
-    const completion = await this.openai!.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Parse this resume and return structured JSON:\n\n${truncated}`,
-        },
-      ],
-      temperature: 0.1,
-      max_tokens: 2048,
-      response_format: { type: 'json_object' },
-    });
+    const result = await this.model!.generateContent(
+      `Parse this resume and return structured JSON:\n\n${truncated}`
+    );
 
-    const content = completion.choices[0]?.message?.content ?? '{}';
+    const raw = result.response.text();
+
+    // Strip markdown fences if the model adds them despite instructions
+    let cleaned = raw.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned
+        .replace(/^```[a-z]*\n?/, '')
+        .replace(/```$/, '')
+        .trim();
+    }
 
     try {
-      const parsed = JSON.parse(content) as ResumeProfile;
+      const parsed = JSON.parse(cleaned) as ResumeProfile;
       return this.sanitizeProfile(parsed);
     } catch {
-      logger.error('Failed to parse AI JSON response:', content.slice(0, 200));
+      logger.error('Failed to parse Gemini JSON response:', cleaned.slice(0, 200));
       throw new Error('AI returned an invalid response. Please try again.');
     }
   }
 
   /**
-   * Regex-based fallback when no OpenAI key is configured.
-   * Extracts the most obvious fields from plain text.
+   * Regex-based fallback when GEMINI_API_KEY is not configured.
    */
   private basicFallbackExtraction(text: string, fileName: string): ResumeProfile {
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-    // Email
     const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
     const email = emailMatch ? emailMatch[0] : '';
 
-    // Phone
     const phoneMatch = text.match(/(\+?\d[\d\s\-().]{7,15}\d)/);
     const phone = phoneMatch ? phoneMatch[0].trim() : '';
 
-    // Name: often the first non-empty line that looks like a name
     const name = lines[0] ?? fileName.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ');
 
-    // Skills: lines containing common tech keywords
     const skillKeywords = [
-      'flutter','dart','react','node','python','java','kotlin','swift','typescript',
-      'javascript','firebase','postgresql','mongodb','docker','aws','git','redis',
-      'express','django','fastapi','spring','mysql','sql','rest','graphql','bloc',
-      'provider','riverpod','clean architecture','cicd','kubernetes','terraform',
+      'flutter', 'dart', 'react', 'node', 'python', 'java', 'kotlin', 'swift',
+      'typescript', 'javascript', 'firebase', 'postgresql', 'mongodb', 'docker',
+      'aws', 'git', 'redis', 'express', 'django', 'fastapi', 'spring', 'mysql',
+      'sql', 'rest', 'graphql', 'bloc', 'provider', 'riverpod', 'clean architecture',
+      'cicd', 'kubernetes', 'terraform',
     ];
     const skills: string[] = [];
     skillKeywords.forEach((kw) => {
@@ -190,54 +191,41 @@ export class ResumeService {
       }
     });
 
-    // Experience years: look for patterns like "2 years" or "1.5 years"
     const expMatch = text.match(/(\d+\.?\d*)\s*(year|yr)/i);
     const experience_years = expMatch ? parseFloat(expMatch[1]) : 0;
 
-    // Target role: look for common title keywords in first 5 lines
     const roleLine = lines.slice(0, 5).join(' ').toLowerCase();
     let target_role = 'Software Engineer';
-    if (roleLine.includes('flutter')) target_role = 'Flutter Developer';
-    else if (roleLine.includes('backend')) target_role = 'Backend Engineer';
+    if (roleLine.includes('flutter'))          target_role = 'Flutter Developer';
+    else if (roleLine.includes('backend'))     target_role = 'Backend Engineer';
     else if (roleLine.includes('frontend') || roleLine.includes('react')) target_role = 'Frontend Developer';
     else if (roleLine.includes('fullstack') || roleLine.includes('full stack')) target_role = 'Full Stack Engineer';
-    else if (roleLine.includes('android')) target_role = 'Android Developer';
-    else if (roleLine.includes('ios')) target_role = 'iOS Developer';
-    else if (roleLine.includes('devops')) target_role = 'DevOps Engineer';
+    else if (roleLine.includes('android'))     target_role = 'Android Developer';
+    else if (roleLine.includes('ios'))         target_role = 'iOS Developer';
+    else if (roleLine.includes('devops'))      target_role = 'DevOps Engineer';
     else if (roleLine.includes('data') || roleLine.includes('ml')) target_role = 'Data / ML Engineer';
 
     const summary = `${name} is a ${target_role} with ${experience_years > 0 ? experience_years + ' years' : 'early-career'} experience. Skills include ${skills.slice(0, 5).join(', ')}.`;
 
     return this.sanitizeProfile({
-      name,
-      email,
-      phone,
-      target_role,
-      experience_years,
-      summary,
-      skills,
-      education: [],
-      work_experience: [],
-      projects: [],
-      certifications: [],
+      name, email, phone, target_role, experience_years, summary, skills,
+      education: [], work_experience: [], projects: [], certifications: [],
     });
   }
 
-  // ── Sanitize: ensure all required fields are present ────────────────────
-
   private sanitizeProfile(p: Partial<ResumeProfile>): ResumeProfile {
     return {
-      name: p.name ?? '',
-      email: p.email ?? '',
-      phone: p.phone ?? '',
-      target_role: p.target_role ?? 'Software Engineer',
+      name:             p.name ?? '',
+      email:            p.email ?? '',
+      phone:            p.phone ?? '',
+      target_role:      p.target_role ?? 'Software Engineer',
       experience_years: typeof p.experience_years === 'number' ? p.experience_years : 0,
-      summary: p.summary ?? '',
-      skills: Array.isArray(p.skills) ? p.skills.filter(Boolean) : [],
-      education: Array.isArray(p.education) ? p.education : [],
-      work_experience: Array.isArray(p.work_experience) ? p.work_experience : [],
-      projects: Array.isArray(p.projects) ? p.projects : [],
-      certifications: Array.isArray(p.certifications) ? p.certifications : [],
+      summary:          p.summary ?? '',
+      skills:           Array.isArray(p.skills) ? p.skills.filter(Boolean) : [],
+      education:        Array.isArray(p.education) ? p.education : [],
+      work_experience:  Array.isArray(p.work_experience) ? p.work_experience : [],
+      projects:         Array.isArray(p.projects) ? p.projects : [],
+      certifications:   Array.isArray(p.certifications) ? p.certifications : [],
     };
   }
 }

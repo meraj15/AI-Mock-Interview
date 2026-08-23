@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/services/ai_interview_service.dart';
 import '../../../resume/domain/entities/resume_entity.dart';
 import '../../domain/entities/interview_config_entity.dart';
+import '../../data/datasources/interview_remote_data_source.dart';
 
 
 enum SessionStatus { idle, loading, active, followUp, evaluating, complete }
@@ -47,8 +48,26 @@ class InterviewController extends ChangeNotifier {
   bool _isFollowUp = false;
   AIEvaluationResult? _lastEvaluation;
 
+  /// Optional — injected in main.dart. When set, completed sessions are
+  /// persisted to the backend automatically.
+  final InterviewRemoteDataSource? remoteDataSource;
+
+  /// Callback invoked after a session is saved so the dashboard can refresh.
+  /// Mutable so the ProxyProvider can wire it after construction.
+  void Function()? _onSessionSaved;
+
+  /// Tracks when the current session started (for durationSecs).
+  DateTime? _sessionStartedAt;
+
   // Track all answers for session review
   final List<Map<String, String>> _sessionHistory = [];
+
+  InterviewController({this.remoteDataSource});
+
+  /// Called by the ProxyProvider in main.dart to wire the dashboard refresh.
+  void setOnSessionSaved(void Function()? callback) {
+    _onSessionSaved = callback;
+  }
 
   InterviewConfigEntity get config => _config;
   bool get interviewActive => _interviewActive;
@@ -121,6 +140,7 @@ class InterviewController extends ChangeNotifier {
     _currentIndex = 0;
     _isFollowUp = false;
     _sessionHistory.clear();
+    _sessionStartedAt = DateTime.now();
     notifyListeners();
 
     final ai = MockAIInterviewService();
@@ -174,6 +194,40 @@ class InterviewController extends ChangeNotifier {
     );
     _sessionStatus = SessionStatus.complete;
     notifyListeners();
+
+    // ── Persist to backend (fire-and-forget, does not block UI) ──────────
+    _persistSession();
+  }
+
+  /// Saves the completed session to the backend.
+  /// Errors are silently swallowed so a network failure never breaks the UI.
+  Future<void> _persistSession() async {
+    if (remoteDataSource == null || _lastEvaluation == null) return;
+
+    final durationSecs = _sessionStartedAt != null
+        ? DateTime.now().difference(_sessionStartedAt!).inSeconds
+        : 0;
+
+    try {
+      await remoteDataSource!.saveSession(
+        SaveInterviewRequest(
+          role:           _config.role,
+          type:           _config.type,
+          difficulty:     _config.difficulty,
+          questionCount:  _config.questions,
+          score:          _lastEvaluation!.overallScore,
+          hiringBand:     _lastEvaluation!.hiringBand,
+          summary:        _lastEvaluation!.summary,
+          strengths:      _lastEvaluation!.strengths,
+          areasToImprove: _lastEvaluation!.areasToImprove,
+          durationSecs:   durationSecs,
+        ),
+      );
+      // Tell the dashboard controller to refresh its stats
+      _onSessionSaved?.call();
+    } catch (_) {
+      // Network failures must not disrupt the result screen
+    }
   }
 
   void finishInterview() {

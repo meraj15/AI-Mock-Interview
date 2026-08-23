@@ -22,6 +22,7 @@ model User {
   lastLoginAt   DateTime?
   profile       UserProfile?
   refreshTokens RefreshToken[]
+  interviewSessions InterviewSession[]
 
   @@map("users")
 }
@@ -58,4 +59,27 @@ model RefreshToken {
   @@index([userId])
   @@index([tokenHash])
   @@map("refresh_tokens")
+}
+
+// ── InterviewSession ──────────────────────────────────────────────────────────
+model InterviewSession {
+  id            String   @id @default(uuid())
+  userId        String
+  role          String
+  type          String
+  difficulty    String
+  questionCount Int
+  score         Int      // 0–100
+  hiringBand    String
+  summary       String   @db.Text
+  strengths     String[] // stored as array
+  areasToImprove String[]
+  durationSecs  Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@map("interview_sessions")
 }

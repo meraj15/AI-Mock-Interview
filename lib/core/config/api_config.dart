@@ -8,18 +8,43 @@ class ApiConfig {
   /// Optional manual base URL override (useful for physical device LAN testing or CI)
   static String? customBaseUrl;
 
-  /// Candidate development endpoints (tested in order of priority)
+  /// Candidate development endpoints (tested in order of priority).
+  ///
+  /// Order matters — the first reachable host wins and is persisted so
+  /// subsequent cold-starts skip this discovery loop.
+  ///
+  /// • 192.168.0.108 — LAN IP of the dev machine (physical device on Wi-Fi)
+  /// • 10.0.2.2      — Android emulator alias for host localhost
+  /// • localhost     — Windows / web / desktop runner
   static const List<String> developmentCandidates = [
-    'http://localhost:3000',
-    'http://192.168.0.113:3000',
+    'http://192.168.0.101:3000',
+    'http://192.168.0.108:3000',
     'http://10.0.2.2:3000',
+    'http://localhost:3000',
   ];
 
-  /// Currently active discovered base URL
+  /// Currently active discovered base URL — set after first successful request.
+  /// Persisted across sessions via [setResolvedBaseUrl] so host discovery only
+  /// runs once rather than on every cold-start.
   static String? _resolvedBaseUrl;
 
   static void setResolvedBaseUrl(String url) {
     _resolvedBaseUrl = url;
+  }
+
+  /// Restore the previously discovered host on app startup.
+  /// Call this in main() after reading SharedPreferences.
+  /// If the saved host is no longer in [developmentCandidates] (e.g. the
+  /// machine IP changed) it is ignored and discovery runs again.
+  static void restoreResolvedBaseUrl(String? url) {
+    if (url != null && url.isNotEmpty) {
+      // Only restore if it's still a valid candidate — guards against stale IPs.
+      final isStillValid = developmentCandidates.contains(url) ||
+          currentEnvironment != Environment.development;
+      if (isStillValid) {
+        _resolvedBaseUrl = url;
+      }
+    }
   }
 
   /// Returns the base URL according to the current platform & environment.
@@ -61,6 +86,10 @@ class ApiConfig {
 
   // ── Resume Endpoints ───────────────────────────────────────────────────────
   static const String resumeParseEndpoint = '/api/resume/parse';
+
+  // ── Interview Endpoints ────────────────────────────────────────────────────
+  static const String interviewsEndpoint      = '/api/v1/interviews';
+  static const String interviewStatsEndpoint  = '/api/v1/interviews/stats';
 
   // ── Network Timeouts ───────────────────────────────────────────────────────
   static const Duration connectTimeout = Duration(seconds: 10);

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../../../../core/services/resume_parsing_service.dart';
 import '../../../resume/data/datasources/resume_remote_data_source.dart';
@@ -88,21 +90,27 @@ class ResumeController extends ChangeNotifier {
     );
     notifyListeners();
 
-    final parsedResume = await _parsingService.parseRawText(
-      rawText: text,
-      onProgress: (progress) {
-        _parsingProgress = progress;
-        notifyListeners();
-      },
-    );
+    try {
+      final parsedResume = await _parsingService.parseRawText(
+        rawText: text,
+        onProgress: (progress) {
+          _parsingProgress = progress;
+          notifyListeners();
+        },
+      );
 
-    _resumes.insert(0, parsedResume);
-    _activeResumeId = parsedResume.id;
-    _isParsing = false;
-    _parsingProgress = null;
-    notifyListeners();
-
-    return parsedResume;
+      _resumes.insert(0, parsedResume);
+      _activeResumeId = parsedResume.id;
+      _isParsing = false;
+      _parsingProgress = null;
+      notifyListeners();
+      return parsedResume;
+    } catch (e) {
+      _isParsing = false;
+      _parsingProgress = null;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   void updateResume(ResumeEntity updated) {
@@ -143,8 +151,12 @@ class ResumeController extends ChangeNotifier {
     updateResume(updated);
   }
 
-  /// Upload a file from the device using file_picker and parse it.
-  /// Uses the real API if [remoteDataSource] is injected, otherwise falls back to mock.
+  /// Upload a file from the device and parse it via the backend Gemini service.
+  ///
+  /// Flow: Flutter → POST /api/resume/parse (multipart) → Node.js → Gemini → structured profile
+  ///
+  /// Falls back to the mock service if [remoteDataSource] is not injected
+  /// (e.g. during UI development without a running backend).
   Future<ResumeEntity> uploadFromFilePicker({
     required String fileName,
     String? filePath,
@@ -162,7 +174,7 @@ class ResumeController extends ChangeNotifier {
 
     try {
       if (remoteDataSource != null && filePath != null) {
-        // ── Real API path ─────────────────────────────────────────
+        // ── Real backend path (Flutter → Node.js → Gemini) ───────────────
         _parsingProgress = const ParsingProgress(
           stage: ParsingStage.readingDocument,
           stageMessage: 'Sending resume to server…',
@@ -184,7 +196,7 @@ class ResumeController extends ChangeNotifier {
               stageMessage: p < 0.5
                   ? 'Extracting text from PDF…'
                   : p < 0.8
-                      ? 'AI is building your profile…'
+                      ? 'Gemini is building your profile…'
                       : 'Finalizing structured profile…',
               progressPercent: p,
             );
@@ -192,12 +204,17 @@ class ResumeController extends ChangeNotifier {
           },
         );
 
+        String fileSize = '—';
+        try {
+          fileSize = await _readableFileSize(filePath);
+        } catch (_) {}
+
         parsedResume = profile.toResumeEntity(
           fileName: fileName,
-          fileSize: filePath.isNotEmpty ? '—' : '—',
+          fileSize: fileSize,
         );
       } else {
-        // ── Mock fallback ─────────────────────────────────────────
+        // ── Mock fallback (no backend / no filePath) ──────────────────────
         parsedResume = await _parsingService.parseDocument(
           fileName: fileName,
           fileSizeBytes: '—',
@@ -222,6 +239,19 @@ class ResumeController extends ChangeNotifier {
     notifyListeners();
 
     return parsedResume;
+  }
+
+  Future<String> _readableFileSize(String filePath) async {
+    try {
+      final bytes = await File(filePath).length();
+      if (bytes < 1024) return '$bytes B';
+      if (bytes < 1024 * 1024) {
+        return '${(bytes / 1024).toStringAsFixed(1)} KB';
+      }
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } catch (_) {
+      return '—';
+    }
   }
 
   /// Add a manually entered profile as a resume.

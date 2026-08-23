@@ -2,9 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../error/exceptions.dart';
 import '../storage/token_storage.dart';
+
+/// SharedPreferences key used to persist the resolved backend host across
+/// app restarts so host-discovery only runs once.
+const _kResolvedHostKey = 'ic_resolved_backend_host';
 
 class ApiResponse {
   final int statusCode;
@@ -114,7 +119,12 @@ class ApiClient {
     );
   }
 
-  // ── Candidate Host Fallback for Development (Physical Device / Emulator / Desktop) ─
+  // ── Candidate Host Fallback ───────────────────────────────────────────────
+  //
+  // In development mode the client tries all 3 candidate hosts sequentially
+  // until one responds. After the first success the working host is saved to
+  // SharedPreferences so subsequent cold-starts skip the discovery loop and
+  // go directly to the known-good host.
 
   Future<ApiResponse> _sendRequestWithFallback({
     required String method,
@@ -138,7 +148,8 @@ class ApiClient {
       );
     }
 
-    // Try current base URL first
+    // Build candidate list — resolved host (if known) goes first so we skip
+    // trying unreachable addresses on subsequent requests.
     final candidateHosts = [
       ApiConfig.baseUrl,
       ...ApiConfig.developmentCandidates.where((u) => u != ApiConfig.baseUrl),
@@ -159,8 +170,10 @@ class ApiClient {
           autoRefresh: autoRefresh,
           customTimeout: const Duration(seconds: 4),
         );
-        // Remember successful host
+        // Host is reachable — remember it in memory and persist it so the
+        // next cold-start skips the discovery loop entirely.
         ApiConfig.setResolvedBaseUrl(host);
+        _persistResolvedHost(host);
         return res;
       } on NetworkException catch (e) {
         lastException = e;
@@ -172,16 +185,22 @@ class ApiClient {
         lastException = NetworkException(e.message ?? 'Timed out');
         continue;
       } catch (e) {
-        if (e is Exception && (e is AuthException || e is ValidationException || e is ServerException)) {
-          // If the server responded with an application-level error, the host is reachable!
+        if (e is Exception &&
+            (e is AuthException ||
+                e is ValidationException ||
+                e is ServerException)) {
+          // Server responded with an application-level error → host is reachable.
           ApiConfig.setResolvedBaseUrl(host);
+          _persistResolvedHost(host);
           rethrow;
         }
         lastException = NetworkException(e.toString());
       }
     }
 
-    throw lastException ?? NetworkException('Unable to reach backend server. Please make sure the server is running.');
+    throw lastException ??
+        NetworkException(
+            'Unable to reach backend server. Please make sure the server is running.');
   }
 
   // ── Core Single Request Execution ─────────────────────────────────────────
@@ -216,13 +235,17 @@ class ApiClient {
     } on TimeoutException {
       throw NetworkException('Request timed out. Please check your connection.');
     } catch (e) {
-      if (e is Exception && (e is NetworkException || e is ServerException || e is AuthException || e is ValidationException)) {
+      if (e is Exception &&
+          (e is NetworkException ||
+              e is ServerException ||
+              e is AuthException ||
+              e is ValidationException)) {
         rethrow;
       }
       throw NetworkException('Network error: ${e.toString()}');
     }
 
-    // ── Handle 401 Unauthorized with Automatic Token Refresh ─────────────────
+    // ── Handle 401 with automatic token refresh ───────────────────────────
     if (response.statusCode == 401 && requiresAuth && autoRefresh) {
       final refreshed = await _attemptTokenRefresh(baseUrl);
       if (refreshed) {
@@ -239,14 +262,15 @@ class ApiClient {
       } else {
         await _tokenStorage.clearTokens();
         onSessionExpired?.call();
-        throw AuthException('Session expired. Please sign in again.', 'SESSION_EXPIRED');
+        throw AuthException(
+            'Session expired. Please sign in again.', 'SESSION_EXPIRED');
       }
     }
 
     return _processResponse(response);
   }
 
-  // ── Token Refresh Coordination (Thread-Safe Mutex) ────────────────────────
+  // ── Token Refresh (thread-safe mutex) ────────────────────────────────────
 
   Future<bool> _attemptTokenRefresh(String baseUrl) async {
     if (_isRefreshing) {
@@ -298,18 +322,32 @@ class ApiClient {
     }
   }
 
+  // ── Persist resolved host ─────────────────────────────────────────────────
+
+  /// Fire-and-forget: saves the working host to SharedPreferences so the next
+  /// cold-start restores it and skips the 3-candidate discovery loop.
+  void _persistResolvedHost(String host) {
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setString(_kResolvedHostKey, host),
+    );
+  }
+
   // ── URI & Headers Helpers ─────────────────────────────────────────────────
 
-  Uri _buildUri(String baseUrl, String path, Map<String, dynamic>? queryParameters) {
+  Uri _buildUri(
+    String baseUrl,
+    String path,
+    Map<String, dynamic>? queryParameters,
+  ) {
     final fullUrl = path.startsWith('http') ? path : '$baseUrl$path';
-    final parsed = Uri.parse(fullUrl);
+    final parsedUri = Uri.parse(fullUrl);
     if (queryParameters != null && queryParameters.isNotEmpty) {
-      return parsed.replace(queryParameters: {
-        ...parsed.queryParameters,
+      return parsedUri.replace(queryParameters: {
+        ...parsedUri.queryParameters,
         ...queryParameters.map((k, v) => MapEntry(k, v.toString())),
       });
     }
-    return parsed;
+    return parsedUri;
   }
 
   Future<Map<String, String>> _buildHeaders(
@@ -348,8 +386,11 @@ class ApiClient {
     final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
 
     if (isSuccess) {
-      final message = jsonBody is Map ? jsonBody['message'] as String? : null;
-      final data = jsonBody is Map && jsonBody.containsKey('data') ? jsonBody['data'] : jsonBody;
+      final message =
+          jsonBody is Map ? jsonBody['message'] as String? : null;
+      final data = jsonBody is Map && jsonBody.containsKey('data')
+          ? jsonBody['data']
+          : jsonBody;
       return ApiResponse(
         statusCode: response.statusCode,
         data: data,
@@ -358,8 +399,8 @@ class ApiClient {
       );
     }
 
-    // Extract message & code from backend response
-    String errorMessage = 'Request failed with status ${response.statusCode}';
+    String errorMessage =
+        'Request failed with status ${response.statusCode}';
     String? errorCode;
     final List<String> validationDetails = [];
 
@@ -371,7 +412,6 @@ class ApiClient {
         if (nestedMsg != null && nestedMsg.isNotEmpty) {
           errorMessage = nestedMsg;
         }
-        // Parse field-level validation details: [{ "field": "password", "message": "..." }]
         final details = jsonBody['error']['details'];
         if (details is List) {
           for (final d in details) {
@@ -383,29 +423,28 @@ class ApiClient {
       }
     }
 
-    // Friendly translations
     if (errorCode == 'INVALID_CREDENTIALS') {
-      errorMessage = 'Invalid email or password.';
-      throw AuthException(errorMessage, errorCode);
+      throw AuthException('Invalid email or password.', errorCode);
     }
 
     if (errorCode == 'EMAIL_ALREADY_EXISTS') {
-      errorMessage = 'An account with this email already exists.';
-      throw AuthException(errorMessage, errorCode);
+      throw AuthException(
+          'An account with this email already exists.', errorCode);
     }
 
     if (errorCode == 'ACCOUNT_DISABLED') {
-      errorMessage = 'Your account has been disabled. Please contact support.';
-      throw AuthException(errorMessage, errorCode);
+      throw AuthException(
+          'Your account has been disabled. Please contact support.',
+          errorCode);
     }
 
     if (errorCode == 'RATE_LIMIT_EXCEEDED') {
-      errorMessage = 'Too many attempts. Please wait 15 minutes before trying again.';
-      throw AuthException(errorMessage, errorCode);
+      throw AuthException(
+          'Too many attempts. Please wait 15 minutes before trying again.',
+          errorCode);
     }
 
     if (response.statusCode == 422 || errorCode == 'VALIDATION_ERROR') {
-      // Use detail messages when available, otherwise fall back to the top-level message
       final displayMessage = validationDetails.isNotEmpty
           ? validationDetails.join('\n')
           : errorMessage;
@@ -417,7 +456,8 @@ class ApiClient {
     }
 
     if (response.statusCode >= 500) {
-      throw ServerException('Something went wrong. Please try again later.', errorCode);
+      throw ServerException(
+          'Something went wrong. Please try again later.', errorCode);
     }
 
     throw ServerException(errorMessage, errorCode);

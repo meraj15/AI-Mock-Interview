@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/config/api_config.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
@@ -11,6 +12,8 @@ import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/domain/usecases/auth_usecases.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/interview/presentation/controllers/interview_controller.dart';
+import 'features/interview/data/datasources/interview_remote_data_source.dart';
+import 'features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'features/job_prep/presentation/controllers/job_prep_controller.dart';
 import 'features/profile/data/datasources/profile_remote_data_source.dart';
 import 'features/profile/presentation/controllers/profile_controller.dart';
@@ -23,6 +26,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
 
+  // ── Restore previously-discovered backend host ────────────────────────────
+  // This prevents the 3-candidate host-discovery loop from firing on every
+  // cold-start. After the first successful connection, the working host is
+  // persisted and reloaded here.
+  const resolvedHostKey = 'ic_resolved_backend_host';
+  final savedHost = sharedPreferences.getString(resolvedHostKey);
+  ApiConfig.restoreResolvedBaseUrl(savedHost);
+
   // Storage & Network
   final tokenStorage = TokenStorageImpl(sharedPreferences: sharedPreferences);
   final apiClient = ApiClient(tokenStorage: tokenStorage);
@@ -32,6 +43,7 @@ void main() async {
   final authRemoteDataSource = AuthRemoteDataSourceImpl(apiClient: apiClient);
   final profileRemoteDataSource = ProfileRemoteDataSourceImpl(apiClient: apiClient);
   final resumeRemoteDataSource = ResumeRemoteDataSourceImpl(tokenStorage: tokenStorage);
+  final interviewRemoteDataSource = InterviewRemoteDataSourceImpl(apiClient: apiClient);
 
   // Repositories
   final authRepository = AuthRepositoryImpl(
@@ -69,8 +81,26 @@ void main() async {
             dataSource: profileRemoteDataSource,
           ),
         ),
-        ChangeNotifierProvider(
-          create: (_) => InterviewController(),
+        // DashboardController owns the stats and recent sessions.
+        // InterviewController is created separately and wired to call
+        // dashboard.refresh() after saving a session via setOnSessionSaved().
+        ChangeNotifierProvider<DashboardController>(
+          create: (_) => DashboardController(
+            dataSource: interviewRemoteDataSource,
+          ),
+        ),
+        ChangeNotifierProxyProvider<DashboardController, InterviewController>(
+          // create provides the initial instance (dashboard not yet available)
+          create: (_) => InterviewController(
+            remoteDataSource: interviewRemoteDataSource,
+          ),
+          // update runs whenever DashboardController notifies — wire the callback
+          update: (_, dashboardCtrl, interviewCtrl) {
+            final ctrl = interviewCtrl ??
+                InterviewController(remoteDataSource: interviewRemoteDataSource);
+            ctrl.setOnSessionSaved(dashboardCtrl.refresh);
+            return ctrl;
+          },
         ),
         ChangeNotifierProvider(
           create: (_) => ResumeController(

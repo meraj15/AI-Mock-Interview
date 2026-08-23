@@ -15,4 +15,10 @@ export const config = {
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+  },
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY ?? '',
+  },
 } as const;
