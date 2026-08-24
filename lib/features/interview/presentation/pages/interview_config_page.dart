@@ -187,7 +187,7 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
                         children: [
                           Text(config.role, style: AppTypography.bold(15, color: Colors.white)),
                           Text(
-                            '${config.company} · ${config.difficulty} · ${config.type}',
+                            '${config.company} · ${config.difficulty}',
                             style: AppTypography.regular(10, color: const Color(0xFFBFCBE5)),
                           ),
                         ],

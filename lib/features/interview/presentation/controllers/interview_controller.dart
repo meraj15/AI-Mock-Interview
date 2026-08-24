@@ -104,7 +104,6 @@ class InterviewController extends ChangeNotifier {
     String? company,
     String? experience,
     String? difficulty,
-    String? type,
     int? questions,
     List<String>? focusTopics,
     String? language,
@@ -120,7 +119,6 @@ class InterviewController extends ChangeNotifier {
       company: company,
       experience: experience,
       difficulty: difficulty,
-      type: type,
       questions: questions,
       focusTopics: focusTopics,
       language: language,
@@ -212,7 +210,6 @@ class InterviewController extends ChangeNotifier {
       await remoteDataSource!.saveSession(
         SaveInterviewRequest(
           role:           _config.role,
-          type:           _config.type,
           difficulty:     _config.difficulty,
           questionCount:  _config.questions,
           score:          _lastEvaluation!.overallScore,

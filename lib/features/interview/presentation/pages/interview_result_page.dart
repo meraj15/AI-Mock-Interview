@@ -256,9 +256,9 @@ ${(eval?.areasToImprove as List?)?.map((a) => '  • $a').join('\n') ?? ''}
 
                         const SizedBox(height: 6),
 
-                        // Role · type
+                        // Role
                         Text(
-                          '${config.role}  ·  ${config.type}',
+                          config.role,
                           style: AppTypography.regular(12, color: const Color(0xFF8A9BC0)),
                           textAlign: TextAlign.center,
                         ),

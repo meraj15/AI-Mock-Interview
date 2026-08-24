@@ -8,5 +8,15 @@ abstract class AuthRepository {
   Future<void> logoutAll();
   Future<void> completeOnboarding();
   Future<bool> isOnboardingComplete();
-  Future<void> sendPasswordReset(String email);
+
+  /// Requests a password reset OTP for [email].
+  /// Returns the OTP (dev mode only — empty string in production).
+  Future<String> forgotPassword(String email);
+
+  /// Verifies [otp] and sets [newPassword] for the account with [email].
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  });
 }

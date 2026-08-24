@@ -55,7 +55,6 @@ class _JobPrepPageState extends State<JobPrepPage> {
         role: result.jobTitle,
         company: result.companyName,
         difficulty: 'Adaptive',
-        type: 'Technical + System Design',
       );
     }
 

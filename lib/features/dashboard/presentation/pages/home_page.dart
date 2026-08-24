@@ -403,7 +403,7 @@ class _RecentSessionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${session.type} · ${_timeAgo(session.createdAt)}'
+                  '${_timeAgo(session.createdAt)}'
                   '${_duration(session.durationSecs)}',
                   style: AppTypography.regular(
                       10, color: colors.mutedForeground),

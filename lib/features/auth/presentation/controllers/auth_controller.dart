@@ -13,6 +13,8 @@ class AuthController extends ChangeNotifier {
   final SignOutUseCase signOutUseCase;
   final CompleteOnboardingUseCase completeOnboardingUseCase;
   final CheckOnboardingUseCase checkOnboardingUseCase;
+  final ForgotPasswordUseCase forgotPasswordUseCase;
+  final ResetPasswordUseCase resetPasswordUseCase;
 
   UserEntity? _user;
   AuthStatus _status = AuthStatus.initial;
@@ -28,6 +30,8 @@ class AuthController extends ChangeNotifier {
     required this.signOutUseCase,
     required this.completeOnboardingUseCase,
     required this.checkOnboardingUseCase,
+    required this.forgotPasswordUseCase,
+    required this.resetPasswordUseCase,
   });
 
   UserEntity? get user => _user;
@@ -255,6 +259,52 @@ class AuthController extends ChangeNotifier {
     _status = AuthStatus.authenticated;
     notifyListeners();
     return true;
+  }
+
+  /// Step 1 — Request OTP. Returns the OTP string (dev mode only).
+  Future<String?> forgotPassword(String email) async {
+    _status = AuthStatus.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final otp = await forgotPasswordUseCase(email.trim().toLowerCase());
+      _status = _user != null ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+      notifyListeners();
+      return otp;
+    } catch (e) {
+      _errorMessage = _cleanErrorMessage(e);
+      _status = AuthStatus.error;
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Step 2 — Verify OTP and set new password.
+  Future<bool> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    _status = AuthStatus.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await resetPasswordUseCase(
+        email: email.trim().toLowerCase(),
+        otp: otp.trim(),
+        newPassword: newPassword,
+      );
+      _status = _user != null ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = _cleanErrorMessage(e);
+      _status = AuthStatus.error;
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> signOut() async {

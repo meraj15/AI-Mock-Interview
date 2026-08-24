@@ -6,7 +6,6 @@ import { InterviewSession } from '@prisma/client';
 export interface CreateInterviewSessionInput {
   userId: string;
   role: string;
-  type: string;
   difficulty: string;
   questionCount: number;
   score: number;          // 0–100

@@ -74,3 +74,29 @@ class CheckOnboardingUseCase implements UseCase<bool, NoParams> {
     return repository.isOnboardingComplete();
   }
 }
+
+class ForgotPasswordUseCase {
+  final AuthRepository repository;
+  ForgotPasswordUseCase(this.repository);
+
+  Future<String> call(String email) {
+    return repository.forgotPassword(email);
+  }
+}
+
+class ResetPasswordUseCase {
+  final AuthRepository repository;
+  ResetPasswordUseCase(this.repository);
+
+  Future<void> call({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) {
+    return repository.resetPassword(
+      email: email,
+      otp: otp,
+      newPassword: newPassword,
+    );
+  }
+}

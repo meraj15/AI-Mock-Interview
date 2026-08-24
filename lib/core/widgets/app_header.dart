@@ -8,6 +8,7 @@ class AppHeader extends StatelessWidget {
   final String? subtitle;
   final VoidCallback? onBack;
   final Widget? right;
+  final bool alignLeft;
 
   const AppHeader({
     super.key,
@@ -15,6 +16,7 @@ class AppHeader extends StatelessWidget {
     this.subtitle,
     this.onBack,
     this.right,
+    this.alignLeft = false,
   });
 
   @override
@@ -26,29 +28,33 @@ class AppHeader extends StatelessWidget {
         height: 54,
         child: Row(
           children: [
-            SizedBox(
-              width: 44,
-              child: onBack != null
-                  ? InkWell(
-                      onTap: onBack,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        alignment: Alignment.center,
-                        child: Icon(FeatherIcons.arrowLeft, size: 20, color: colors.foreground),
-                      ),
-                    )
-                  : null,
-            ),
+            if (onBack != null)
+              SizedBox(
+                width: 44,
+                child: InkWell(
+                  onTap: onBack,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    child: Icon(FeatherIcons.arrowLeft, size: 20, color: colors.foreground),
+                  ),
+                ),
+              )
+            else if (!alignLeft)
+              const SizedBox(width: 44),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: alignLeft
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
                 children: [
                   Text(
                     title,
                     style: AppTypography.bold(18, color: colors.foreground),
-                    textAlign: TextAlign.center,
+                    textAlign: alignLeft ? TextAlign.left : TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -57,7 +63,7 @@ class AppHeader extends StatelessWidget {
                     Text(
                       subtitle!,
                       style: AppTypography.regular(11, color: colors.mutedForeground),
-                      textAlign: TextAlign.center,
+                      textAlign: alignLeft ? TextAlign.left : TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -70,7 +76,6 @@ class AppHeader extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: right,
             ),
-
           ],
         ),
       ),

@@ -59,6 +59,8 @@ void main() async {
   final signOutUseCase = SignOutUseCase(authRepository);
   final completeOnboardingUseCase = CompleteOnboardingUseCase(authRepository);
   final checkOnboardingUseCase = CheckOnboardingUseCase(authRepository);
+  final forgotPasswordUseCase = ForgotPasswordUseCase(authRepository);
+  final resetPasswordUseCase = ResetPasswordUseCase(authRepository);
 
   runApp(
     MultiProvider(
@@ -74,6 +76,8 @@ void main() async {
             signOutUseCase: signOutUseCase,
             completeOnboardingUseCase: completeOnboardingUseCase,
             checkOnboardingUseCase: checkOnboardingUseCase,
+            forgotPasswordUseCase: forgotPasswordUseCase,
+            resetPasswordUseCase: resetPasswordUseCase,
           )..init(),
         ),
         ChangeNotifierProvider(

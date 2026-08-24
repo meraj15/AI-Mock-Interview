@@ -3,7 +3,6 @@ class InterviewConfigEntity {
   final String company;
   final String experience;
   final String difficulty;
-  final String type;
   final int questions;
   // Phase 5 deep customization fields
   final List<String> focusTopics;
@@ -20,7 +19,6 @@ class InterviewConfigEntity {
     required this.company,
     required this.experience,
     required this.difficulty,
-    required this.type,
     required this.questions,
     this.focusTopics = const [],
     this.language = 'English',
@@ -37,7 +35,6 @@ class InterviewConfigEntity {
     String? company,
     String? experience,
     String? difficulty,
-    String? type,
     int? questions,
     List<String>? focusTopics,
     String? language,
@@ -53,7 +50,6 @@ class InterviewConfigEntity {
       company: company ?? this.company,
       experience: experience ?? this.experience,
       difficulty: difficulty ?? this.difficulty,
-      type: type ?? this.type,
       questions: questions ?? this.questions,
       focusTopics: focusTopics ?? this.focusTopics,
       language: language ?? this.language,
@@ -71,7 +67,6 @@ class InterviewConfigEntity {
         company: 'General interview',
         experience: '1–2 years',
         difficulty: 'Adaptive',
-        type: 'Technical interview',
         questions: 10,
         focusTopics: ['State Management', 'Clean Architecture', 'Performance'],
         language: 'English',

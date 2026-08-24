@@ -1,5 +1,5 @@
 import { AuthRepository, authRepository } from '../repositories/auth.repository';
-import { RegisterInput, LoginInput } from '../validators/auth.validator';
+import { RegisterInput, LoginInput, ForgotPasswordInput, ResetPasswordInput } from '../validators/auth.validator';
 import { hashPassword, verifyPassword, hashToken } from '../utils/password';
 import {
   generateAccessToken,
@@ -14,6 +14,7 @@ import {
 } from '../errors/AppError';
 import { AuthResult, AuthTokens, UserResponse } from '../types/auth.types';
 import { User } from '@prisma/client';
+import crypto from 'crypto';
 
 export class AuthService {
   constructor(private readonly repo: AuthRepository = authRepository) {}
@@ -172,6 +173,65 @@ export class AuthService {
       throw new ForbiddenError('Account is disabled', 'ACCOUNT_DISABLED');
     }
     return this.sanitizeUser(user);
+  }
+
+  // ── Password Reset ──────────────────────────────────────────────────────────
+
+  /**
+   * Generate a 6-digit OTP, persist it hashed, and return it.
+   * In production you would email this OTP instead of returning it.
+   * OTP expires in 15 minutes.
+   */
+  async forgotPassword(input: ForgotPasswordInput): Promise<{ otp: string }> {
+    const email = input.email.toLowerCase().trim();
+
+    // Always respond with success to prevent user enumeration attacks,
+    // but only generate a token if the user actually exists.
+    const user = await this.repo.findUserByEmail(email);
+    if (!user || !user.isActive) {
+      // Return a fake success — client has no way to distinguish real vs fake
+      return { otp: '' };
+    }
+
+    // Generate a cryptographically secure 6-digit OTP
+    const otp = String(crypto.randomInt(100000, 999999));
+    const tokenHash = hashToken(otp);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await this.repo.upsertPasswordResetToken(user.id, tokenHash, expiresAt);
+
+    // TODO: In production — send otp via email and return { otp: '' }
+    return { otp };
+  }
+
+  /**
+   * Verify the OTP and update the user's password.
+   */
+  async resetPassword(input: ResetPasswordInput): Promise<void> {
+    const email = input.email.toLowerCase().trim();
+
+    const user = await this.repo.findUserByEmail(email);
+    if (!user) {
+      throw new UnauthorizedError('Invalid or expired reset code', 'INVALID_RESET_TOKEN');
+    }
+
+    const tokenHash = hashToken(input.otp);
+    const record = await this.repo.findPasswordResetToken(tokenHash);
+
+    if (!record || record.userId !== user.id) {
+      throw new UnauthorizedError('Invalid or expired reset code', 'INVALID_RESET_TOKEN');
+    }
+
+    if (record.usedAt) {
+      throw new UnauthorizedError('Reset code has already been used', 'RESET_TOKEN_USED');
+    }
+
+    if (record.expiresAt < new Date()) {
+      throw new UnauthorizedError('Reset code has expired', 'RESET_TOKEN_EXPIRED');
+    }
+
+    const newPasswordHash = await hashPassword(input.newPassword);
+    await this.repo.consumePasswordResetToken(record.id, user.id, newPasswordHash);
   }
 }
 

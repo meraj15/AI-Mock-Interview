@@ -110,7 +110,20 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<void> sendPasswordReset(String email) async {
-    await Future.delayed(const Duration(milliseconds: 600));
+  Future<String> forgotPassword(String email) async {
+    return await remoteDataSource.forgotPassword(email: email);
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    await remoteDataSource.resetPassword(
+      email: email,
+      otp: otp,
+      newPassword: newPassword,
+    );
   }
 }

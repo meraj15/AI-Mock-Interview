@@ -21,6 +21,17 @@ abstract class AuthRemoteDataSource {
   Future<void> logout({String? refreshToken});
 
   Future<void> logoutAll();
+
+  /// Sends a forgot-password request.
+  /// Returns the OTP string from the server (dev mode only; will be empty in production).
+  Future<String> forgotPassword({required String email});
+
+  /// Verifies the OTP and sets a new password.
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  });
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -105,5 +116,35 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     } catch (_) {
       // Graceful local cleanup even if remote call fails
     }
+  }
+
+  @override
+  Future<String> forgotPassword({required String email}) async {
+    final response = await apiClient.post(
+      ApiConfig.forgotPasswordEndpoint,
+      body: {'email': email.trim().toLowerCase()},
+      requiresAuth: false,
+    );
+    final data = response.data as Map<String, dynamic>? ?? {};
+    final inner = data['data'] as Map<String, dynamic>? ?? {};
+    // In dev mode the backend returns the OTP; in production this will be ''
+    return (inner['otp'] as String?) ?? '';
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    await apiClient.post(
+      ApiConfig.resetPasswordEndpoint,
+      body: {
+        'email': email.trim().toLowerCase(),
+        'otp': otp.trim(),
+        'newPassword': newPassword,
+      },
+      requiresAuth: false,
+    );
   }
 }

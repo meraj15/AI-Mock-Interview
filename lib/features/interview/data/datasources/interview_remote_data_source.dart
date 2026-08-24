@@ -5,7 +5,6 @@ import '../../../../core/network/api_client.dart';
 
 class SaveInterviewRequest {
   final String role;
-  final String type;
   final String difficulty;
   final int questionCount;
   final int score;
@@ -18,7 +17,6 @@ class SaveInterviewRequest {
 
   const SaveInterviewRequest({
     required this.role,
-    required this.type,
     required this.difficulty,
     required this.questionCount,
     required this.score,
@@ -32,7 +30,6 @@ class SaveInterviewRequest {
 
   Map<String, dynamic> toJson() => {
         'role': role,
-        'type': type,
         'difficulty': difficulty,
         'questionCount': questionCount,
         'score': score,
@@ -119,7 +116,6 @@ class InterviewStatsModel {
 class InterviewSessionSummary {
   final String id;
   final String role;
-  final String type;
   final int score;
   final DateTime createdAt;
   final int durationSecs;
@@ -127,7 +123,6 @@ class InterviewSessionSummary {
   const InterviewSessionSummary({
     required this.id,
     required this.role,
-    required this.type,
     required this.score,
     required this.createdAt,
     required this.durationSecs,
@@ -137,7 +132,6 @@ class InterviewSessionSummary {
       InterviewSessionSummary(
         id:          j['id'] as String,
         role:        j['role'] as String? ?? '',
-        type:        j['type'] as String? ?? '',
         score:       (j['score'] as num?)?.toInt() ?? 0,
         createdAt:   DateTime.tryParse(j['createdAt'] as String? ?? '') ??
             DateTime.now(),

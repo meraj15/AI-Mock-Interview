@@ -81,6 +81,8 @@ class ApiConfig {
   static const String meEndpoint = '/api/v1/auth/me';
   static const String logoutEndpoint = '/api/v1/auth/logout';
   static const String logoutAllEndpoint = '/api/v1/auth/logout-all';
+  static const String forgotPasswordEndpoint = '/api/v1/auth/forgot-password';
+  static const String resetPasswordEndpoint = '/api/v1/auth/reset-password';
   static const String profileEndpoint = '/api/v1/profile';
 
   // ── Resume Endpoints ───────────────────────────────────────────────────────

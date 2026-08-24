@@ -1,6 +1,12 @@
 import { Response, NextFunction } from 'express';
 import { authService, AuthService } from '../services/auth.service';
-import { registerSchema, loginSchema, refreshTokenSchema } from '../validators/auth.validator';
+import {
+  registerSchema,
+  loginSchema,
+  refreshTokenSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from '../validators/auth.validator';
 import { AuthenticatedRequest } from '../types/auth.types';
 import { UnauthorizedError } from '../errors/AppError';
 
@@ -96,6 +102,37 @@ export class AuthController {
       res.status(200).json({
         success: true,
         message: 'Logged out from all devices',
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  forgotPassword = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const validated = forgotPasswordSchema.parse(req.body);
+      const result = await this.service.forgotPassword(validated);
+
+      res.status(200).json({
+        success: true,
+        message: 'If that email exists, a reset code has been sent.',
+        // otp is included in dev mode so you can test without an email service.
+        // Remove `data` in production and send the OTP via email instead.
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  resetPassword = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const validated = resetPasswordSchema.parse(req.body);
+      await this.service.resetPassword(validated);
+
+      res.status(200).json({
+        success: true,
+        message: 'Password reset successfully. Please sign in with your new password.',
       });
     } catch (err) {
       next(err);

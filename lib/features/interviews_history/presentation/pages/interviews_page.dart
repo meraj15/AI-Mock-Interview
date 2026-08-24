@@ -18,48 +18,39 @@ class InterviewsPage extends StatefulWidget {
 }
 
 class _InterviewsPageState extends State<InterviewsPage> {
-  String _selectedFilter = 'All';
   String _sortBy = 'Newest';
 
   final List<Map<String, dynamic>> _interviews = [
     {
       'role': 'Flutter Developer',
-      'type': 'Technical interview',
       'date': 'Aug 11, 2026',
       'score': 82,
       'tone': PillTone.success,
       'status': 'Strong performance',
-      'icon': FeatherIcons.code,
       'duration': '18 min',
     },
     {
-      'role': 'Product Designer',
-      'type': 'Portfolio review',
+      'role': 'Flutter Developer',
       'date': 'Aug 07, 2026',
       'score': 76,
       'tone': PillTone.violet,
       'status': 'Good progress',
-      'icon': FeatherIcons.penTool,
       'duration': '22 min',
     },
     {
-      'role': 'Frontend Engineer',
-      'type': 'Behavioral interview',
+      'role': 'Flutter Developer',
       'date': 'Aug 02, 2026',
       'score': 88,
-      'tone': PillTone.coral,
+      'tone': PillTone.success,
       'status': 'Strong performance',
-      'icon': FeatherIcons.layout,
       'duration': '15 min',
     },
     {
       'role': 'Flutter Developer',
-      'type': 'System design',
       'date': 'Jul 28, 2026',
       'score': 69,
       'tone': PillTone.muted,
       'status': 'Keep practicing',
-      'icon': FeatherIcons.layers,
       'duration': '20 min',
     },
   ];
@@ -68,14 +59,11 @@ class _InterviewsPageState extends State<InterviewsPage> {
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
 
-    var filtered = _selectedFilter == 'All'
-        ? List<Map<String, dynamic>>.from(_interviews)
-        : _interviews.where((item) => (item['type'] as String).toLowerCase().contains(_selectedFilter.toLowerCase())).toList();
-
+    var sorted = List<Map<String, dynamic>>.from(_interviews);
     if (_sortBy == 'Highest Score') {
-      filtered.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+      sorted.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
     } else if (_sortBy == 'Lowest Score') {
-      filtered.sort((a, b) => (a['score'] as int).compareTo(b['score'] as int));
+      sorted.sort((a, b) => (a['score'] as int).compareTo(b['score'] as int));
     }
 
     return AppScaffold(
@@ -84,73 +72,42 @@ class _InterviewsPageState extends State<InterviewsPage> {
         children: [
           AppHeader(
             title: 'My Interviews',
-            subtitle: 'Track your practice history over time',
+            subtitle: 'Your full interview history',
+            alignLeft: true,
             right: PopupMenuButton<String>(
               icon: Icon(FeatherIcons.sliders, size: 19, color: colors.foreground),
               onSelected: (val) => setState(() => _sortBy = val),
               itemBuilder: (ctx) => [
                 const PopupMenuItem(value: 'Newest', child: Text('Sort by: Newest')),
-                const PopupMenuItem(value: 'Highest Score', child: Text('Sort by: Highest Score')),
-                const PopupMenuItem(value: 'Lowest Score', child: Text('Sort by: Lowest Score')),
+                const PopupMenuItem(
+                    value: 'Highest Score', child: Text('Sort by: Highest Score')),
+                const PopupMenuItem(
+                    value: 'Lowest Score', child: Text('Sort by: Lowest Score')),
               ],
             ),
           ),
 
           SectionTitle(
-            title: '${filtered.length} completed',
-            action: 'Sorted: $_sortBy',
+            title: '${sorted.length} sessions',
+            action: 'Sorted by: $_sortBy',
           ),
 
-          // Filters
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              children: ['All', 'Technical', 'Behavioral', 'System', 'Portfolio'].map((filter) {
-                final isSelected = _selectedFilter == filter;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0, bottom: 16.0),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => setState(() => _selectedFilter = filter),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Ink(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected ? colors.primary : colors.secondary,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          filter,
-                          style: AppTypography.semiBold(
-                            11,
-                            color: isSelected ? colors.primaryForeground : colors.secondaryForeground,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-
-          if (filtered.isEmpty) ...[
+          if (sorted.isEmpty) ...[
             EmptyStateWidget(
               icon: FeatherIcons.layers,
-              title: 'No interviews in this category',
-              description: 'Try choosing another filter or start a fresh mock interview session.',
-              actionLabel: 'Start New Interview',
+              title: 'No interviews yet',
+              description:
+                  'Start your first mock interview session to see your history here.',
+              actionLabel: 'Start Interview',
               onAction: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const QuickInterviewSetupPage()),
+                  MaterialPageRoute(
+                      builder: (_) => const QuickInterviewSetupPage()),
                 );
               },
             ),
           ] else ...[
-            // Cards
-            ...filtered.map((item) {
+            ...sorted.map((item) {
               final score = item['score'] as int;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10.0),
@@ -159,7 +116,8 @@ class _InterviewsPageState extends State<InterviewsPage> {
                   child: InkWell(
                     onTap: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const InterviewResultPage()),
+                        MaterialPageRoute(
+                            builder: (_) => const InterviewResultPage()),
                       );
                     },
                     borderRadius: BorderRadius.circular(18),
@@ -180,7 +138,8 @@ class _InterviewsPageState extends State<InterviewsPage> {
                               borderRadius: BorderRadius.circular(14),
                             ),
                             alignment: Alignment.center,
-                            child: Icon(item['icon'] as IconData, size: 19, color: colors.primary),
+                            child: Icon(FeatherIcons.code,
+                                size: 19, color: colors.primary),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -189,12 +148,14 @@ class _InterviewsPageState extends State<InterviewsPage> {
                               children: [
                                 Text(
                                   item['role'] as String,
-                                  style: AppTypography.semiBold(14, color: colors.foreground),
+                                  style: AppTypography.semiBold(
+                                      14, color: colors.foreground),
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
-                                  '${item['type']} · ${item['date']} · ${item['duration']}',
-                                  style: AppTypography.regular(10, color: colors.mutedForeground),
+                                  '${item['date']} · ${item['duration']}',
+                                  style: AppTypography.regular(
+                                      10, color: colors.mutedForeground),
                                 ),
                                 const SizedBox(height: 8),
                                 PillBadge(
@@ -213,16 +174,19 @@ class _InterviewsPageState extends State<InterviewsPage> {
                                 children: [
                                   Text(
                                     '$score',
-                                    style: AppTypography.bold(20, color: colors.foreground),
+                                    style: AppTypography.bold(
+                                        20, color: colors.foreground),
                                   ),
                                   Text(
                                     '/100',
-                                    style: AppTypography.regular(9, color: colors.mutedForeground),
+                                    style: AppTypography.regular(
+                                        9, color: colors.mutedForeground),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Icon(FeatherIcons.chevronRight, size: 16, color: colors.mutedForeground),
+                              Icon(FeatherIcons.chevronRight,
+                                  size: 16, color: colors.mutedForeground),
                             ],
                           ),
                         ],
