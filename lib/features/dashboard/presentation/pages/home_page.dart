@@ -190,7 +190,7 @@ class _HomePageState extends State<HomePage> {
           SectionTitle(
             title: 'Your performance',
             action: 'View analytics',
-            onAction: () => widget.onTabSwitch?.call(3),
+            onAction: () => widget.onTabSwitch?.call(2),
           ),
 
           // Loading shimmer / error / data
@@ -256,7 +256,7 @@ class _HomePageState extends State<HomePage> {
           SectionTitle(
             title: 'Recent interviews',
             action: 'See all',
-            onAction: () => widget.onTabSwitch?.call(2),
+            onAction: () => widget.onTabSwitch?.call(1),
           ),
 
           if (dashboard.isLoading)

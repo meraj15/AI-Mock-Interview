@@ -82,23 +82,24 @@ void main() async {
           ),
         ),
         // DashboardController owns the stats and recent sessions.
-        // InterviewController is created separately and wired to call
-        // dashboard.refresh() after saving a session via setOnSessionSaved().
         ChangeNotifierProvider<DashboardController>(
-          create: (_) => DashboardController(
-            dataSource: interviewRemoteDataSource,
-          ),
+          create: (_) {
+            final dashboard = DashboardController(
+              dataSource: interviewRemoteDataSource,
+            );
+            return dashboard;
+          },
         ),
-        ChangeNotifierProxyProvider<DashboardController, InterviewController>(
-          // create provides the initial instance (dashboard not yet available)
-          create: (_) => InterviewController(
-            remoteDataSource: interviewRemoteDataSource,
-          ),
-          // update runs whenever DashboardController notifies — wire the callback
-          update: (_, dashboardCtrl, interviewCtrl) {
-            final ctrl = interviewCtrl ??
-                InterviewController(remoteDataSource: interviewRemoteDataSource);
-            ctrl.setOnSessionSaved(dashboardCtrl.refresh);
+        // InterviewController is wired to call dashboard.refresh() after
+        // saving a session. We use a lazy closure so the DashboardController
+        // instance is captured once — no ProxyProvider needed.
+        ChangeNotifierProvider<InterviewController>(
+          create: (context) {
+            final dashboard = context.read<DashboardController>();
+            final ctrl = InterviewController(
+              remoteDataSource: interviewRemoteDataSource,
+            );
+            ctrl.setOnSessionSaved(dashboard.refresh);
             return ctrl;
           },
         ),

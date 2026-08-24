@@ -7,7 +7,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/empty_state_widget.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
-import '../../../interview/presentation/pages/create_interview_page.dart';
+import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
 import '../../../interview/presentation/pages/interview_result_page.dart';
 
 class InterviewsPage extends StatefulWidget {
@@ -144,7 +144,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
               actionLabel: 'Start New Interview',
               onAction: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CreateInterviewPage()),
+                  MaterialPageRoute(builder: (_) => const QuickInterviewSetupPage()),
                 );
               },
             ),

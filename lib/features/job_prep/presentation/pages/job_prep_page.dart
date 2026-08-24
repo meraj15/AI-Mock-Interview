@@ -11,7 +11,7 @@ import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/progress_bar.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../interview/presentation/controllers/interview_controller.dart';
-import '../../../interview/presentation/pages/create_interview_page.dart';
+import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/job_prep_controller.dart';
 
@@ -60,7 +60,7 @@ class _JobPrepPageState extends State<JobPrepPage> {
     }
 
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CreateInterviewPage()),
+      MaterialPageRoute(builder: (_) => const QuickInterviewSetupPage()),
     );
   }
 

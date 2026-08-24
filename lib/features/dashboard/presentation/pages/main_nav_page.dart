@@ -4,7 +4,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../analytics/presentation/pages/analytics_page.dart';
 import '../../../interviews_history/presentation/pages/interviews_page.dart';
-import '../../../practice/presentation/pages/practice_page.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 import 'home_page.dart';
 
@@ -35,7 +34,6 @@ class _MainNavPageState extends State<MainNavPage> {
 
     final pages = [
       HomePage(onTabSwitch: _onTabSelect),
-      const PracticePage(),
       const InterviewsPage(),
       const AnalyticsPage(),
       const ProfilePage(),
@@ -43,7 +41,6 @@ class _MainNavPageState extends State<MainNavPage> {
 
     final tabs = [
       {'icon': FeatherIcons.home, 'label': 'Home'},
-      {'icon': FeatherIcons.target, 'label': 'Practice'},
       {'icon': FeatherIcons.layers, 'label': 'Interviews'},
       {'icon': FeatherIcons.trendingUp, 'label': 'Analytics'},
       {'icon': FeatherIcons.user, 'label': 'Profile'},
