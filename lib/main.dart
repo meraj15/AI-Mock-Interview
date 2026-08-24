@@ -102,6 +102,7 @@ void main() async {
             final dashboard = context.read<DashboardController>();
             final ctrl = InterviewController(
               remoteDataSource: interviewRemoteDataSource,
+              apiClient: apiClient,
             );
             ctrl.setOnSessionSaved(dashboard.refresh);
             return ctrl;

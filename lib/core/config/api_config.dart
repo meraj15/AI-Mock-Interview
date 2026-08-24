@@ -88,6 +88,9 @@ class ApiConfig {
   // ── Resume Endpoints ───────────────────────────────────────────────────────
   static const String resumeParseEndpoint = '/api/resume/parse';
 
+  // ── AI Endpoints ───────────────────────────────────────────────────────────
+  static const String aiQuestionsEndpoint = '/api/v1/ai/questions';
+
   // ── Interview Endpoints ────────────────────────────────────────────────────
   static const String interviewsEndpoint      = '/api/v1/interviews';
   static const String interviewStatsEndpoint  = '/api/v1/interviews/stats';

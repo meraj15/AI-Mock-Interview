@@ -4,12 +4,12 @@ class InterviewConfigEntity {
   final String experience;
   final String difficulty;
   final int questions;
-  // Phase 5 deep customization fields
+  final List<String> skills;       // pulled from the user's manual profile
   final List<String> focusTopics;
   final String language;
   final bool enableVoiceMode;
   final String aiPersona;
-  final int timeLimitPerQuestion; // in seconds, 0 = no limit
+  final int timeLimitPerQuestion;
   final bool showHints;
   final bool enableFollowUps;
   final String codingLanguage;
@@ -20,6 +20,7 @@ class InterviewConfigEntity {
     required this.experience,
     required this.difficulty,
     required this.questions,
+    this.skills = const [],
     this.focusTopics = const [],
     this.language = 'English',
     this.enableVoiceMode = false,
@@ -36,6 +37,7 @@ class InterviewConfigEntity {
     String? experience,
     String? difficulty,
     int? questions,
+    List<String>? skills,
     List<String>? focusTopics,
     String? language,
     bool? enableVoiceMode,
@@ -51,6 +53,7 @@ class InterviewConfigEntity {
       experience: experience ?? this.experience,
       difficulty: difficulty ?? this.difficulty,
       questions: questions ?? this.questions,
+      skills: skills ?? this.skills,
       focusTopics: focusTopics ?? this.focusTopics,
       language: language ?? this.language,
       enableVoiceMode: enableVoiceMode ?? this.enableVoiceMode,
@@ -68,7 +71,8 @@ class InterviewConfigEntity {
         experience: '1–2 years',
         difficulty: 'Adaptive',
         questions: 10,
-        focusTopics: ['State Management', 'Clean Architecture', 'Performance'],
+        skills: [],
+        focusTopics: [],
         language: 'English',
         enableVoiceMode: false,
         aiPersona: 'Professional Interviewer',

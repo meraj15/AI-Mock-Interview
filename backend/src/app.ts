@@ -10,6 +10,7 @@ import authRouter from './routes/auth.routes';
 import profileRouter from './routes/profile.routes';
 import resumeRouter from './routes/resume.routes';
 import interviewRouter from './routes/interview.routes';
+import aiRouter from './routes/ai.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -43,6 +44,7 @@ export function createApp(): Application {
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/profile', profileRouter);
   app.use('/api/v1/interviews', interviewRouter);
+  app.use('/api/v1/ai', aiRouter);
   app.use('/api/resume', resumeRouter);
 
   // 404 fallthrough
