@@ -12,15 +12,12 @@ import 'login_page.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final String email;
-
-  /// In dev mode the backend returns the OTP directly.
-  /// Pass it here to pre-fill the boxes. Empty in production.
-  final String devOtp;
+  final String otp;
 
   const ResetPasswordPage({
     super.key,
     required this.email,
-    this.devOtp = '',
+    required this.otp,
   });
 
   @override
@@ -28,20 +25,11 @@ class ResetPasswordPage extends StatefulWidget {
 }
 
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
-  // ── OTP boxes ─────────────────────────────────────────────────────────────
-  late final List<TextEditingController> _otpControllers;
-  late final List<FocusNode> _focusNodes;
-
-  // ── Password fields ────────────────────────────────────────────────────────
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-
   bool _isLoading = false;
   String? _errorMessage;
 
-  // ── Criteria ───────────────────────────────────────────────────────────────
-  String get _otp => _otpControllers.map((c) => c.text).join();
-  bool get _otpComplete => _otp.length == 6 && RegExp(r'^\d{6}$').hasMatch(_otp);
   bool get _hasMinLength => _newPasswordController.text.length >= 8;
   bool get _hasNumber => RegExp(r'[0-9]').hasMatch(_newPasswordController.text);
   bool get _hasSpecialChar =>
@@ -50,26 +38,10 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       _newPasswordController.text.isNotEmpty &&
       _newPasswordController.text == _confirmPasswordController.text;
   bool get _canSubmit =>
-      _otpComplete && _hasMinLength && _hasNumber && _passwordsMatch && !_isLoading;
-
-  @override
-  void initState() {
-    super.initState();
-    _otpControllers = List.generate(6, (_) => TextEditingController());
-    _focusNodes = List.generate(6, (_) => FocusNode());
-
-    // Pre-fill boxes in dev mode
-    if (widget.devOtp.length == 6) {
-      for (int i = 0; i < 6; i++) {
-        _otpControllers[i].text = widget.devOtp[i];
-      }
-    }
-  }
+      _hasMinLength && _hasNumber && _passwordsMatch && !_isLoading;
 
   @override
   void dispose() {
-    for (final c in _otpControllers) c.dispose();
-    for (final f in _focusNodes) f.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -86,7 +58,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     final auth = context.read<AuthController>();
     final success = await auth.resetPassword(
       email: widget.email,
-      otp: _otp,
+      otp: widget.otp,
       newPassword: _newPasswordController.text,
     );
 
@@ -95,7 +67,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
     if (!success) {
       setState(() =>
-          _errorMessage = auth.errorMessage ?? 'Invalid or expired code. Please try again.');
+          _errorMessage = auth.errorMessage ?? 'Something went wrong. Please try again.');
       return;
     }
 
@@ -126,112 +98,18 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
           const SizedBox(height: 12),
 
-          // ── Icon ──────────────────────────────────────────────────────────
-          Center(
-            child: Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: colors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              alignment: Alignment.center,
-              child: Icon(FeatherIcons.lock, size: 28, color: colors.primary),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          Center(
-            child: Text(
-              'Enter your reset code',
-              style: AppTypography.bold(22, color: colors.foreground),
-              textAlign: TextAlign.center,
-            ),
+          Text(
+            'Create a strong password',
+            style: AppTypography.bold(24, color: colors.foreground),
           ),
           const SizedBox(height: 8),
-          Center(
-            child: Text(
-              'We sent a 6-digit code to\n${widget.email}',
-              style: AppTypography.regular(13, color: colors.mutedForeground, height: 1.5),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          // Dev badge
-          if (widget.devOtp.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colors.mint.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(FeatherIcons.terminal, size: 11, color: colors.mint),
-                    const SizedBox(width: 5),
-                    Text(
-                      'DEV MODE — code pre-filled',
-                      style: AppTypography.bold(9, color: colors.mint),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 28),
-
-          // ── 6-box OTP row ─────────────────────────────────────────────────
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(6, (index) {
-              return SizedBox(
-                width: 48,
-                height: 56,
-                child: TextField(
-                  controller: _otpControllers[index],
-                  focusNode: _focusNodes[index],
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  maxLength: 1,
-                  style: AppTypography.bold(22, color: colors.foreground),
-                  decoration: InputDecoration(
-                    counterText: '',
-                    filled: true,
-                    fillColor: colors.card,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: colors.primary, width: 2),
-                    ),
-                    errorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: colors.coral, width: 1.5),
-                    ),
-                  ),
-                  onChanged: (val) {
-                    setState(() {}); // refresh criteria
-                    if (val.isNotEmpty && index < 5) {
-                      _focusNodes[index + 1].requestFocus();
-                    } else if (val.isEmpty && index > 0) {
-                      _focusNodes[index - 1].requestFocus();
-                    }
-                  },
-                ),
-              );
-            }),
+          Text(
+            'Your new password must be different from any previous passwords.',
+            style: AppTypography.regular(13, color: colors.mutedForeground, height: 1.45),
           ),
 
           const SizedBox(height: 28),
 
-          // ── New password ──────────────────────────────────────────────────
           Text('New password', style: AppTypography.semiBold(12, color: colors.foreground)),
           const SizedBox(height: 8),
           AppTextField(
@@ -254,7 +132,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
           const SizedBox(height: 14),
 
-          // ── Criteria checklist ────────────────────────────────────────────
+          // Criteria checklist
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -263,8 +141,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ),
             child: Column(
               children: [
-                _buildCheck('Valid 6-digit reset code', _otpComplete, colors),
-                const SizedBox(height: 6),
                 _buildCheck('At least 8 characters', _hasMinLength, colors),
                 const SizedBox(height: 6),
                 _buildCheck('Contains at least one number', _hasNumber, colors),
@@ -276,7 +152,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ),
           ),
 
-          // ── Error banner ──────────────────────────────────────────────────
+          // Error banner
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
             Container(
@@ -301,7 +177,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ),
           ],
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
           AppButton(
             label: _isLoading ? 'Resetting password...' : 'Reset Password',

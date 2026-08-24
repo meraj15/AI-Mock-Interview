@@ -8,7 +8,7 @@ import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../controllers/auth_controller.dart';
-import 'reset_password_page.dart';
+import 'email_verification_page.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -52,7 +52,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     // Navigate to reset page — pass the email and the dev-mode OTP
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ResetPasswordPage(email: email, devOtp: otp),
+        builder: (_) => EmailVerificationPage(
+          email: email,
+          mode: VerificationMode.passwordReset,
+          devOtp: otp,
+        ),
       ),
     );
   }

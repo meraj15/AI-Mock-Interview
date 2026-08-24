@@ -8,13 +8,22 @@ import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../controllers/auth_controller.dart';
 import 'profile_setup_page.dart';
+import 'reset_password_page.dart';
+
+enum VerificationMode { emailVerify, passwordReset }
 
 class EmailVerificationPage extends StatefulWidget {
   final String email;
+  final VerificationMode mode;
+
+  /// Dev mode only — pre-fills the OTP boxes when mode == passwordReset.
+  final String devOtp;
 
   const EmailVerificationPage({
     super.key,
     required this.email,
+    this.mode = VerificationMode.emailVerify,
+    this.devOtp = '',
   });
 
   @override
@@ -30,6 +39,12 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
   @override
   void initState() {
     super.initState();
+    // Pre-fill boxes in password-reset dev mode
+    if (widget.mode == VerificationMode.passwordReset && widget.devOtp.length == 6) {
+      for (int i = 0; i < 6; i++) {
+        _controllers[i].text = widget.devOtp[i];
+      }
+    }
     _startTimer();
   }
 
@@ -66,6 +81,20 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
       return;
     }
 
+    if (widget.mode == VerificationMode.passwordReset) {
+      // OTP is verified server-side during resetPassword — just pass it forward
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ResetPasswordPage(
+            email: widget.email,
+            otp: code,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Default: email verification flow
     final authCtrl = context.read<AuthController>();
     final success = await authCtrl.verifyEmailOtp(code);
 
@@ -98,7 +127,9 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           AppHeader(
-            title: 'Verify Email',
+            title: widget.mode == VerificationMode.passwordReset
+                ? 'Enter Reset Code'
+                : 'Verify Email',
             onBack: () => Navigator.of(context).pop(),
           ),
 
@@ -124,10 +155,35 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'We sent a 6-digit verification code to:\n${widget.email}',
+            widget.mode == VerificationMode.passwordReset
+                ? 'We sent a 6-digit reset code to:\n${widget.email}'
+                : 'We sent a 6-digit verification code to:\n${widget.email}',
             style: AppTypography.regular(13, color: colors.mutedForeground, height: 1.5),
             textAlign: TextAlign.center,
           ),
+
+          // Dev badge — only shown in password reset dev mode
+          if (widget.mode == VerificationMode.passwordReset && widget.devOtp.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: colors.mint.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(FeatherIcons.terminal, size: 11, color: colors.mint),
+                  const SizedBox(width: 5),
+                  Text(
+                    'DEV — code pre-filled',
+                    style: AppTypography.bold(9, color: colors.mint),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: 32),
 
@@ -173,8 +229,12 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
           const SizedBox(height: 28),
 
           AppButton(
-            label: auth.isLoading ? 'Verifying...' : 'Verify and Continue',
-            icon: FeatherIcons.check,
+            label: widget.mode == VerificationMode.passwordReset
+                ? 'Verify Code'
+                : (auth.isLoading ? 'Verifying...' : 'Verify and Continue'),
+            icon: widget.mode == VerificationMode.passwordReset
+                ? FeatherIcons.arrowRight
+                : FeatherIcons.check,
             disabled: auth.isLoading,
             onPress: _verify,
           ),
@@ -190,7 +250,9 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                 : TextButton(
                     onPressed: _resending ? null : _resend,
                     child: Text(
-                      'Resend verification code',
+                      widget.mode == VerificationMode.passwordReset
+                          ? 'Resend reset code'
+                          : 'Resend verification code',
                       style: AppTypography.semiBold(13, color: colors.primary),
                     ),
                   ),
