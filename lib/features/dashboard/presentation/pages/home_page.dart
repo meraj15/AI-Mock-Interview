@@ -63,7 +63,7 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Good morning, $firstName',
+                    'Welcome, $firstName',
                     style: AppTypography.bold(24, color: colors.foreground),
                   ),
                   const SizedBox(height: 5),
@@ -202,47 +202,54 @@ class _HomePageState extends State<HomePage> {
               onRetry: () => context.read<DashboardController>().load(),
             )
           else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: StatCard(
-                    label: 'Avg. score',
-                    value: dashboard.avgScoreLabel,
-                    change: dashboard.avgScoreChange,
-                    icon: FeatherIcons.trendingUp,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      label: 'Avg. score',
+                      value: dashboard.avgScoreLabel,
+                      change: dashboard.avgScoreChange,
+                      icon: FeatherIcons.trendingUp,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatCard(
-                    label: 'Interviews',
-                    value: dashboard.totalInterviewsLabel,
-                    change: dashboard.thisWeekChange,
-                    icon: FeatherIcons.layers,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      label: 'Interviews',
+                      value: dashboard.totalInterviewsLabel,
+                      change: dashboard.thisWeekChange,
+                      icon: FeatherIcons.layers,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: StatCard(
-                    label: 'Best score',
-                    value: dashboard.bestScoreLabel,
-                    icon: FeatherIcons.award,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      label: 'Best score',
+                      value: dashboard.bestScoreLabel,
+                      icon: FeatherIcons.award,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatCard(
-                    label: 'Current streak',
-                    value: dashboard.streakLabel,
-                    icon: FeatherIcons.zap,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      label: 'Current streak',
+                      value: dashboard.streakLabel,
+                      icon: FeatherIcons.zap,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+        
           ],
 
           // ── Recent Interviews ────────────────────────────────────────────
@@ -268,61 +275,61 @@ class _HomePageState extends State<HomePage> {
             ),
 
           // ── Recommended ──────────────────────────────────────────────────
-          const SectionTitle(title: 'Recommended for you'),
+          // const SectionTitle(title: 'Recommended for you'),
 
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.secondary,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 39,
-                  height: 39,
-                  decoration: BoxDecoration(
-                    color: colors.coral,
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(FeatherIcons.compass,
-                      size: 18, color: colors.ink),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Strengthen system design',
-                        style: AppTypography.bold(14,
-                            color: colors.foreground),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        'Your answers are strong. Go one level deeper on trade-offs.',
-                        style: AppTypography.regular(11,
-                            color: colors.mutedForeground, height: 1.45),
-                      ),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () => widget.onTabSwitch?.call(1),
-                        child: Text(
-                          'Explore practice →',
-                          style: AppTypography.semiBold(11,
-                              color: colors.primary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Container(
+          //   padding: const EdgeInsets.all(16),
+          //   decoration: BoxDecoration(
+          //     color: colors.secondary,
+          //     borderRadius: BorderRadius.circular(20),
+          //   ),
+          //   child: Row(
+          //     crossAxisAlignment: CrossAxisAlignment.start,
+          //     children: [
+          //       Container(
+          //         width: 39,
+          //         height: 39,
+          //         decoration: BoxDecoration(
+          //           color: colors.coral,
+          //           borderRadius: BorderRadius.circular(13),
+          //         ),
+          //         alignment: Alignment.center,
+          //         child: Icon(FeatherIcons.compass,
+          //             size: 18, color: colors.ink),
+          //       ),
+          //       const SizedBox(width: 12),
+          //       Expanded(
+          //         child: Column(
+          //           crossAxisAlignment: CrossAxisAlignment.start,
+          //           children: [
+          //             Text(
+          //               'Strengthen system design',
+          //               style: AppTypography.bold(14,
+          //                   color: colors.foreground),
+          //             ),
+          //             const SizedBox(height: 5),
+          //             Text(
+          //               'Your answers are strong. Go one level deeper on trade-offs.',
+          //               style: AppTypography.regular(11,
+          //                   color: colors.mutedForeground, height: 1.45),
+          //             ),
+          //             const SizedBox(height: 8),
+          //             GestureDetector(
+          //               onTap: () => widget.onTabSwitch?.call(1),
+          //               child: Text(
+          //                 'Explore practice →',
+          //                 style: AppTypography.semiBold(11,
+          //                     color: colors.primary),
+          //               ),
+          //             ),
+          //           ],
+          //         ),
+          //       ),
+          //     ],
+          //   ),
+          // ),
 
-          const SizedBox(height: 30),
+          const SizedBox(height: 15),
         ],
       ),
     );

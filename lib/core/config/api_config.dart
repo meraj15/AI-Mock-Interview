@@ -13,12 +13,11 @@ class ApiConfig {
   /// Order matters — the first reachable host wins and is persisted so
   /// subsequent cold-starts skip this discovery loop.
   ///
-  /// • 192.168.0.108 — LAN IP of the dev machine (physical device on Wi-Fi)
+  /// • 192.168.0.113 — current LAN IP of the dev machine (update if your IP changes)
   /// • 10.0.2.2      — Android emulator alias for host localhost
   /// • localhost     — Windows / web / desktop runner
   static const List<String> developmentCandidates = [
-    'http://192.168.0.101:3000',
-    'http://192.168.0.108:3000',
+    'http://192.168.0.113:3000',
     'http://10.0.2.2:3000',
     'http://localhost:3000',
   ];

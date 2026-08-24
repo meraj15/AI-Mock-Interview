@@ -21,6 +21,7 @@ class StatCard extends StatelessWidget {
     final colors = AppColorScheme.of(context);
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.card,
@@ -29,6 +30,7 @@ class StatCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.max,       // fills the IntrinsicHeight
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Container(

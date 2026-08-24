@@ -87,28 +87,31 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           if (isLoading)
             _shimmerRow(colors)
           else
-            Row(
-              children: [
-                Expanded(
-                  child: StatCard(
-                    label: 'Average score',
-                    value: dashboard.avgScoreLabel,
-                    change: overallChangeLabel,
-                    icon: FeatherIcons.trendingUp,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      label: 'Average score',
+                      value: dashboard.avgScoreLabel,
+                      change: overallChangeLabel,
+                      icon: FeatherIcons.trendingUp,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatCard(
-                    label: 'Completion rate',
-                    value: completionLabel,
-                    change: stats.totalInterviews == 0
-                        ? null
-                        : '${stats.totalInterviews} sessions',
-                    icon: FeatherIcons.checkCircle,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      label: 'Completion rate',
+                      value: completionLabel,
+                      change: stats.totalInterviews == 0
+                          ? null
+                          : '${stats.totalInterviews} sessions',
+                      icon: FeatherIcons.checkCircle,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
 
           const SizedBox(height: 14),
@@ -173,64 +176,64 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           ),
 
           // ── Skill distribution ───────────────────────────────────────────
-          const SectionTitle(title: 'Skill distribution'),
+          // const SectionTitle(title: 'Skill distribution'),
 
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: colors.border),
-            ),
-            child: isLoading
-                ? _shimmerBox(colors, height: 120)
-                : skillEntries.isEmpty
-                    ? _emptySkills(colors)
-                    : Column(
-                        children: skillEntries
-                            .asMap()
-                            .entries
-                            .map((entry) {
-                              final i     = entry.key;
-                              final label = entry.value.key;
-                              final value = entry.value.value.toDouble();
-                              final color =
-                                  skillColors[i % skillColors.length];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 14),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            label,
-                                            style: AppTypography.medium(12,
-                                                color: colors.foreground),
-                                          ),
-                                        ),
-                                        Text(
-                                          '${value.toInt()}%',
-                                          style: AppTypography.bold(12,
-                                              color: colors.foreground),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ProgressBar(
-                                      value: value,
-                                      color: color,
-                                      height: 7,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            })
-                            .toList(),
-                      ),
-          ),
+          // Container(
+          //   padding: const EdgeInsets.all(16),
+          //   decoration: BoxDecoration(
+          //     color: colors.card,
+          //     borderRadius: BorderRadius.circular(20),
+          //     border: Border.all(color: colors.border),
+          //   ),
+          //   child: isLoading
+          //       ? _shimmerBox(colors, height: 120)
+          //       : skillEntries.isEmpty
+          //           ? _emptySkills(colors)
+          //           : Column(
+          //               children: skillEntries
+          //                   .asMap()
+          //                   .entries
+          //                   .map((entry) {
+          //                     final i     = entry.key;
+          //                     final label = entry.value.key;
+          //                     final value = entry.value.value.toDouble();
+          //                     final color =
+          //                         skillColors[i % skillColors.length];
+          //                     return Padding(
+          //                       padding: const EdgeInsets.only(bottom: 14),
+          //                       child: Column(
+          //                         children: [
+          //                           Row(
+          //                             mainAxisAlignment:
+          //                                 MainAxisAlignment.spaceBetween,
+          //                             children: [
+          //                               Expanded(
+          //                                 child: Text(
+          //                                   label,
+          //                                   style: AppTypography.medium(12,
+          //                                       color: colors.foreground),
+          //                                 ),
+          //                               ),
+          //                               Text(
+          //                                 '${value.toInt()}%',
+          //                                 style: AppTypography.bold(12,
+          //                                     color: colors.foreground),
+          //                               ),
+          //                             ],
+          //                           ),
+          //                           const SizedBox(height: 8),
+          //                           ProgressBar(
+          //                             value: value,
+          //                             color: color,
+          //                             height: 7,
+          //                           ),
+          //                         ],
+          //                       ),
+          //                     );
+          //                   })
+          //                   .toList(),
+          //             ),
+          // ),
 
           const SizedBox(height: 16),
 

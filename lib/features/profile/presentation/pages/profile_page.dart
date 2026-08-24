@@ -10,8 +10,6 @@ import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
-import '../../../resume/presentation/controllers/resume_controller.dart';
-import '../../../resume/presentation/pages/resume_page.dart';
 import '../controllers/profile_controller.dart';
 import 'account_security_page.dart';
 import 'edit_profile_page.dart';
@@ -28,7 +26,6 @@ class ProfilePage extends StatelessWidget {
     final colors = AppColorScheme.of(context);
     final auth = context.watch<AuthController>();
     final profileCtrl = context.watch<ProfileController>();
-    final resumeCtrl = context.watch<ResumeController>();
 
     // Real name comes from ProfileController; email always from AuthController
     final userEmail = auth.user?.email ?? '';
@@ -45,12 +42,6 @@ class ProfilePage extends StatelessWidget {
     final targetRole = profileCtrl.targetRole;
 
     final menuItems = [
-      {
-        'icon': FeatherIcons.fileText,
-        'title': 'My resumes',
-        'detail': '${resumeCtrl.resumes.length} resumes saved',
-        'page': const ResumePage(),
-      },
       {
         'icon': FeatherIcons.mic,
         'title': 'AI Interviewer Voice & Persona',
@@ -89,6 +80,9 @@ class ProfilePage extends StatelessWidget {
           ],
 
           // Profile Head
+          if (!showHeader) ...[
+            SizedBox(height: 20),
+          ],
           Material(
             color: Colors.transparent,
             child: InkWell(
@@ -130,6 +124,7 @@ class ProfilePage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Flexible(
                                 child: Text(
@@ -138,8 +133,8 @@ class ProfilePage extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              Icon(FeatherIcons.edit2, size: 13, color: colors.mutedForeground),
+                              const SizedBox(width: 10),
+                              Icon(FeatherIcons.edit3, size: 17, color: colors.foreground),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -158,20 +153,13 @@ class ProfilePage extends StatelessWidget {
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(FeatherIcons.settings, size: 19, color: colors.foreground),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const SettingsPage()),
-                        );
-                      },
-                    ),
+                  
                   ],
                 ),
               ),
             ),
           ),
-
+         
           const SizedBox(height: 24),
 
           // Bio if available
@@ -185,50 +173,7 @@ class ProfilePage extends StatelessWidget {
             const SizedBox(height: 20),
           ],
 
-          // Stats Rows — real data comes from future interview tracking; shown as placeholders
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  label: 'Interviews',
-                  value: '—',
-                  icon: FeatherIcons.layers,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  label: 'Avg. score',
-                  value: '—',
-                  icon: FeatherIcons.trendingUp,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  label: 'Best score',
-                  value: '—',
-                  icon: FeatherIcons.award,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  label: 'Experience',
-                  value: profileCtrl.experienceLabel.isNotEmpty
-                      ? profileCtrl.experienceLabel
-                      : '—',
-                  icon: FeatherIcons.briefcase,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 25),
+         
 
           Text(
             'Account & Settings',

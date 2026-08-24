@@ -102,18 +102,7 @@ class _VoiceSettingsPageState extends State<VoiceSettingsPage> {
             }).toList(),
           ),
 
-          const SectionTitle(title: 'Accent & Language'),
-          ...['English (US)', 'English (UK)', 'English (India)', 'English (Australia)'].map((acc) {
-            final isSelected = _selectedAccent == acc;
-            return ChoiceRow(
-              label: acc,
-              detail: 'Natural synthesized neural voice',
-              icon: FeatherIcons.globe,
-              selected: isSelected,
-              onPress: () => setState(() => _selectedAccent = acc),
-            );
-          }),
-          const SizedBox(height: 30),
+        
         ],
       ),
     );

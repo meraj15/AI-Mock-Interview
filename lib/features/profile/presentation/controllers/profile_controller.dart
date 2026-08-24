@@ -22,7 +22,7 @@ class ProfileController extends ChangeNotifier {
 
   // ── Derived display values (safe, never null) ─────────────────────────────
 
-  String get fullName => _profile?.fullName ?? '';
+  String get fullName => _profile?.firstName ?? '';
   String get initials => _profile?.initials ?? '';
   String get targetRole => _profile?.targetRole ?? '';
   String get bio => _profile?.bio ?? '';
