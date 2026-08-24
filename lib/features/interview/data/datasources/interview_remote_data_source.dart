@@ -13,6 +13,7 @@ class SaveInterviewRequest {
   final String summary;
   final List<String> strengths;
   final List<String> areasToImprove;
+  final Map<String, int> skillScores;
   final int durationSecs;
 
   const SaveInterviewRequest({
@@ -25,6 +26,7 @@ class SaveInterviewRequest {
     required this.summary,
     required this.strengths,
     required this.areasToImprove,
+    required this.skillScores,
     required this.durationSecs,
   });
 
@@ -38,29 +40,24 @@ class SaveInterviewRequest {
         'summary': summary,
         'strengths': strengths,
         'areasToImprove': areasToImprove,
+        'skillScores': skillScores,
         'durationSecs': durationSecs,
       };
 }
 
 /// Aggregated stats returned by GET /api/v1/interviews/stats
 class InterviewStatsModel {
-  /// SUM(scores) / COUNT — rounded integer
   final int averageScore;
-
-  /// COUNT of all completed interviews
   final int totalInterviews;
-
-  /// COUNT since Monday of the current week
   final int thisWeekCount;
-
-  /// MAX score across all interviews
   final int bestScore;
-
-  /// Consecutive days with ≥1 interview ending today
   final int currentStreak;
-
-  /// currentMonthAvg - previousMonthAvg (can be negative)
   final int monthlyChange;
+  // ── Analytics extras ────────────────────────────────────────────────────
+  final List<int> scoreHistory;           // last ≤10 scores, oldest → newest
+  final Map<String, int> skillAverages;   // avg per skill across all sessions
+  final int completionRate;               // % of sessions > 30 s
+  final int overallChange;                // second-half avg − first-half avg
 
   const InterviewStatsModel({
     required this.averageScore,
@@ -69,19 +66,41 @@ class InterviewStatsModel {
     required this.bestScore,
     required this.currentStreak,
     required this.monthlyChange,
+    this.scoreHistory    = const [],
+    this.skillAverages   = const {},
+    this.completionRate  = 0,
+    this.overallChange   = 0,
   });
 
-  factory InterviewStatsModel.fromJson(Map<String, dynamic> j) =>
-      InterviewStatsModel(
-        averageScore:    (j['averageScore']    as num?)?.toInt() ?? 0,
-        totalInterviews: (j['totalInterviews'] as num?)?.toInt() ?? 0,
-        thisWeekCount:   (j['thisWeekCount']   as num?)?.toInt() ?? 0,
-        bestScore:       (j['bestScore']       as num?)?.toInt() ?? 0,
-        currentStreak:   (j['currentStreak']   as num?)?.toInt() ?? 0,
-        monthlyChange:   (j['monthlyChange']   as num?)?.toInt() ?? 0,
-      );
+  factory InterviewStatsModel.fromJson(Map<String, dynamic> j) {
+    final rawHistory = j['scoreHistory'];
+    final scoreHistory = rawHistory is List
+        ? rawHistory.map((e) => (e as num).toInt()).toList()
+        : <int>[];
 
-  /// Zero-state — shown before any interview is completed
+    final rawSkills = j['skillAverages'];
+    final skillAverages = rawSkills is Map
+        ? Map<String, int>.fromEntries(
+            rawSkills.entries.map(
+              (e) => MapEntry(e.key as String, (e.value as num).toInt()),
+            ),
+          )
+        : <String, int>{};
+
+    return InterviewStatsModel(
+      averageScore:    (j['averageScore']    as num?)?.toInt() ?? 0,
+      totalInterviews: (j['totalInterviews'] as num?)?.toInt() ?? 0,
+      thisWeekCount:   (j['thisWeekCount']   as num?)?.toInt() ?? 0,
+      bestScore:       (j['bestScore']       as num?)?.toInt() ?? 0,
+      currentStreak:   (j['currentStreak']   as num?)?.toInt() ?? 0,
+      monthlyChange:   (j['monthlyChange']   as num?)?.toInt() ?? 0,
+      scoreHistory:    scoreHistory,
+      skillAverages:   skillAverages,
+      completionRate:  (j['completionRate']  as num?)?.toInt() ?? 0,
+      overallChange:   (j['overallChange']   as num?)?.toInt() ?? 0,
+    );
+  }
+
   static const empty = InterviewStatsModel(
     averageScore: 0,
     totalInterviews: 0,
@@ -89,6 +108,10 @@ class InterviewStatsModel {
     bestScore: 0,
     currentStreak: 0,
     monthlyChange: 0,
+    scoreHistory: [],
+    skillAverages: {},
+    completionRate: 0,
+    overallChange: 0,
   );
 }
 

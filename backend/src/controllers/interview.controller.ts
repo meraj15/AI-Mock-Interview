@@ -16,6 +16,7 @@ const saveSessionSchema = z.object({
   summary:        z.string().min(1),
   strengths:      z.array(z.string()).max(10).default([]),
   areasToImprove: z.array(z.string()).max(10).default([]),
+  skillScores:    z.record(z.string(), z.number()).default({}),
   durationSecs:   z.number().int().min(0).default(0),
 });
 

@@ -14,6 +14,7 @@ export interface CreateInterviewSessionInput {
   summary: string;
   strengths: string[];
   areasToImprove: string[];
+  skillScores: Record<string, number>; // e.g. {"Technical Knowledge": 88}
   durationSecs: number;
 }
 
@@ -24,6 +25,11 @@ export interface InterviewStats {
   bestScore: number;       // MAX(scores)
   currentStreak: number;   // consecutive days with ≥1 interview
   monthlyChange: number;   // currentMonthAvg - prevMonthAvg, rounded
+  // ── Analytics extras ─────────────────────────────────────────────────────
+  scoreHistory: number[];           // last ≤10 session scores, oldest → newest
+  skillAverages: Record<string, number>; // averaged across all sessions
+  completionRate: number;           // % of sessions that lasted > 30 s (proxy for completion)
+  overallChange: number;            // first-half avg vs second-half avg of all sessions
 }
 
 // Re-export for consumers
@@ -60,7 +66,7 @@ export class InterviewRepository {
    * Compute all home-screen performance stats for a user.
    * Runs in ~4 parallel DB queries.
    */
-  
+
   async getStats(userId: string): Promise<InterviewStats> {
     // ── 1. Aggregate: avg / count / max ──────────────────────────────────
     const agg = await prisma.interviewSession.aggregate({
@@ -115,6 +121,62 @@ export class InterviewRepository {
     // ── 4. Streak ─────────────────────────────────────────────────────────
     const currentStreak = await this._calculateStreak(userId);
 
+    // ── 5. Score history (last 10, oldest → newest for chart) ────────────
+    const lastTen = await prisma.interviewSession.findMany({
+      where: { userId },
+      select: { score: true, skillScores: true, durationSecs: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+    const scoreHistory = lastTen.map((s) => s.score).reverse();
+
+    // ── 6. Skill averages across all sessions ─────────────────────────────
+    const allSessions = await prisma.interviewSession.findMany({
+      where: { userId },
+      select: { skillScores: true },
+    });
+
+    const skillTotals: Record<string, { sum: number; count: number }> = {};
+    for (const session of allSessions) {
+      const scores = session.skillScores as Record<string, number>;
+      if (scores && typeof scores === 'object') {
+        for (const [key, val] of Object.entries(scores)) {
+          if (typeof val === 'number') {
+            if (!skillTotals[key]) skillTotals[key] = { sum: 0, count: 0 };
+            skillTotals[key]!.sum   += val;
+            skillTotals[key]!.count += 1;
+          }
+        }
+      }
+    }
+    const skillAverages: Record<string, number> = {};
+    for (const [key, { sum, count }] of Object.entries(skillTotals)) {
+      skillAverages[key] = Math.round(sum / count);
+    }
+
+    // ── 7. Completion rate (sessions lasting > 30 s / total) ─────────────
+    const completedCount = await prisma.interviewSession.count({
+      where: { userId, durationSecs: { gt: 30 } },
+    });
+    const completionRate = totalInterviews > 0
+      ? Math.round((completedCount / totalInterviews) * 100)
+      : 0;
+
+    // ── 8. Overall change (first-half avg vs second-half avg) ─────────────
+    let overallChange = 0;
+    if (totalInterviews >= 2) {
+      const all = await prisma.interviewSession.findMany({
+        where: { userId },
+        select: { score: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const mid = Math.floor(all.length / 2);
+      const firstHalf  = all.slice(0, mid).map((s) => s.score);
+      const secondHalf = all.slice(mid).map((s) => s.score);
+      const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+      overallChange = Math.round(avg(secondHalf) - avg(firstHalf));
+    }
+
     return {
       averageScore,
       totalInterviews,
@@ -122,6 +184,10 @@ export class InterviewRepository {
       bestScore,
       currentStreak,
       monthlyChange,
+      scoreHistory,
+      skillAverages,
+      completionRate,
+      overallChange,
     };
   }
 

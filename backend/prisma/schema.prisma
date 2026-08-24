@@ -72,8 +72,9 @@ model InterviewSession {
   score         Int      // 0–100
   hiringBand    String
   summary       String   @db.Text
-  strengths     String[] // stored as array
+  strengths     String[]
   areasToImprove String[]
+  skillScores   Json     @default("{}") // e.g. {"Technical Knowledge": 88}
   durationSecs  Int      @default(0)
   createdAt     DateTime @default(now())
 

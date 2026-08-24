@@ -220,6 +220,7 @@ class InterviewController extends ChangeNotifier {
           summary:        _lastEvaluation!.summary,
           strengths:      _lastEvaluation!.strengths,
           areasToImprove: _lastEvaluation!.areasToImprove,
+          skillScores:    _lastEvaluation!.skillScores,
           durationSecs:   durationSecs,
         ),
       );
