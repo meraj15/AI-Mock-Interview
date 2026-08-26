@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../../core/config/api_config.dart';
 import '../../core/network/api_client.dart';
 import '../../features/interview/domain/entities/interview_config_entity.dart';
@@ -174,36 +175,63 @@ class GeminiAIInterviewService implements AIInterviewService {
             ? resume.skills
             : [config.role];
 
-    final response = await apiClient.post(
-      ApiConfig.aiQuestionsEndpoint,
-      body: {
-        'role': config.role,
-        'skills': skills,
-        'difficulty': config.difficulty,
-        'questionCount': config.questions,
-        if (config.experience.isNotEmpty) 'experience': config.experience,
-      },
-      requiresAuth: true,
-    );
+    final requestBody = {
+      'role': config.role,
+      'skills': skills,
+      'difficulty': config.difficulty,
+      'questionCount': config.questions,
+      if (config.experience.isNotEmpty) 'experience': config.experience,
+    };
 
-    final data = response.data as Map<String, dynamic>? ?? {};
-    final inner = data['data'] as Map<String, dynamic>? ?? {};
-    final rawList = inner['questions'] as List<dynamic>? ?? [];
+    debugPrint('======================================================');
+    debugPrint('[GeminiAIInterviewService] Requesting AI Questions');
+    debugPrint('  Endpoint: ${ApiConfig.aiQuestionsEndpoint}');
+    debugPrint('  Payload:  $requestBody');
+    debugPrint('======================================================');
 
-    final questions = rawList
-        .whereType<Map<String, dynamic>>()
-        .map(AIQuestionPrompt.fromJson)
-        .toList();
-
-    // Fallback: if backend returns nothing, use the mock
-    if (questions.isEmpty) {
-      return MockAIInterviewService().generateQuestions(
-        config: config,
-        resume: resume,
+    try {
+      final response = await apiClient.post(
+        ApiConfig.aiQuestionsEndpoint,
+        body: requestBody,
+        requiresAuth: true,
       );
-    }
 
-    return questions;
+      debugPrint('[GeminiAIInterviewService] Response Status: ${response.statusCode}');
+      debugPrint('[GeminiAIInterviewService] Response Body: ${response.data}');
+
+      final data = response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : <String, dynamic>{};
+      final inner = data['data'] is Map<String, dynamic>
+          ? data['data'] as Map<String, dynamic>
+          : data;
+      final rawList = inner['questions'] as List<dynamic>? ?? [];
+
+      final questions = rawList
+          .whereType<Map<String, dynamic>>()
+          .map(AIQuestionPrompt.fromJson)
+          .toList();
+
+      debugPrint('[GeminiAIInterviewService] Successfully parsed ${questions.length} AI questions:');
+      for (int i = 0; i < questions.length; i++) {
+        debugPrint('  Q${i + 1} [${questions[i].category}]: "${questions[i].primaryQuestion}"');
+        debugPrint('     Follow-up: "${questions[i].followUpQuestion}"');
+        debugPrint('     Hint: "${questions[i].contextHint}"');
+      }
+
+      if (questions.isEmpty) {
+        throw Exception('AI returned 0 questions from backend');
+      }
+
+      return questions;
+    } catch (e, stackTrace) {
+      debugPrint('======================================================');
+      debugPrint('[GeminiAIInterviewService] ERROR Generating Questions:');
+      debugPrint('  Error: $e');
+      debugPrint('  StackTrace: $stackTrace');
+      debugPrint('======================================================');
+      rethrow;
+    }
   }
 
   @override

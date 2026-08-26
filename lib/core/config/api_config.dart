@@ -46,6 +46,8 @@ class ApiConfig {
     }
   }
 
+  static bool get isResolved => _resolvedBaseUrl != null && _resolvedBaseUrl!.isNotEmpty;
+
   /// Returns the base URL according to the current platform & environment.
   static String get baseUrl {
     if (customBaseUrl != null && customBaseUrl!.isNotEmpty) {
@@ -67,7 +69,7 @@ class ApiConfig {
         }
         if (defaultTargetPlatform == TargetPlatform.android) {
           // Default to localhost (works with adb reverse) or LAN IP
-          return 'http://localhost:3000';
+          return 'http://192.168.0.113:3000';
         }
         return 'http://localhost:3000';
     }
@@ -96,6 +98,6 @@ class ApiConfig {
   static const String interviewStatsEndpoint  = '/api/v1/interviews/stats';
 
   // ── Network Timeouts ───────────────────────────────────────────────────────
-  static const Duration connectTimeout = Duration(seconds: 10);
-  static const Duration receiveTimeout = Duration(seconds: 10);
+  static const Duration connectTimeout = Duration(seconds: 45);
+  static const Duration receiveTimeout = Duration(seconds: 45);
 }

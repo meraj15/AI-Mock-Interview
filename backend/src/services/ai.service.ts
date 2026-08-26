@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { config } from '../config';
 
 export interface GeneratedQuestion {
@@ -8,21 +8,89 @@ export interface GeneratedQuestion {
   contextHint: string;
 }
 
-export class AIService {
-  private gemini: GoogleGenerativeAI | null = null;
+const FALLBACK_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+];
 
-  private getClient(): GoogleGenerativeAI {
-    if (!this.gemini) {
-      if (!config.gemini.apiKey) {
-        throw new Error('GEMINI_API_KEY is not configured');
+const ALLOWED_CATEGORIES = [
+  'Core Skills',
+  'Problem Solving',
+  'System Design',
+  'Best Practices',
+  'Debugging',
+  'Performance',
+] as const;
+
+export class AIService {
+  private client: GoogleGenAI | null = null;
+
+  /**
+   * Create or return the singleton Gemini client instance.
+   */
+  private getClient(): GoogleGenAI {
+    if (!this.client) {
+      if (!config.gemini.apiKey?.trim()) {
+        throw new Error(
+          'GEMINI_API_KEY is not set in environment variables',
+        );
       }
 
-      this.gemini = new GoogleGenerativeAI(config.gemini.apiKey);
+      this.client = new GoogleGenAI({
+        apiKey: config.gemini.apiKey.trim(),
+      });
     }
 
-    return this.gemini;
+    return this.client;
   }
 
+  /**
+   * Determine if an error is temporary (503, 429, high demand, overloaded, etc.)
+   */
+  private isTemporaryError(err: unknown): boolean {
+    if (!err) return false;
+
+    const errorObj = err as Record<string, any>;
+    const status =
+      errorObj?.status ||
+      errorObj?.statusCode ||
+      errorObj?.code ||
+      errorObj?.error?.code ||
+      errorObj?.error?.status;
+
+    if (
+      status === 503 ||
+      status === 429 ||
+      status === 'UNAVAILABLE' ||
+      status === 'RESOURCE_EXHAUSTED'
+    ) {
+      return true;
+    }
+
+    const errorStr = (
+      typeof err === 'string'
+        ? err
+        : errorObj?.message || JSON.stringify(err)
+    ).toLowerCase();
+
+    const temporaryKeywords = [
+      '503',
+      '429',
+      'unavailable',
+      'high demand',
+      'overloaded',
+      'rate limit',
+      'resource exhausted',
+      'temporarily unavailable',
+    ];
+
+    return temporaryKeywords.some((keyword) => errorStr.includes(keyword));
+  }
+
+  /**
+   * Generate technical interview questions with model fallback on temporary errors.
+   */
   async generateInterviewQuestions(params: {
     role: string;
     skills: string[];
@@ -38,68 +106,70 @@ export class AIService {
       experience,
     } = params;
 
-    // -----------------------------
-    // Validate input
-    // -----------------------------
-
-    if (!role?.trim()) {
+    // -----------------------------------------
+    // Validate role
+    // -----------------------------------------
+    if (!role || typeof role !== 'string' || !role.trim()) {
       throw new Error('Role is required');
     }
 
-    if (!questionCount || questionCount < 1) {
-      throw new Error('Question count must be greater than 0');
+    // -----------------------------------------
+    // Validate question count
+    // -----------------------------------------
+    if (
+      typeof questionCount !== 'number' ||
+      !Number.isInteger(questionCount) ||
+      questionCount < 1 ||
+      questionCount > 50
+    ) {
+      throw new Error('Question count must be an integer between 1 and 50');
     }
 
-    if (questionCount > 50) {
-      throw new Error('Question count cannot exceed 50');
-    }
-
-    // -----------------------------
-    // Difficulty
-    // -----------------------------
-
+    // -----------------------------------------
+    // Difficulty guide
+    // -----------------------------------------
     const difficultyGuide: Record<string, string> = {
-      easy:
-        'fundamental and conceptual questions suitable for juniors or freshers',
-
-      medium:
-        'intermediate questions involving practical implementation, debugging, and trade-off reasoning',
-
-      hard:
-        'advanced questions involving architecture, edge cases, optimization, scalability, and deep technical reasoning',
-
-      adaptive:
-        'start with moderate questions and progressively increase difficulty based on the candidate experience level',
+      easy: 'fundamental and conceptual questions suitable for juniors or freshers',
+      medium: 'intermediate questions involving practical implementation, debugging, and trade-off reasoning',
+      hard: 'advanced or senior-level questions involving architecture, edge cases, optimization, scalability, system design, and deep technical reasoning',
+      adaptive: 'mixed difficulty that progressively tests deeper concepts based on the candidate profile',
     };
 
-    const difficultyKey = difficulty?.toLowerCase() || 'medium';
+    const difficultyKey =
+      difficulty?.trim().toLowerCase() || 'medium';
 
     const diffDesc =
       difficultyGuide[difficultyKey] ?? difficultyGuide.medium;
 
-    // -----------------------------
-    // Skills
-    // -----------------------------
+    // -----------------------------------------
+    // Clean skills safely
+    // -----------------------------------------
+    const cleanedSkills = Array.isArray(skills)
+      ? skills
+          .filter((skill) => typeof skill === 'string' && skill.trim().length > 0)
+          .map((skill) => skill.trim())
+      : [];
 
     const skillList =
-      skills.length > 0
-        ? skills.join(', ')
-        : role;
+      cleanedSkills.length > 0 ? cleanedSkills.join(', ') : role.trim();
 
-    const expNote = experience
-      ? `The candidate has ${experience} of professional experience.`
+    // -----------------------------------------
+    // Experience note
+    // -----------------------------------------
+    const expNote = experience?.trim()
+      ? `The candidate has ${experience.trim()} of professional experience.`
       : 'The candidate experience level is not specified.';
 
-    // -----------------------------
-    // Prompt
-    // -----------------------------
-
+    // -----------------------------------------
+    // Construct Prompt
+    // -----------------------------------------
     const prompt = `
-You are a professional technical interviewer conducting a realistic job interview.
+You are an expert technical interviewer conducting a realistic professional job interview.
 
 Candidate Role:
-${role}
+${role.trim()}
 
+Candidate Experience:
 ${expNote}
 
 Candidate Skills:
@@ -111,181 +181,200 @@ ${diffDesc}
 Generate exactly ${questionCount} interview questions.
 
 QUESTION GENERATION RULES:
-
 1. Every question must be directly relevant to the candidate's role.
-
-2. Questions must be based on one or more of the candidate's listed skills.
-
-3. Cover different skills instead of repeatedly testing the same skill.
-
-4. Avoid duplicate or very similar questions.
-
-5. Mix different question styles:
-   - Conceptual
-   - Practical
-   - Scenario-based
-   - Problem-solving
-   - Debugging
-   - Best practices
-   - Performance
-   - System design when appropriate
-
-6. Questions should sound like questions asked by a real professional interviewer.
-
-7. Prefer practical and real-world questions over simple definition questions.
-
-8. When appropriate, ask about how the candidate would solve a problem in a real project.
-
-9. Match every question to the requested difficulty.
-
-10. Do not ask questions that require skills not included in the candidate's profile unless they are fundamental to the requested role.
-
-11. Do not repeat the same category for every question.
-
-12. Use these categories where appropriate:
+2. Every question must test at least one of the candidate's listed skills.
+3. Cover different skills across the questions without duplicates.
+4. Mix conceptual, practical, scenario-based, problem-solving, debugging, best practices, performance, and system design questions where appropriate.
+5. Prefer realistic, practical engineering questions over trivial memorization questions.
+6. Questions should sound natural and professional when spoken by an interviewer.
+7. Match every question strictly to the requested difficulty level.
+8. Use only these allowed categories:
    - Core Skills
    - Problem Solving
-   - Debugging
-   - Best Practices
-   - Performance
    - System Design
+   - Best Practices
+   - Debugging
+   - Performance
 
-FOLLOW-UP RULE:
-
+FOLLOW-UP QUESTION RULE:
 The candidate has NOT answered the primary question yet.
+Therefore, followUpQuestion must be a possible deeper follow-up question that an interviewer could ask AFTER the candidate answers the primary question.
+Do NOT assume the candidate's answer. The follow-up must explore deeper trade-offs, edge cases, internals, or alternatives related to the same topic.
 
-Therefore, "followUpQuestion" must be a POSSIBLE deeper follow-up question related to the primary question.
+CONTEXT HINT RULE:
+contextHint must be a short, single-sentence explanation of what specific competency or concept the interviewer is evaluating.
 
-Do NOT assume what the candidate will answer.
-
-The follow-up should allow the interviewer to explore the same topic more deeply after the candidate responds.
-
-CONTEXT HINT:
-
-"contextHint" should be a short one-sentence explanation of what the interviewer is evaluating with the question.
-
-QUALITY RULES:
-
-- Do not generate generic filler questions.
-- Do not generate questions unrelated to the role.
-- Do not repeat questions.
-- Do not use overly long questions.
-- Questions should be natural when spoken by an interviewer.
-- Each question should test a meaningful skill.
-- Make the interview progressively useful rather than simply listing definitions.
-
-OUTPUT FORMAT:
-
-Return ONLY a valid JSON array.
-
-Do NOT include:
-- Markdown
-- Code fences
-- Explanations
-- Comments
-- Additional text
-
-Return exactly ${questionCount} objects using this structure:
-
-[
-  {
-    "primaryQuestion": "...",
-    "followUpQuestion": "...",
-    "category": "...",
-    "contextHint": "..."
-  }
-]
+Return a JSON array containing exactly ${questionCount} question objects.
 `;
 
-    // -----------------------------
-    // Gemini
-    // -----------------------------
+    console.log('[AIService] Generating questions with params:', {
+      role: role.trim(),
+      skills: cleanedSkills,
+      difficulty: difficultyKey,
+      questionCount,
+      experience: experience?.trim() || undefined,
+    });
 
     const client = this.getClient();
 
-    const model = client.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-    });
+    let response: any = null;
+    let lastError: any = null;
 
-    const result = await model.generateContent(prompt);
+    // -----------------------------------------
+    // Fallback Loop over models
+    // -----------------------------------------
+    for (let i = 0; i < FALLBACK_MODELS.length; i++) {
+      const model = FALLBACK_MODELS[i];
+      const hasNext = i < FALLBACK_MODELS.length - 1;
 
-    const text = result.response.text().trim();
+      console.log(`[AIService] Calling Gemini model "${model}"...`);
 
-    if (!text) {
-      throw new Error('Gemini returned an empty response');
+      try {
+        response = await client.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              minItems: questionCount,
+              maxItems: questionCount,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  primaryQuestion: {
+                    type: Type.STRING,
+                    description: 'The main technical interview question.',
+                  },
+                  followUpQuestion: {
+                    type: Type.STRING,
+                    description:
+                      'A possible deeper follow-up question related to the primary question that could be asked after the candidate answers.',
+                  },
+                  category: {
+                    type: Type.STRING,
+                    enum: [...ALLOWED_CATEGORIES],
+                    description: 'The category of the interview question.',
+                  },
+                  contextHint: {
+                    type: Type.STRING,
+                    description:
+                      'A short one-sentence explanation of what the interviewer is evaluating.',
+                  },
+                },
+                required: [
+                  'primaryQuestion',
+                  'followUpQuestion',
+                  'category',
+                  'contextHint',
+                ],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        console.log(`[AIService] Gemini model "${model}" succeeded`);
+        lastError = null;
+        break;
+      } catch (err: any) {
+        console.error(`[AIService] Gemini model "${model}" failed`);
+        lastError = err;
+
+        if (this.isTemporaryError(err) && hasNext) {
+          console.log('[AIService] Trying next Gemini model...');
+          continue;
+        }
+
+        // If not a temporary error or no fallback models left, throw
+        throw new Error(`Gemini API Error: ${err?.message || JSON.stringify(err)}`);
+      }
     }
 
-    // -----------------------------
-    // Clean JSON response
-    // -----------------------------
-
-    const clean = text
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim();
-
-    // -----------------------------
-    // Parse JSON
-    // -----------------------------
-
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(clean);
-    } catch {
+    if (!response) {
       throw new Error(
-        `Gemini returned invalid JSON: ${clean.slice(0, 500)}`,
+        `All Gemini models failed. Last error: ${lastError?.message || JSON.stringify(lastError)}`,
       );
     }
 
-    // -----------------------------
-    // Validate array
-    // -----------------------------
-
-    if (!Array.isArray(parsed)) {
-      throw new Error('Gemini response is not an array');
+    // -----------------------------------------
+    // Parse Gemini response
+    // -----------------------------------------
+    const text = response.text?.trim();
+    if (!text) {
+      console.error('[AIService] Gemini returned an empty response');
+      throw new Error('Gemini returned an empty response');
     }
 
-    // -----------------------------
-    // Validate question count
-    // -----------------------------
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      console.error('[AIService] Failed to parse JSON from Gemini:', text);
+      throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 500)}`);
+    }
 
+    if (!Array.isArray(parsed)) {
+      console.error('[AIService] Response is not an array:', parsed);
+      throw new Error('Gemini response is not a questions array');
+    }
+
+    // -----------------------------------------
+    // Validate exact question count
+    // -----------------------------------------
     if (parsed.length !== questionCount) {
+      console.error(
+        `[AIService] Question count mismatch. Got ${parsed.length}, expected ${questionCount}`,
+      );
       throw new Error(
         `Gemini returned ${parsed.length} questions, expected ${questionCount}`,
       );
     }
 
-    // -----------------------------
-    // Validate question objects
-    // -----------------------------
+    // -----------------------------------------
+    // Validate each question
+    // -----------------------------------------
+    const validQuestions: GeneratedQuestion[] = [];
 
-    const validQuestions = parsed.filter((question): question is GeneratedQuestion => {
-      if (!question || typeof question !== 'object') {
-        return false;
+    for (let index = 0; index < parsed.length; index++) {
+      const item = parsed[index];
+
+      if (!item || typeof item !== 'object') {
+        throw new Error(`Invalid question object at index ${index}`);
       }
 
-      const q = question as Record<string, unknown>;
+      const q = item as Record<string, unknown>;
 
-      return (
-        typeof q.primaryQuestion === 'string' &&
-        q.primaryQuestion.trim().length > 0 &&
+      if (typeof q.primaryQuestion !== 'string' || !q.primaryQuestion.trim()) {
+        throw new Error(`Invalid or empty primaryQuestion at index ${index}`);
+      }
 
-        typeof q.followUpQuestion === 'string' &&
-        q.followUpQuestion.trim().length > 0 &&
+      if (typeof q.followUpQuestion !== 'string' || !q.followUpQuestion.trim()) {
+        throw new Error(`Invalid or empty followUpQuestion at index ${index}`);
+      }
 
-        typeof q.category === 'string' &&
-        q.category.trim().length > 0 &&
+      if (typeof q.category !== 'string' || !q.category.trim()) {
+        throw new Error(`Invalid or empty category at index ${index}`);
+      }
 
-        typeof q.contextHint === 'string' &&
-        q.contextHint.trim().length > 0
-      );
-    });
+      if (typeof q.contextHint !== 'string' || !q.contextHint.trim()) {
+        throw new Error(`Invalid or empty contextHint at index ${index}`);
+      }
 
-    // -----------------------------
-    // Final validation
-    // -----------------------------
+      const trimmedCategory = q.category.trim();
+      if (!ALLOWED_CATEGORIES.includes(trimmedCategory as any)) {
+        throw new Error(
+          `Invalid category "${trimmedCategory}" at index ${index}. Allowed categories: ${ALLOWED_CATEGORIES.join(', ')}`,
+        );
+      }
+
+      validQuestions.push({
+        primaryQuestion: q.primaryQuestion.trim(),
+        followUpQuestion: q.followUpQuestion.trim(),
+        category: trimmedCategory,
+        contextHint: q.contextHint.trim(),
+      });
+    }
 
     if (validQuestions.length !== questionCount) {
       throw new Error(
@@ -293,12 +382,9 @@ Return exactly ${questionCount} objects using this structure:
       );
     }
 
-    return validQuestions.map((question) => ({
-      primaryQuestion: question.primaryQuestion.trim(),
-      followUpQuestion: question.followUpQuestion.trim(),
-      category: question.category.trim(),
-      contextHint: question.contextHint.trim(),
-    }));
+    console.log(`[AIService] Successfully generated ${validQuestions.length} questions`);
+
+    return validQuestions;
   }
 }
 

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
@@ -152,20 +151,24 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     if (ic.sessionStatus == SessionStatus.loading ||
         ic.sessionStatus == SessionStatus.active) {
       // Already started from setup page — wait for questions
-      if (ic.sessionStatus != SessionStatus.active) {
+      if (ic.sessionStatus != SessionStatus.active &&
+          ic.sessionStatus != SessionStatus.error) {
         await _waitForQuestions(ic);
       }
-    } else {
+    } else if (ic.sessionStatus != SessionStatus.error) {
       await ic.startInterview(resume: rc.resume);
     }
 
     if (!mounted) return;
+    if (ic.sessionStatus == SessionStatus.error || ic.prompts.isEmpty) {
+      return;
+    }
     _speakCurrentQuestion();
   }
 
   Future<void> _waitForQuestions(InterviewController ic) async {
     int waited = 0;
-    while (ic.sessionStatus == SessionStatus.loading && waited < 30 && mounted) {
+    while (ic.sessionStatus == SessionStatus.loading && waited < 40 && mounted) {
       await Future.delayed(const Duration(milliseconds: 300));
       waited++;
     }
@@ -337,6 +340,137 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     const mintGreen = Color(0xFF2DE4B6);
     const coralRed = Color(0xFFFF6B6B);
     const softWhite = Color(0xFFE8EEFF);
+
+    final hasError = ic.sessionStatus == SessionStatus.error ||
+        (ic.errorMessage != null && ic.prompts.isEmpty);
+
+    if (hasError) {
+      return Scaffold(
+        backgroundColor: bg,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: GestureDetector(
+                    onTap: _exitSession,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(FeatherIcons.x, size: 14, color: Colors.white54),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Exit',
+                            style: AppTypography.semiBold(11, color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: coralRed.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: coralRed.withValues(alpha: 0.4), width: 2),
+                  ),
+                  child: const Icon(FeatherIcons.alertTriangle, size: 34, color: coralRed),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'AI Question Error',
+                  style: AppTypography.bold(20, color: softWhite),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Failed to generate interview questions from AI. Fallback questions have been removed.',
+                  style: AppTypography.regular(13, color: Colors.white60),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: navyDeep,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: coralRed.withValues(alpha: 0.25)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(FeatherIcons.terminal, size: 13, color: coralRed),
+                          const SizedBox(width: 6),
+                          Text(
+                            'ERROR DETAILS',
+                            style: AppTypography.bold(10, color: coralRed, letterSpacing: 1.1),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SelectableText(
+                        ic.errorMessage ?? 'Unknown error occurred while contacting AI service.',
+                        style: AppTypography.regular(12, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _exitSession,
+                        child: Text('Exit', style: AppTypography.semiBold(14, color: Colors.white70)),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: mintGreen,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          final rc = context.read<ResumeController>();
+                          ic.startInterview(resume: rc.resume).then((_) {
+                            if (mounted && ic.sessionStatus == SessionStatus.active) {
+                              _speakCurrentQuestion();
+                            }
+                          });
+                        },
+                        child: Text('Retry', style: AppTypography.bold(14, color: const Color(0xFF0B0F1E))),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     final isLoading = _turn == _Turn.loading || ic.prompts.isEmpty;
     final isAI = _turn == _Turn.aiSpeaking;

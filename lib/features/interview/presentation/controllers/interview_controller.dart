@@ -6,7 +6,7 @@ import '../../domain/entities/interview_config_entity.dart';
 import '../../data/datasources/interview_remote_data_source.dart';
 
 
-enum SessionStatus { idle, loading, active, followUp, evaluating, complete }
+enum SessionStatus { idle, loading, active, followUp, evaluating, complete, error }
 
 class InterviewSession {
   final List<String> questions;
@@ -44,6 +44,7 @@ class InterviewController extends ChangeNotifier {
   InterviewConfigEntity _config = InterviewConfigEntity.initial();
   bool _interviewActive = false;
   SessionStatus _sessionStatus = SessionStatus.idle;
+  String? _errorMessage;
   List<AIQuestionPrompt> _prompts = [];
   int _currentIndex = 0;
   bool _isFollowUp = false;
@@ -74,6 +75,7 @@ class InterviewController extends ChangeNotifier {
   InterviewConfigEntity get config => _config;
   bool get interviewActive => _interviewActive;
   SessionStatus get sessionStatus => _sessionStatus;
+  String? get errorMessage => _errorMessage;
   List<AIQuestionPrompt> get prompts => _prompts;
   int get currentIndex => _currentIndex;
   bool get isFollowUp => _isFollowUp;
@@ -137,6 +139,8 @@ class InterviewController extends ChangeNotifier {
   Future<void> startInterview({ResumeEntity? resume}) async {
     _interviewActive = true;
     _sessionStatus = SessionStatus.loading;
+    _errorMessage = null;
+    _prompts = [];
     _currentIndex = 0;
     _isFollowUp = false;
     _sessionHistory.clear();
@@ -152,8 +156,8 @@ class InterviewController extends ChangeNotifier {
       _config = _config.copyWith(
         role: _config.role.isNotEmpty &&
                 _config.role != InterviewConfigEntity.initial().role
-            ? _config.role
-            : profileRole,
+             ? _config.role
+             : profileRole,
         experience: resume.experience.isNotEmpty ? resume.experience : _config.experience,
         skills: resume.skills.isNotEmpty ? resume.skills : _config.skills,
       );
@@ -161,29 +165,52 @@ class InterviewController extends ChangeNotifier {
 
     notifyListeners();
 
-    // Use real Gemini service when apiClient is available, fallback to mock
-    final AIInterviewService ai = apiClient != null
-        ? GeminiAIInterviewService(apiClient: apiClient!)
-        : MockAIInterviewService();
+    if (apiClient == null) {
+      const err = 'Backend API client is not configured. Cannot request AI questions.';
+      debugPrint('[InterviewController] ERROR: $err');
+      _errorMessage = err;
+      _sessionStatus = SessionStatus.error;
+      _interviewActive = false;
+      notifyListeners();
+      return;
+    }
+
+    final ai = GeminiAIInterviewService(apiClient: apiClient!);
 
     try {
+      debugPrint('[InterviewController] Fetching AI questions for role: "${_config.role}"...');
       _prompts = await ai.generateQuestions(
         config: _config,
         resume: resume ?? ResumeEntity.defaultResume(),
       );
-    } catch (_) {
-      // If real API fails, fall back to mock so the session always starts
-      _prompts = await MockAIInterviewService().generateQuestions(
-        config: _config,
-        resume: resume ?? ResumeEntity.defaultResume(),
-      );
+
+      if (_prompts.isEmpty) {
+        throw Exception('AI returned 0 questions');
+      }
+
+      debugPrint('[InterviewController] Successfully received ${_prompts.length} AI questions:');
+      for (int i = 0; i < _prompts.length; i++) {
+        debugPrint('[InterviewController]   Q${i + 1} (${_prompts[i].category}): ${_prompts[i].primaryQuestion}');
+      }
+
+      if (_prompts.length > _config.questions) {
+        _prompts = _prompts.sublist(0, _config.questions);
+      }
+
+      _sessionStatus = SessionStatus.active;
+      _errorMessage = null;
+    } catch (e, stackTrace) {
+      final cleanError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      debugPrint('====================================================');
+      debugPrint('[InterviewController] AI QUESTION GENERATION FAILED');
+      debugPrint('  Error: $cleanError');
+      debugPrint('  StackTrace: $stackTrace');
+      debugPrint('====================================================');
+      _errorMessage = cleanError;
+      _sessionStatus = SessionStatus.error;
+      _interviewActive = false;
     }
 
-    if (_prompts.length > _config.questions) {
-      _prompts = _prompts.sublist(0, _config.questions);
-    }
-
-    _sessionStatus = SessionStatus.active;
     notifyListeners();
   }
 
@@ -282,6 +309,7 @@ class InterviewController extends ChangeNotifier {
     _config = InterviewConfigEntity.initial();
     _interviewActive = false;
     _sessionStatus = SessionStatus.idle;
+    _errorMessage = null;
     _prompts = [];
     _currentIndex = 0;
     _isFollowUp = false;

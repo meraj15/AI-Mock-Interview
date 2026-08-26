@@ -135,7 +135,7 @@ class ApiClient {
     bool requiresAuth = true,
     bool autoRefresh = true,
   }) async {
-    if (ApiConfig.currentEnvironment != Environment.development) {
+    if (ApiConfig.currentEnvironment != Environment.development || ApiConfig.isResolved) {
       return _sendSingleRequest(
         baseUrl: ApiConfig.baseUrl,
         method: method,
@@ -168,7 +168,7 @@ class ApiClient {
           queryParameters: queryParameters,
           requiresAuth: requiresAuth,
           autoRefresh: autoRefresh,
-          customTimeout: const Duration(seconds: 4),
+          customTimeout: ApiConfig.connectTimeout,
         );
         // Host is reachable — remember it in memory and persist it so the
         // next cold-start skips the discovery loop entirely.
@@ -182,7 +182,7 @@ class ApiClient {
         lastException = NetworkException(e.message);
         continue;
       } on TimeoutException catch (e) {
-        lastException = NetworkException(e.message ?? 'Timed out');
+        lastException = NetworkException(e.message ?? 'Request timed out');
         continue;
       } catch (e) {
         if (e is Exception &&
@@ -457,7 +457,7 @@ class ApiClient {
 
     if (response.statusCode >= 500) {
       throw ServerException(
-          'Something went wrong. Please try again later.', errorCode);
+          errorMessage.isNotEmpty ? errorMessage : 'Something went wrong. Please try again later.', errorCode);
     }
 
     throw ServerException(errorMessage, errorCode);

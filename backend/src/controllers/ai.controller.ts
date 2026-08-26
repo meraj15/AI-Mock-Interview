@@ -13,6 +13,7 @@ const generateQuestionsSchema = z.object({
 export class AIController {
   generateQuestions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      console.log('[AIController] generateQuestions request body:', JSON.stringify(req.body));
       const validated = generateQuestionsSchema.parse(req.body);
 
       const questions = await aiService.generateInterviewQuestions({
@@ -23,11 +24,17 @@ export class AIController {
         experience: validated.experience,
       });
 
+      console.log(`[AIController] Successfully generated ${questions.length} questions.`);
+      questions.forEach((q, idx) => {
+        console.log(`  [AIController] Q${idx + 1}: ${q.primaryQuestion}`);
+      });
+
       res.status(200).json({
         success: true,
         data: { questions },
       });
     } catch (err) {
+      console.error('[AIController] Error in generateQuestions:', err);
       next(err);
     }
   };
