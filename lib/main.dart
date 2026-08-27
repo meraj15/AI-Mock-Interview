@@ -80,10 +80,20 @@ void main() async {
             resetPasswordUseCase: resetPasswordUseCase,
           )..init(),
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<AuthController, ProfileController>(
           create: (_) => ProfileController(
             dataSource: profileRemoteDataSource,
           ),
+          update: (_, authCtrl, profileCtrl) {
+            // Auto-load profile whenever the user becomes authenticated.
+            // This covers login, signup, and session restore on cold-start.
+            if (authCtrl.isAuthenticated) {
+              profileCtrl!.loadProfile();
+            } else {
+              profileCtrl!.clear();
+            }
+            return profileCtrl;
+          },
         ),
         // DashboardController owns the stats and recent sessions.
         ChangeNotifierProvider<DashboardController>(

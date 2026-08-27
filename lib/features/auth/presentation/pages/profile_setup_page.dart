@@ -8,6 +8,8 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
+import '../../../profile/data/models/profile_model.dart';
+import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/auth_controller.dart';
 
@@ -32,17 +34,23 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
   String _statusMessage = '';
   String? _errorMessage;
 
-  // Manual form
-  final _nameCtrl = TextEditingController();
+  // Manual form — only fields NOT already known from signup
   final _roleCtrl = TextEditingController();
   final _expCtrl = TextEditingController();
   final _skillsCtrl = TextEditingController();
+  final _educationCtrl = TextEditingController();
+  final _projectsCtrl = TextEditingController();
+
+  // Pre-filled existing values read from ProfileController
+  String _existingName = '';
+  String _existingEmail = '';
+  bool _existingHasRole = false;
+  bool _existingHasSkills = false;
 
   // Pulse animation — nullable so it's only created when first needed
   AnimationController? _pulseCtrl;
   Animation<double>? _pulseAnim;
 
-  /// Lazily initialise the pulse animation the first time it is needed.
   Animation<double> get _pulse {
     if (_pulseAnim != null) return _pulseAnim!;
     _pulseCtrl = AnimationController(
@@ -58,14 +66,50 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
   @override
   void initState() {
     super.initState();
+    _loadExistingProfile();
+  }
+
+  /// Pre-fill form fields from whatever profile data we already have.
+  void _loadExistingProfile() {
+    final profileCtrl = context.read<ProfileController>();
+    final profile = profileCtrl.profile;
+    final authUser = context.read<AuthController>().user;
+
+    // Name: prefer profile fullName → then auth user name
+    _existingName = profile?.fullName.isNotEmpty == true
+        ? profile!.fullName
+        : (authUser?.name ?? '');
+
+    // Email: from auth user (always available after signup)
+    _existingEmail = authUser?.email ?? '';
+
+    // Role
+    final existingRole = profile?.targetRole ?? '';
+    _existingHasRole = existingRole.isNotEmpty;
+    if (_existingHasRole) {
+      _roleCtrl.text = existingRole;
+    }
+
+    // Skills
+    final existingSkills = profile?.skills ?? [];
+    _existingHasSkills = existingSkills.isNotEmpty;
+    if (_existingHasSkills) {
+      _skillsCtrl.text = existingSkills.join(', ');
+    }
+
+    // Experience
+    if (profile?.experienceLabel.isNotEmpty == true) {
+      _expCtrl.text = profile!.experienceLabel;
+    }
   }
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
     _roleCtrl.dispose();
     _expCtrl.dispose();
     _skillsCtrl.dispose();
+    _educationCtrl.dispose();
+    _projectsCtrl.dispose();
     _pulseCtrl?.dispose();
     super.dispose();
   }
@@ -99,7 +143,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
     });
 
     try {
-      await context.read<ResumeController>().uploadFromFilePicker(
+      final resumeEntity =
+          await context.read<ResumeController>().uploadFromFilePicker(
         fileName: _pickedFileName!,
         filePath: _pickedFilePath,
         onProgress: (p) {
@@ -110,10 +155,26 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
                 ? 'Extracting content…'
                 : p < 0.7
                     ? 'Identifying skills & experience…'
-                    : 'Finalising your profile…';
+                    : 'Merging into your profile…';
           });
         },
       );
+
+      if (!mounted) return;
+
+      // ── Merge resume data into the unified UserProfile (non-destructive) ──
+      // Existing user-provided values are preserved; only blank fields are filled.
+      final skills = resumeEntity.skills;
+      final educationText = resumeEntity.education;
+
+      await context.read<ProfileController>().mergeResumeProfile(
+            targetRole: resumeEntity.experience,
+            skills: skills.isNotEmpty ? skills : null,
+            education: educationText.isNotEmpty
+                ? [EducationItem(degree: educationText)]
+                : null,
+          );
+
       if (!mounted) return;
       context.read<AuthController>().markProfileSetupComplete();
       _goHome();
@@ -127,7 +188,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
       if (!mounted) return;
       setState(() {
         _isProcessing = false;
-        _errorMessage = e.message ?? 'Server error. Please try again.';
+        _errorMessage = e.message;
       });
     } catch (_) {
       if (!mounted) return;
@@ -140,26 +201,59 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
 
   // ── Manual Submit ────────────────────────────────────────────────────────────
 
-  void _submitManual() {
-    final name = _nameCtrl.text.trim();
+  Future<void> _submitManual() async {
+    // Gather role & skills — either pre-filled or newly entered
     final role = _roleCtrl.text.trim();
-    if (name.isEmpty || role.isEmpty) {
-      setState(() => _errorMessage = 'Please enter your name and target role.');
+    if (role.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your target role.');
       return;
     }
+
     final skills = _skillsCtrl.text
         .split(',')
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
 
-    context.read<ResumeController>().addManualProfile(
-          candidateName: name,
+    // Parse experience years from text
+    double? expYears;
+    final expText = _expCtrl.text.trim();
+    final expNum = double.tryParse(
+        expText.replaceAll(RegExp(r'[^0-9.]'), ''));
+    if (expNum != null) expYears = expNum;
+
+    // Parse education
+    final educationText = _educationCtrl.text.trim();
+    final educationItems = educationText.isNotEmpty
+        ? [EducationItem(degree: educationText)]
+        : <EducationItem>[];
+
+    // Parse projects
+    final projectsText = _projectsCtrl.text.trim();
+    final projectItems = projectsText.isNotEmpty
+        ? [ProjectItem(name: projectsText)]
+        : <ProjectItem>[];
+
+    setState(() => _errorMessage = null);
+
+    // Save everything to the unified profile via ProfileController
+    final success = await context.read<ProfileController>().updateProfile(
           targetRole: role,
-          experience: _expCtrl.text.trim().isNotEmpty ? _expCtrl.text.trim() : 'Fresher',
-          skills: skills.isNotEmpty ? skills : ['Flutter', 'Dart'],
-          summary: '$role — ${_expCtrl.text.trim().isNotEmpty ? _expCtrl.text.trim() : 'early career'}',
+          skills: skills.isNotEmpty ? skills : null,
+          experienceYears: expYears,
+          education: educationItems.isNotEmpty ? educationItems : null,
+          projects: projectItems.isNotEmpty ? projectItems : null,
         );
+
+    if (!mounted) return;
+
+    if (!success) {
+      setState(() =>
+          _errorMessage = context.read<ProfileController>().errorMessage ??
+              'Failed to save profile. Please try again.');
+      return;
+    }
+
     context.read<AuthController>().markProfileSetupComplete();
     _goHome();
   }
@@ -223,11 +317,20 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
           _SetupMode.manual => _ManualScreen(
               key: const ValueKey('manual'),
               colors: colors,
-              nameCtrl: _nameCtrl,
+              // Pre-filled read-only context
+              existingName: _existingName,
+              existingEmail: _existingEmail,
+              existingHasRole: _existingHasRole,
+              existingHasSkills: _existingHasSkills,
+              // Editable controllers
               roleCtrl: _roleCtrl,
               expCtrl: _expCtrl,
               skillsCtrl: _skillsCtrl,
+              educationCtrl: _educationCtrl,
+              projectsCtrl: _projectsCtrl,
               errorMessage: _errorMessage,
+              isLoading:
+                  context.watch<ProfileController>().isSaving,
               onSubmit: _submitManual,
               onBack: () => setState(() {
                 _mode = _SetupMode.choice;
@@ -272,7 +375,6 @@ class _ChoiceScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icon chip
                 Container(
                   width: 50,
                   height: 50,
@@ -285,7 +387,7 @@ class _ChoiceScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Add your resume',
+                  'Complete your profile',
                   style: AppTypography.bold(26, color: Colors.white),
                 ),
                 const SizedBox(height: 8),
@@ -307,7 +409,6 @@ class _ChoiceScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
               child: Column(
                 children: [
-                  // Upload option
                   _OptionTile(
                     icon: FeatherIcons.upload,
                     iconColor: colors.primary,
@@ -323,20 +424,18 @@ class _ChoiceScreen extends StatelessWidget {
 
                   const SizedBox(height: 12),
 
-                  // Manual option
                   _OptionTile(
                     icon: FeatherIcons.edit3,
                     iconColor: colors.accentForeground,
                     iconBg: colors.accent,
-                    title: 'Enter info manually',
-                    subtitle: 'Name, role, skills & experience',
+                    title: 'Continue manually',
+                    subtitle: 'Add experience & education — we already have the basics',
                     colors: colors,
                     onTap: onManual,
                   ),
 
                   const Spacer(),
 
-                  // Privacy note
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
@@ -402,7 +501,6 @@ class _UploadScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasFile = fileName != null;
 
-    // ── Processing overlay ────────────────────────────────────────────
     if (isProcessing) {
       return SafeArea(
         child: Padding(
@@ -410,7 +508,6 @@ class _UploadScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Animated orb
               ScaleTransition(
                 scale: pulseAnim,
                 child: Container(
@@ -458,7 +555,6 @@ class _UploadScreen extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // Progress bar
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
@@ -485,22 +581,19 @@ class _UploadScreen extends StatelessWidget {
 
               const SizedBox(height: 40),
 
-              // Stage checklist
               _StageCheck(label: 'Read document', done: progress > 0.25, colors: colors),
               _StageCheck(label: 'Extract skills & experience', done: progress > 0.5, colors: colors),
               _StageCheck(label: 'Identify work history', done: progress > 0.75, colors: colors),
-              _StageCheck(label: 'Build structured profile', done: progress >= 1.0, colors: colors),
+              _StageCheck(label: 'Merge into your profile', done: progress >= 1.0, colors: colors),
             ],
           ),
         ),
       );
     }
 
-    // ── Idle state ────────────────────────────────────────────────────
     return SafeArea(
       child: Column(
         children: [
-          // Top bar
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 10, 20, 0),
             child: Row(
@@ -524,7 +617,6 @@ class _UploadScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Drop zone
                   GestureDetector(
                     onTap: onPickFile,
                     child: AnimatedContainer(
@@ -556,7 +648,6 @@ class _UploadScreen extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // Format tags
                   Text(
                     'SUPPORTED FORMATS',
                     style: AppTypography.bold(
@@ -594,15 +685,12 @@ class _UploadScreen extends StatelessWidget {
                     style: AppTypography.regular(11, color: colors.mutedForeground),
                   ),
 
-                  // Error
                   if (errorMessage != null) ...[
                     const SizedBox(height: 20),
                     _ErrorBanner(message: errorMessage!, colors: colors),
                   ],
 
                   const SizedBox(height: 28),
-
-                  // How it works card
                   _HowItWorksCard(colors: colors),
                 ],
               ),
@@ -624,25 +712,41 @@ class _UploadScreen extends StatelessWidget {
 }
 
 // ── Manual Screen ─────────────────────────────────────────────────────────────
+// Only shows information the app does NOT already have.
+// Pre-filled data is shown read-only with an edit affordance.
 
 class _ManualScreen extends StatelessWidget {
   final AppColorScheme colors;
-  final TextEditingController nameCtrl;
+  // Pre-filled (already known) data
+  final String existingName;
+  final String existingEmail;
+  final bool existingHasRole;
+  final bool existingHasSkills;
+  // Editable controllers (may be pre-filled if data exists)
   final TextEditingController roleCtrl;
   final TextEditingController expCtrl;
   final TextEditingController skillsCtrl;
+  final TextEditingController educationCtrl;
+  final TextEditingController projectsCtrl;
   final String? errorMessage;
+  final bool isLoading;
   final VoidCallback onSubmit;
   final VoidCallback onBack;
 
   const _ManualScreen({
     super.key,
     required this.colors,
-    required this.nameCtrl,
+    required this.existingName,
+    required this.existingEmail,
+    required this.existingHasRole,
+    required this.existingHasSkills,
     required this.roleCtrl,
     required this.expCtrl,
     required this.skillsCtrl,
+    required this.educationCtrl,
+    required this.projectsCtrl,
     required this.errorMessage,
+    required this.isLoading,
     required this.onSubmit,
     required this.onBack,
   });
@@ -662,7 +766,7 @@ class _ManualScreen extends StatelessWidget {
                   icon: Icon(FeatherIcons.arrowLeft, size: 20, color: colors.foreground),
                 ),
                 Text(
-                  'Your background',
+                  'Complete your profile',
                   style: AppTypography.bold(17, color: colors.foreground),
                 ),
               ],
@@ -677,12 +781,12 @@ class _ManualScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Just the basics.',
+                    'Almost there.',
                     style: AppTypography.bold(22, color: colors.foreground),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'We\'ll use this to tailor interview questions to your level.',
+                    'We already have the basics from signup. Just add a few more details to tailor your interviews.',
                     style: AppTypography.regular(
                       13,
                       color: colors.mutedForeground,
@@ -690,26 +794,45 @@ class _ManualScreen extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
 
-                  _Field(
-                    label: 'Full name',
-                    required: true,
-                    child: AppTextField(
-                      controller: nameCtrl,
-                      placeholder: 'e.g. Alex Johnson',
-                    ),
+                  // ── Already collected banner ────────────────────────────
+                  _AlreadyCollectedSection(
+                    colors: colors,
+                    name: existingName,
+                    email: existingEmail,
                   ),
 
+                  const SizedBox(height: 24),
+
+                  // ── Role (editable — may or may not be pre-filled) ─────
                   _Field(
                     label: 'Target role',
                     required: true,
+                    hint: existingHasRole ? 'Pre-filled from your profile — edit if needed' : null,
                     child: AppTextField(
                       controller: roleCtrl,
                       placeholder: 'e.g. Flutter Developer, Backend Engineer',
                     ),
                   ),
 
+                  // ── Skills (editable — may or may not be pre-filled) ───
+                  _Field(
+                    label: 'Key skills',
+                    hint: existingHasSkills
+                        ? 'Pre-filled from your profile — edit if needed'
+                        : 'Separate with commas',
+                    child: AppTextField(
+                      controller: skillsCtrl,
+                      placeholder: 'e.g. Flutter, Dart, Firebase, REST APIs',
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+                  _SectionDivider(label: 'Additional details', colors: colors),
+                  const SizedBox(height: 16),
+
+                  // ── Experience ────────────────────────────────────────
                   _Field(
                     label: 'Years of experience',
                     child: AppTextField(
@@ -718,12 +841,23 @@ class _ManualScreen extends StatelessWidget {
                     ),
                   ),
 
+                  // ── Education ─────────────────────────────────────────
                   _Field(
-                    label: 'Key skills',
-                    hint: 'Separate with commas',
+                    label: 'Education',
+                    hint: 'Optional — e.g. B.Tech Computer Science, MIT 2022',
                     child: AppTextField(
-                      controller: skillsCtrl,
-                      placeholder: 'e.g. Flutter, Dart, Firebase, REST APIs',
+                      controller: educationCtrl,
+                      placeholder: 'Degree, Institution, Year',
+                    ),
+                  ),
+
+                  // ── Projects ──────────────────────────────────────────
+                  _Field(
+                    label: 'Notable project',
+                    hint: 'Optional — your most impressive project',
+                    child: AppTextField(
+                      controller: projectsCtrl,
+                      placeholder: 'e.g. E-commerce app with Flutter & Firebase',
                     ),
                   ),
 
@@ -743,11 +877,129 @@ class _ManualScreen extends StatelessWidget {
             child: AppButton(
               label: 'Save & continue',
               icon: FeatherIcons.arrowRight,
+              isLoading: isLoading,
               onPress: onSubmit,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Already Collected Section ─────────────────────────────────────────────────
+
+class _AlreadyCollectedSection extends StatelessWidget {
+  final AppColorScheme colors;
+  final String name;
+  final String email;
+
+  const _AlreadyCollectedSection({
+    required this.colors,
+    required this.name,
+    required this.email,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasData = name.isNotEmpty || email.isNotEmpty;
+    if (!hasData) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.mint.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.mint.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(FeatherIcons.checkCircle, size: 14, color: colors.mint),
+              const SizedBox(width: 8),
+              Text(
+                'Already collected from signup',
+                style: AppTypography.semiBold(12, color: colors.mint),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (name.isNotEmpty)
+            _InfoRow(label: 'Name', value: name, colors: colors),
+          if (email.isNotEmpty)
+            _InfoRow(label: 'Email', value: email, colors: colors),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final AppColorScheme colors;
+
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            child: Text(
+              label,
+              style: AppTypography.regular(12, color: colors.mutedForeground),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: AppTypography.semiBold(12, color: colors.foreground),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Section Divider ───────────────────────────────────────────────────────────
+
+class _SectionDivider extends StatelessWidget {
+  final String label;
+  final AppColorScheme colors;
+
+  const _SectionDivider({required this.label, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: colors.border, thickness: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            label.toUpperCase(),
+            style: AppTypography.bold(
+              9,
+              color: colors.mutedForeground,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: colors.border, thickness: 1)),
+      ],
     );
   }
 }
@@ -1047,7 +1299,7 @@ class _HowItWorksCard extends StatelessWidget {
           ...[
             (FeatherIcons.fileText, 'Text is extracted from your file'),
             (FeatherIcons.cpu, 'AI builds a structured candidate profile'),
-            (FeatherIcons.checkCircle, 'You review and confirm before saving'),
+            (FeatherIcons.checkCircle, 'Data is merged into your existing profile'),
           ].map(
             (step) => Padding(
               padding: const EdgeInsets.only(bottom: 10),

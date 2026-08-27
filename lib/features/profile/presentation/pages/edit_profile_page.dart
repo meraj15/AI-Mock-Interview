@@ -22,6 +22,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController _lastNameController;
   late TextEditingController _phoneController;
   late TextEditingController _roleController;
+  late TextEditingController _skillsController;
   late TextEditingController _expController;
   late TextEditingController _bioController;
 
@@ -33,6 +34,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _lastNameController = TextEditingController(text: profile.profile?.lastName ?? '');
     _phoneController = TextEditingController(text: profile.phone);
     _roleController = TextEditingController(text: profile.targetRole);
+    _skillsController = TextEditingController(text: profile.skills.join(', '));
     _expController = TextEditingController(
       text: profile.experienceYears?.toString() ?? '',
     );
@@ -45,6 +47,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _lastNameController.dispose();
     _phoneController.dispose();
     _roleController.dispose();
+    _skillsController.dispose();
     _expController.dispose();
     _bioController.dispose();
     super.dispose();
@@ -65,6 +68,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
       }
     }
 
+    final skills = _skillsController.text
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
     final success = await profileCtrl.updateProfile(
       firstName: _firstNameController.text.trim().isNotEmpty
           ? _firstNameController.text.trim()
@@ -78,6 +87,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       targetRole: _roleController.text.trim().isNotEmpty
           ? _roleController.text.trim()
           : null,
+      skills: skills.isNotEmpty ? skills : null,
       experienceYears: expYears,
       bio: _bioController.text.trim().isNotEmpty
           ? _bioController.text.trim()
@@ -187,6 +197,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
           AppTextField(
             controller: _roleController,
             placeholder: 'e.g. Flutter Developer, Senior Backend',
+          ),
+
+          const SizedBox(height: 14),
+
+          // Key Skills
+          Text('Key skills (comma-separated)', style: AppTypography.semiBold(12, color: colors.foreground)),
+          const SizedBox(height: 8),
+          AppTextField(
+            controller: _skillsController,
+            placeholder: 'e.g. Flutter, Dart, Firebase, REST APIs',
           ),
 
           const SizedBox(height: 14),

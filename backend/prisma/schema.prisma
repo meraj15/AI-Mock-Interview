@@ -38,6 +38,11 @@ model UserProfile {
   targetRole      String?
   experienceYears Float?
   bio             String?
+  // Extended profile fields (added for unified single-source-of-truth profile)
+  skills          String[] @default([])
+  education       Json     @default("[]")
+  projects        Json     @default("[]")
+  certifications  Json     @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

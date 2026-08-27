@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/ai_interview_service.dart';
+import '../../../profile/data/models/profile_model.dart';
 import '../../../resume/domain/entities/resume_entity.dart';
 import '../../domain/entities/interview_config_entity.dart';
 import '../../data/datasources/interview_remote_data_source.dart';
@@ -103,7 +104,7 @@ class InterviewController extends ChangeNotifier {
   }
 
   /// STAGE 1: Start Conversational Interview
-  Future<void> startInterview({ResumeEntity? resume}) async {
+  Future<void> startInterview({ResumeEntity? resume, ProfileModel? profile}) async {
     _interviewActive = true;
     _sessionStatus = SessionStatus.loading;
     _errorMessage = null;
@@ -117,7 +118,20 @@ class InterviewController extends ChangeNotifier {
     _topics = [];
     _sessionHistory.clear();
 
-    // Seed role + skills from resume if provided
+    // 1. Seed role + skills + experience from unified ProfileModel if provided
+    if (profile != null) {
+      final pRole = profile.targetRole?.trim();
+      final pSkills = profile.skills;
+      final pExp = profile.experienceLabel.trim();
+
+      _config = _config.copyWith(
+        role: (pRole != null && pRole.isNotEmpty) ? pRole : _config.role,
+        experience: pExp.isNotEmpty ? pExp : _config.experience,
+        skills: pSkills.isNotEmpty ? pSkills : _config.skills,
+      );
+    }
+
+    // 2. Seed role + skills from resume if provided
     if (resume != null) {
       final profileRole = resume.name.contains('–')
           ? resume.name.split('–').last.trim()

@@ -1,4 +1,5 @@
 import { AuthRepository, authRepository } from '../repositories/auth.repository';
+import { profileRepository } from '../repositories/profile.repository';
 import { RegisterInput, LoginInput, ForgotPasswordInput, ResetPasswordInput } from '../validators/auth.validator';
 import { hashPassword, verifyPassword, hashToken } from '../utils/password';
 import {
@@ -45,6 +46,14 @@ export class AuthService {
 
     // Create user
     const user = await this.repo.createUser(email, passwordHash);
+
+    // Seed a UserProfile immediately so profile data exists from day one.
+    // firstName / lastName come from the registration form (optional fields).
+    await profileRepository.seedProfileAtRegistration(
+      user.id,
+      input.firstName ?? null,
+      input.lastName ?? null,
+    );
 
     // Generate tokens
     const accessToken = generateAccessToken(user.id);

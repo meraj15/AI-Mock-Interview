@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_session_page.dart';
@@ -30,12 +31,13 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
   void _startInterview() {
     final ic = context.read<InterviewController>();
     final rc = context.read<ResumeController>();
+    final pc = context.read<ProfileController>();
     ic.updateConfig(
       questions: _questionCount,
       timeLimitPerQuestion: _timeLimitMinutes * 60,
       difficulty: _difficulty,
     );
-    ic.startInterview(resume: rc.resume);
+    ic.startInterview(resume: rc.resume, profile: pc.profile);
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
     );

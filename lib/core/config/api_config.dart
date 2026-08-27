@@ -86,6 +86,7 @@ class ApiConfig {
   static const String forgotPasswordEndpoint = '/api/v1/auth/forgot-password';
   static const String resetPasswordEndpoint = '/api/v1/auth/reset-password';
   static const String profileEndpoint = '/api/v1/profile';
+  static const String profileMergeResumeEndpoint = '/api/v1/profile/merge-resume';
 
   // ── Resume Endpoints ───────────────────────────────────────────────────────
   static const String resumeParseEndpoint = '/api/resume/parse';

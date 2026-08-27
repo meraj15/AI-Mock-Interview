@@ -4,6 +4,10 @@ import '../../data/models/profile_model.dart';
 
 enum ProfileStatus { initial, loading, loaded, saving, error }
 
+/// The single source of truth for all user profile data across the app.
+///
+/// Loaded immediately after authentication and available to every screen
+/// via Provider. Signup, manual setup, and resume upload all write here.
 class ProfileController extends ChangeNotifier {
   final ProfileRemoteDataSource _dataSource;
 
@@ -22,13 +26,20 @@ class ProfileController extends ChangeNotifier {
 
   // ── Derived display values (safe, never null) ─────────────────────────────
 
-  String get fullName => _profile?.firstName ?? '';
+  String get fullName => _profile?.fullName ?? '';
   String get initials => _profile?.initials ?? '';
   String get targetRole => _profile?.targetRole ?? '';
   String get bio => _profile?.bio ?? '';
   String get phone => _profile?.phone ?? '';
   double? get experienceYears => _profile?.experienceYears;
   String get experienceLabel => _profile?.experienceLabel ?? '';
+  List<String> get skills => _profile?.skills ?? [];
+  List<EducationItem> get education => _profile?.education ?? [];
+  List<ProjectItem> get projects => _profile?.projects ?? [];
+  List<CertificationItem> get certifications => _profile?.certifications ?? [];
+
+  /// True once we have a profile with at least a role and skills set.
+  bool get isProfileComplete => _profile?.isComplete ?? false;
 
   // ── Load profile from backend ─────────────────────────────────────────────
 
@@ -59,6 +70,10 @@ class ProfileController extends ChangeNotifier {
     String? targetRole,
     double? experienceYears,
     String? bio,
+    List<String>? skills,
+    List<EducationItem>? education,
+    List<ProjectItem>? projects,
+    List<CertificationItem>? certifications,
   }) async {
     _status = ProfileStatus.saving;
     _errorMessage = null;
@@ -72,6 +87,10 @@ class ProfileController extends ChangeNotifier {
         targetRole: targetRole,
         experienceYears: experienceYears,
         bio: bio,
+        skills: skills,
+        education: education,
+        projects: projects,
+        certifications: certifications,
       );
       _status = ProfileStatus.loaded;
       notifyListeners();
@@ -81,6 +100,66 @@ class ProfileController extends ChangeNotifier {
       _status = ProfileStatus.error;
       notifyListeners();
       return false;
+    }
+  }
+
+  // ── Merge resume data — safe, non-destructive ─────────────────────────────
+
+  /// Merges resume-extracted data into the existing profile.
+  /// User-provided values are NEVER overwritten by this call.
+  Future<bool> mergeResumeProfile({
+    String? targetRole,
+    double? experienceYears,
+    String? bio,
+    List<String>? skills,
+    List<EducationItem>? education,
+    List<ProjectItem>? projects,
+    List<CertificationItem>? certifications,
+  }) async {
+    _status = ProfileStatus.saving;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _profile = await _dataSource.mergeResumeProfile(
+        targetRole: targetRole,
+        experienceYears: experienceYears,
+        bio: bio,
+        skills: skills,
+        education: education,
+        projects: projects,
+        certifications: certifications,
+      );
+      _status = ProfileStatus.loaded;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = _extractMessage(e);
+      _status = ProfileStatus.error;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Apply signup/auth user data to the in-memory profile snapshot
+  /// without a network round-trip. Called after login/signup when the
+  /// profile endpoint has not yet been fetched.
+  void applyAuthUserData({
+    required String name,
+    required String email,
+  }) {
+    // Only apply if we don't yet have a loaded profile
+    if (_profile == null) {
+      final nameParts = name.trim().split(' ');
+      final firstName = nameParts.isNotEmpty ? nameParts.first : name;
+      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
+      _profile = ProfileModel(
+        id: '',
+        userId: '',
+        firstName: firstName.isNotEmpty ? firstName : null,
+        lastName: lastName?.isNotEmpty == true ? lastName : null,
+      );
+      notifyListeners();
     }
   }
 
