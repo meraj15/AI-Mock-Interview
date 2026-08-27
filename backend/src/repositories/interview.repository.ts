@@ -6,6 +6,7 @@ import { InterviewSession } from '@prisma/client';
 export interface CreateInterviewSessionInput {
   userId: string;
   role: string;
+  type?: string;
   difficulty: string;
   questionCount: number;
   score: number;          // 0–100
@@ -39,7 +40,12 @@ export type { InterviewSession };
 export class InterviewRepository {
   /** Persist a completed interview session. */
   async create(data: CreateInterviewSessionInput): Promise<InterviewSession> {
-    return prisma.interviewSession.create({ data });
+    return prisma.interviewSession.create({
+      data: {
+        ...data,
+        type: data.type ?? 'technical',
+      },
+    });
   }
 
   /** List all sessions for a user, newest first. */

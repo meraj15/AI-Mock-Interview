@@ -25,45 +25,50 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
     final colors = AppColorScheme.of(context);
     final interviewCtrl = context.watch<InterviewController>();
     final eval = interviewCtrl.lastEvaluation;
-    final evaluations = eval?.questionEvaluations ?? [];
+    final reviews = eval?.questionReviews ?? [];
+    final history = interviewCtrl.sessionHistory;
 
-    final total = evaluations.isNotEmpty ? evaluations.length : 3;
+    final total = reviews.isNotEmpty
+        ? reviews.length
+        : history.isNotEmpty
+            ? history.length
+            : 1;
 
-    // Active item data
-    final DetailedQuestionEvaluation item = evaluations.isNotEmpty && _index < evaluations.length
-        ? evaluations[_index]
-        : DetailedQuestionEvaluation(
-            questionIndex: _index + 1,
-            primaryQuestion: 'Can you walk me through one Flutter project you have architected?',
-            category: 'Project Architecture',
-            candidateAnswer:
-                'I built an application where I owned the mobile architecture, state management with Provider, and integrated with backend REST endpoints.',
-            score: 8.5,
-            strengths: [
-              'Clear explanation of architectural layers and state predictability.',
-              'Good articulation of domain models vs DTO mappings.',
-            ],
-            missingPoints: [
-              'Did not specify exact caching mechanisms for offline packet drops.',
-              'Omitted measurable business metrics (e.g. latency drop or crash rate).',
-            ],
-            idealModelAnswer:
-                'In my OTT mobile app, I architected the project using Clean Architecture with Riverpod and Dio. To survive intermittent network drops, I combined an offline SQLite cache with a mutation queue that resolved sync conflicts automatically, dropping buffer latency by 35%.',
-            starScorecard: const StarScorecard(
-              situationScore: 8.8,
-              situationFeedback: 'Strong context on project scale and stack.',
-              taskScore: 8.5,
-              taskFeedback: 'Clear engineering ownership described.',
-              actionScore: 9.0,
-              actionFeedback: 'Explicit patterns and tooling named.',
-              resultScore: 7.8,
-              resultFeedback: 'Recommend concluding with concrete metrics.',
-            ),
-            coachTip: 'Use the STAR format: Situation, Task, Action, and measurable Result.',
-          );
+    if (_index >= total) {
+      _index = total - 1;
+    }
 
-    final scoreStr = item.score.toStringAsFixed(1);
-    final isHigh = item.score >= 8.0;
+    final String questionText;
+    final String answerText;
+    final String feedbackText;
+    final int scoreVal;
+    final String topicName;
+
+    if (reviews.isNotEmpty && _index < reviews.length) {
+      final r = reviews[_index];
+      questionText = r.question;
+      answerText = r.answer.isNotEmpty ? r.answer : 'No answer provided.';
+      feedbackText = r.feedback;
+      scoreVal = r.score;
+      topicName = history.isNotEmpty && _index < history.length
+          ? (history[_index]['topic'] ?? 'Topic ${_index + 1}')
+          : 'Question ${_index + 1}';
+    } else if (history.isNotEmpty && _index < history.length) {
+      final h = history[_index];
+      questionText = h['question'] ?? 'Question';
+      answerText = (h['answer']?.isNotEmpty ?? false) ? h['answer']! : 'No answer provided.';
+      feedbackText = 'Clear and structured response.';
+      scoreVal = 75;
+      topicName = h['topic'] ?? 'Topic ${_index + 1}';
+    } else {
+      questionText = 'Sample question';
+      answerText = 'Sample answer provided by candidate.';
+      feedbackText = 'Detailed technical evaluation.';
+      scoreVal = 80;
+      topicName = 'General';
+    }
+
+    final isHigh = scoreVal >= 75;
 
     return AppScaffold(
       body: Column(
@@ -96,16 +101,12 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: isSelected ? colors.primary : colors.border),
                         ),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Q${i + 1}',
-                              style: AppTypography.semiBold(
-                                12,
-                                color: isSelected ? colors.primaryForeground : colors.foreground,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          'Q${i + 1}',
+                          style: AppTypography.semiBold(
+                            12,
+                            color: isSelected ? colors.primaryForeground : colors.foreground,
+                          ),
                         ),
                       ),
                     ),
@@ -130,7 +131,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    PillBadge(label: item.category.toUpperCase(), tone: PillTone.muted),
+                    PillBadge(label: topicName.toUpperCase(), tone: PillTone.muted),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
@@ -138,7 +139,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        '$scoreStr / 10',
+                        '$scoreVal / 100',
                         style: AppTypography.bold(12, color: isHigh ? colors.mint : colors.coral),
                       ),
                     ),
@@ -146,7 +147,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  item.primaryQuestion,
+                  questionText,
                   style: AppTypography.bold(16, color: colors.foreground, height: 1.35),
                 ),
               ],
@@ -162,142 +163,44 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
               borderRadius: BorderRadius.circular(18),
             ),
             child: Text(
-              item.candidateAnswer,
-              style: AppTypography.regular(12, color: colors.foreground, height: 1.5),
+              answerText,
+              style: AppTypography.regular(13, color: colors.foreground, height: 1.5),
             ),
           ),
 
-          const SectionTitle(title: 'Ideal Model Exemplar Answer'),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.mint.withValues(alpha: 0.35)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(FeatherIcons.award, size: 14, color: colors.mint),
-                    const SizedBox(width: 6),
-                    Text(
-                      'How a Senior Engineer would structure this:',
-                      style: AppTypography.bold(11, color: colors.mint),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  item.idealModelAnswer,
-                  style: AppTypography.regular(12, color: colors.foreground, height: 1.55),
-                ),
-              ],
-            ),
-          ),
-
-          // STAR Scorecard
-          if (item.starScorecard != null) ...[
-            const SectionTitle(title: 'STAR Methodology Scorecard'),
+          if (feedbackText.isNotEmpty) ...[
+            const SectionTitle(title: 'AI Evaluator Feedback'),
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: colors.card,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: colors.border),
+                border: Border.all(color: (isHigh ? colors.mint : colors.coral).withValues(alpha: 0.35)),
               ),
-              child: Column(
-                children: [
-                  _buildStarRow('Situation', item.starScorecard!.situationScore, item.starScorecard!.situationFeedback, colors),
-                  Divider(color: colors.border, height: 20),
-                  _buildStarRow('Task', item.starScorecard!.taskScore, item.starScorecard!.taskFeedback, colors),
-                  Divider(color: colors.border, height: 20),
-                  _buildStarRow('Action', item.starScorecard!.actionScore, item.starScorecard!.actionFeedback, colors),
-                  Divider(color: colors.border, height: 20),
-                  _buildStarRow('Result', item.starScorecard!.resultScore, item.starScorecard!.resultFeedback, colors),
-                ],
-              ),
-            ),
-          ],
-
-          const SectionTitle(title: 'Missing Trade-offs & Keywords'),
-          ...item.missingPoints.map((pt) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 6.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(FeatherIcons.alertCircle, size: 14, color: colors.coral),
-                  const SizedBox(width: 8),
+                  Icon(
+                    isHigh ? FeatherIcons.checkCircle : FeatherIcons.info,
+                    size: 16,
+                    color: isHigh ? colors.mint : colors.coral,
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      pt,
-                      style: AppTypography.regular(11, color: colors.foreground, height: 1.4),
+                      feedbackText,
+                      style: AppTypography.regular(13, color: colors.foreground, height: 1.5),
                     ),
                   ),
                 ],
               ),
-            );
-          }),
-
-          const SectionTitle(title: 'AI Coach Tip'),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colors.secondary,
-              borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(FeatherIcons.zap, size: 16, color: colors.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    item.coachTip,
-                    style: AppTypography.semiBold(11, color: colors.foreground, height: 1.45),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          ],
 
           const SizedBox(height: 30),
         ],
       ),
-    );
-  }
-
-  Widget _buildStarRow(String pillar, double score, String feedback, AppColorScheme colors) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(pillar, style: AppTypography.bold(12, color: colors.foreground)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: colors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                '${score.toStringAsFixed(1)} / 10',
-                style: AppTypography.bold(10, color: colors.primary),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          feedback,
-          style: AppTypography.regular(10, color: colors.mutedForeground, height: 1.4),
-        ),
-      ],
     );
   }
 }

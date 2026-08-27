@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Limit question generation: 30 requests per minute per user
+// Limit AI requests: 30 requests per minute per user
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -17,7 +17,13 @@ const aiLimiter = rateLimit({
   },
 });
 
-// POST /api/v1/ai/questions — Generate interview questions via Gemini
-router.post('/questions', authMiddleware, aiLimiter, aiController.generateQuestions);
+// POST /api/v1/ai/interview-plan — Generate blueprint + opening question via Gemini
+router.post('/interview-plan', authMiddleware, aiLimiter, aiController.generateInterviewPlan);
+
+// POST /api/v1/ai/conversational-turn — Generate next natural conversational turn via Gemini
+router.post('/conversational-turn', authMiddleware, aiLimiter, aiController.getConversationalTurn);
+
+// POST /api/v1/ai/evaluate-session — Generate final interview scorecard & evaluation via Gemini
+router.post('/evaluate-session', authMiddleware, aiLimiter, aiController.evaluateSession);
 
 export default router;

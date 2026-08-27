@@ -181,9 +181,12 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     _setTurn(_Turn.aiSpeaking);
     _animateBars(calm: true);
 
-    final question = ic.currentQuestion;
+    final speech = ic.currentAcknowledgement.isNotEmpty
+        ? '${ic.currentAcknowledgement} ${ic.currentQuestion}'
+        : ic.currentQuestion;
+
     if (_ttsAvailable) {
-      _tts.speak(question);
+      _tts.speak(speech);
     } else {
       // No TTS — auto-advance to user turn after a delay
       Future.delayed(const Duration(seconds: 2), () {
@@ -233,11 +236,13 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     // If empty — stay on userTurn so user can try again
   }
 
-  void _submitAnswer(String answer) {
+  Future<void> _submitAnswer(String answer) async {
     final ic = context.read<InterviewController>();
     _setTurn(_Turn.processing);
 
-    ic.submitAnswer(answer);
+    await ic.submitAnswer(answer);
+
+    if (!mounted) return;
 
     if (ic.sessionStatus == SessionStatus.complete ||
         ic.sessionStatus == SessionStatus.evaluating) {
@@ -525,7 +530,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                       Text(
                         isLoading
                             ? 'Preparing…'
-                            : 'Q $questionNum of $totalQ',
+                            : 'Topic $questionNum of $totalQ',
                         style: AppTypography.bold(13, color: softWhite),
                       ),
                       const SizedBox(height: 2),

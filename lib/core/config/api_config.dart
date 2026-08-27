@@ -92,10 +92,15 @@ class ApiConfig {
 
   // ── AI Endpoints ───────────────────────────────────────────────────────────
   static const String aiQuestionsEndpoint = '/api/v1/ai/questions';
+  static const String aiEvaluateAnswerEndpoint = '/api/v1/ai/evaluate-answer';
+  static const String aiEvaluateSessionEndpoint = '/api/v1/ai/evaluate-session';
 
   // ── Interview Endpoints ────────────────────────────────────────────────────
   static const String interviewsEndpoint      = '/api/v1/interviews';
   static const String interviewStatsEndpoint  = '/api/v1/interviews/stats';
+  static const String interviewStartEndpoint  = '/api/v1/interviews/start';
+  static String interviewAnswerEndpoint(String sessionId) => '/api/v1/interviews/$sessionId/answer';
+  static String interviewResultEndpoint(String sessionId) => '/api/v1/interviews/$sessionId/result';
 
   // ── Network Timeouts ───────────────────────────────────────────────────────
   static const Duration connectTimeout = Duration(seconds: 45);

@@ -22,7 +22,7 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
   String _difficulty = 'Medium';
 
   static const _difficulties = ['Easy', 'Medium', 'Hard', 'Adaptive'];
-  static const _questionOptions = [5, 10, 15, 20];
+  static const _questionOptions = [2, 10, 15, 20];
   static const _timeLimitOptions = [0, 1, 2, 3, 5];
 
   String _timeLimitLabel(int m) => m == 0 ? 'None' : '${m}m';

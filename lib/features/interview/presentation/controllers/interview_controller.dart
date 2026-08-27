@@ -5,69 +5,40 @@ import '../../../resume/domain/entities/resume_entity.dart';
 import '../../domain/entities/interview_config_entity.dart';
 import '../../data/datasources/interview_remote_data_source.dart';
 
-
 enum SessionStatus { idle, loading, active, followUp, evaluating, complete, error }
-
-class InterviewSession {
-  final List<String> questions;
-  final List<String> followUps;
-  final List<String> answers;
-  final List<String> followUpAnswers;
-  final String category;
-
-  const InterviewSession({
-    required this.questions,
-    required this.followUps,
-    required this.answers,
-    required this.followUpAnswers,
-    required this.category,
-  });
-
-  InterviewSession copyWith({
-    List<String>? questions,
-    List<String>? followUps,
-    List<String>? answers,
-    List<String>? followUpAnswers,
-    String? category,
-  }) {
-    return InterviewSession(
-      questions: questions ?? this.questions,
-      followUps: followUps ?? this.followUps,
-      answers: answers ?? this.answers,
-      followUpAnswers: followUpAnswers ?? this.followUpAnswers,
-      category: category ?? this.category,
-    );
-  }
-}
 
 class InterviewController extends ChangeNotifier {
   InterviewConfigEntity _config = InterviewConfigEntity.initial();
   bool _interviewActive = false;
   SessionStatus _sessionStatus = SessionStatus.idle;
   String? _errorMessage;
-  List<AIQuestionPrompt> _prompts = [];
-  int _currentIndex = 0;
+
+  String? _sessionId;
+  List<InterviewTopic> _topics = [];
+  String _currentQuestion = '';
+  String _currentAcknowledgement = '';
+  String _currentTopic = '';
+  int _currentTopicIndex = 0;
+  int _totalTopics = 5;
   bool _isFollowUp = false;
+  bool _isComplete = false;
+
   AIEvaluationResult? _lastEvaluation;
 
-  /// Optional — injected in main.dart. When set, completed sessions are
-  /// persisted to the backend automatically.
+  /// Optional — injected in main.dart.
   final InterviewRemoteDataSource? remoteDataSource;
 
-  /// ApiClient for calling the AI questions endpoint.
+  /// ApiClient for calling the backend AI interview endpoints.
   final ApiClient? apiClient;
 
   /// Callback invoked after a session is saved so the dashboard can refresh.
   void Function()? _onSessionSaved;
 
-  /// Tracks when the current session started (for durationSecs).
-  DateTime? _sessionStartedAt;
-
   final List<Map<String, String>> _sessionHistory = [];
 
   InterviewController({this.remoteDataSource, this.apiClient});
 
-  /// Called by the ProxyProvider in main.dart to wire the dashboard refresh.
+  /// Called by ProxyProvider to wire dashboard refresh.
   void setOnSessionSaved(void Function()? callback) {
     _onSessionSaved = callback;
   }
@@ -76,32 +47,27 @@ class InterviewController extends ChangeNotifier {
   bool get interviewActive => _interviewActive;
   SessionStatus get sessionStatus => _sessionStatus;
   String? get errorMessage => _errorMessage;
-  List<AIQuestionPrompt> get prompts => _prompts;
-  int get currentIndex => _currentIndex;
+  String? get sessionId => _sessionId;
+  List<InterviewTopic> get topics => _topics;
+
+  String get currentQuestion => _currentQuestion;
+  String get currentAcknowledgement => _currentAcknowledgement;
+  String get currentCategory => _currentTopic.isNotEmpty ? _currentTopic : 'General';
+  String get currentContextHint => _topics.isNotEmpty && _currentTopicIndex < _topics.length
+      ? _topics[_currentTopicIndex].objective
+      : '';
+
+  int get currentIndex => _currentTopicIndex;
+  int get questionNumber => _currentTopicIndex + 1;
+  int get totalQuestions => _totalTopics;
   bool get isFollowUp => _isFollowUp;
+  bool get isComplete => _isComplete;
+
   AIEvaluationResult? get lastEvaluation => _lastEvaluation;
   List<Map<String, String>> get sessionHistory => _sessionHistory;
 
-  AIQuestionPrompt? get currentPrompt =>
-      _prompts.isNotEmpty && _currentIndex < _prompts.length ? _prompts[_currentIndex] : null;
-
-  String get currentQuestion {
-    if (_prompts.isEmpty || _currentIndex >= _prompts.length) return '';
-    return _isFollowUp ? _prompts[_currentIndex].followUpQuestion : _prompts[_currentIndex].primaryQuestion;
-  }
-
-  String get currentContextHint {
-    if (_prompts.isEmpty || _currentIndex >= _prompts.length) return '';
-    return _prompts[_currentIndex].contextHint;
-  }
-
-  String get currentCategory {
-    if (_prompts.isEmpty || _currentIndex >= _prompts.length) return '';
-    return _prompts[_currentIndex].category;
-  }
-
-  int get questionNumber => _currentIndex + 1;
-  int get totalQuestions => _config.questions;
+  // Non-empty placeholder so existing guards recognize session has questions
+  List<String> get prompts => _currentQuestion.isNotEmpty ? [_currentQuestion] : [];
 
   void updateConfig({
     String? role,
@@ -136,17 +102,22 @@ class InterviewController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// STAGE 1: Start Conversational Interview
   Future<void> startInterview({ResumeEntity? resume}) async {
     _interviewActive = true;
     _sessionStatus = SessionStatus.loading;
     _errorMessage = null;
-    _prompts = [];
-    _currentIndex = 0;
+    _currentQuestion = '';
+    _currentAcknowledgement = '';
+    _currentTopic = '';
+    _currentTopicIndex = 0;
+    _totalTopics = _config.questions > 0 ? _config.questions : 5;
     _isFollowUp = false;
+    _isComplete = false;
+    _topics = [];
     _sessionHistory.clear();
-    _sessionStartedAt = DateTime.now();
 
-    // Seed role + skills from the user's profile into the config
+    // Seed role + skills from resume if provided
     if (resume != null) {
       final profileRole = resume.name.contains('–')
           ? resume.name.split('–').last.trim()
@@ -156,8 +127,8 @@ class InterviewController extends ChangeNotifier {
       _config = _config.copyWith(
         role: _config.role.isNotEmpty &&
                 _config.role != InterviewConfigEntity.initial().role
-             ? _config.role
-             : profileRole,
+            ? _config.role
+            : profileRole,
         experience: resume.experience.isNotEmpty ? resume.experience : _config.experience,
         skills: resume.skills.isNotEmpty ? resume.skills : _config.skills,
       );
@@ -166,7 +137,7 @@ class InterviewController extends ChangeNotifier {
     notifyListeners();
 
     if (apiClient == null) {
-      const err = 'Backend API client is not configured. Cannot request AI questions.';
+      const err = 'Backend API client is not configured.';
       debugPrint('[InterviewController] ERROR: $err');
       _errorMessage = err;
       _sessionStatus = SessionStatus.error;
@@ -178,37 +149,113 @@ class InterviewController extends ChangeNotifier {
     final ai = GeminiAIInterviewService(apiClient: apiClient!);
 
     try {
-      debugPrint('[InterviewController] Fetching AI questions for role: "${_config.role}"...');
-      _prompts = await ai.generateQuestions(
+      debugPrint('[InterviewController] Starting live conversational interview for "${_config.role}"...');
+      final startResult = await ai.startConversationalInterview(
         config: _config,
         resume: resume ?? ResumeEntity.defaultResume(),
       );
 
-      if (_prompts.isEmpty) {
-        throw Exception('AI returned 0 questions');
-      }
-
-      debugPrint('[InterviewController] Successfully received ${_prompts.length} AI questions:');
-      for (int i = 0; i < _prompts.length; i++) {
-        debugPrint('[InterviewController]   Q${i + 1} (${_prompts[i].category}): ${_prompts[i].primaryQuestion}');
-      }
-
-      if (_prompts.length > _config.questions) {
-        _prompts = _prompts.sublist(0, _config.questions);
-      }
-
+      _sessionId = startResult.sessionId;
+      _topics = startResult.topics;
+      _currentTopic = startResult.currentTopic;
+      _currentTopicIndex = startResult.currentTopicIndex;
+      _totalTopics = startResult.totalTopics;
+      _currentQuestion = startResult.firstQuestion;
+      _currentAcknowledgement = '';
+      _isComplete = false;
       _sessionStatus = SessionStatus.active;
       _errorMessage = null;
+
+      debugPrint('[InterviewController] Session started: $_sessionId, Q1: "$_currentQuestion"');
     } catch (e, stackTrace) {
       final cleanError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      debugPrint('====================================================');
-      debugPrint('[InterviewController] AI QUESTION GENERATION FAILED');
-      debugPrint('  Error: $cleanError');
-      debugPrint('  StackTrace: $stackTrace');
-      debugPrint('====================================================');
+      debugPrint('[InterviewController] START INTERVIEW FAILED: $cleanError\n$stackTrace');
       _errorMessage = cleanError;
       _sessionStatus = SessionStatus.error;
       _interviewActive = false;
+    }
+
+    notifyListeners();
+  }
+
+  /// STAGE 2: Submit candidate answer and transition conversational turn
+  Future<void> submitAnswer(String answer) async {
+    if (_sessionId == null || apiClient == null) {
+      debugPrint('[InterviewController] submitAnswer called without active session');
+      return;
+    }
+
+    _sessionStatus = SessionStatus.loading;
+    notifyListeners();
+
+    _sessionHistory.add({
+      'topic': _currentTopic,
+      'question': _currentQuestion,
+      'answer': answer,
+      'type': _isFollowUp ? 'follow_up' : 'primary',
+    });
+
+    final ai = GeminiAIInterviewService(apiClient: apiClient!);
+
+    try {
+      final turn = await ai.submitConversationalAnswer(
+        sessionId: _sessionId!,
+        answer: answer,
+      );
+
+      _isFollowUp = turn.action == 'follow_up';
+      _currentAcknowledgement = turn.acknowledgement;
+      _currentQuestion = turn.nextQuestion;
+      _currentTopic = turn.nextTopic;
+      _currentTopicIndex = turn.currentTopicIndex;
+      _totalTopics = turn.totalTopics;
+      _isComplete = turn.isComplete;
+
+      if (turn.isComplete || turn.action == 'end_interview') {
+        _sessionStatus = SessionStatus.evaluating;
+        _interviewActive = false;
+        notifyListeners();
+        await _fetchFinalEvaluation();
+        return;
+      } else {
+        _sessionStatus = _isFollowUp ? SessionStatus.followUp : SessionStatus.active;
+      }
+    } catch (e, stackTrace) {
+      debugPrint('[InterviewController] submitAnswer error: $e\n$stackTrace');
+      // If error occurs, attempt to fetch evaluation if turns were already recorded
+      if (_sessionHistory.length >= 3) {
+        _sessionStatus = SessionStatus.evaluating;
+        _interviewActive = false;
+        notifyListeners();
+        await _fetchFinalEvaluation();
+        return;
+      } else {
+        _errorMessage = e.toString();
+        _sessionStatus = SessionStatus.error;
+      }
+    }
+
+    notifyListeners();
+  }
+
+  /// STAGE 3: Final evaluation retrieval
+  Future<void> _fetchFinalEvaluation() async {
+    if (_sessionId == null || apiClient == null) return;
+
+    final ai = GeminiAIInterviewService(apiClient: apiClient!);
+
+    try {
+      debugPrint('[InterviewController] Fetching final evaluation from backend...');
+      _lastEvaluation = await ai.getFinalEvaluation(
+        sessionId: _sessionId!,
+        config: _config,
+      );
+      _sessionStatus = SessionStatus.complete;
+      _onSessionSaved?.call();
+    } catch (e, stackTrace) {
+      debugPrint('[InterviewController] _fetchFinalEvaluation error: $e\n$stackTrace');
+      _errorMessage = e.toString();
+      _sessionStatus = SessionStatus.error;
     }
 
     notifyListeners();
@@ -227,82 +274,11 @@ class InterviewController extends ChangeNotifier {
     return _config.role;
   }
 
-  void submitAnswer(String answer) {
-    if (_isFollowUp) {
-      // Store follow-up answer and move to next question
-      _sessionHistory.add({
-        'question': currentPrompt?.primaryQuestion ?? '',
-        'followUp': currentPrompt?.followUpQuestion ?? '',
-        'answer': answer,
-        'category': currentCategory,
-      });
-      _isFollowUp = false;
-
-      if (_currentIndex < _prompts.length - 1) {
-        _currentIndex++;
-        _sessionStatus = SessionStatus.active;
-      } else {
-        _sessionStatus = SessionStatus.evaluating;
-        _interviewActive = false;
-        _generateEvaluation();
-      }
-    } else {
-      // Show follow-up
-      _isFollowUp = true;
-      _sessionStatus = SessionStatus.followUp;
-    }
-    notifyListeners();
-  }
-
-  Future<void> _generateEvaluation() async {
-    final ai = MockAIInterviewService();
-    _lastEvaluation = await ai.evaluateInterview(
-      config: _config,
-      questions: _prompts.map((p) => p.primaryQuestion).toList(),
-      answers: _sessionHistory.map((h) => h['answer'] ?? '').toList(),
-    );
-    _sessionStatus = SessionStatus.complete;
-    notifyListeners();
-
-    // ── Persist to backend (fire-and-forget, does not block UI) ──────────
-    _persistSession();
-  }
-
-  /// Saves the completed session to the backend.
-  /// Errors are silently swallowed so a network failure never breaks the UI.
-  Future<void> _persistSession() async {
-    if (remoteDataSource == null || _lastEvaluation == null) return;
-
-    final durationSecs = _sessionStartedAt != null
-        ? DateTime.now().difference(_sessionStartedAt!).inSeconds
-        : 0;
-
-    try {
-      await remoteDataSource!.saveSession(
-        SaveInterviewRequest(
-          role:           _config.role,
-          difficulty:     _config.difficulty,
-          questionCount:  _config.questions,
-          score:          _lastEvaluation!.overallScore,
-          hiringBand:     _lastEvaluation!.hiringBand,
-          summary:        _lastEvaluation!.summary,
-          strengths:      _lastEvaluation!.strengths,
-          areasToImprove: _lastEvaluation!.areasToImprove,
-          skillScores:    _lastEvaluation!.skillScores,
-          durationSecs:   durationSecs,
-        ),
-      );
-      // Tell the dashboard controller to refresh its stats
-      _onSessionSaved?.call();
-    } catch (_) {
-      // Network failures must not disrupt the result screen
-    }
-  }
-
   void finishInterview() {
     _interviewActive = false;
     _sessionStatus = SessionStatus.evaluating;
     notifyListeners();
+    _fetchFinalEvaluation();
   }
 
   void reset() {
@@ -310,9 +286,15 @@ class InterviewController extends ChangeNotifier {
     _interviewActive = false;
     _sessionStatus = SessionStatus.idle;
     _errorMessage = null;
-    _prompts = [];
-    _currentIndex = 0;
+    _sessionId = null;
+    _topics = [];
+    _currentQuestion = '';
+    _currentAcknowledgement = '';
+    _currentTopic = '';
+    _currentTopicIndex = 0;
+    _totalTopics = 5;
     _isFollowUp = false;
+    _isComplete = false;
     _lastEvaluation = null;
     _sessionHistory.clear();
     notifyListeners();

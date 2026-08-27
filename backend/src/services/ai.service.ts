@@ -1,11 +1,48 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { config } from '../config';
 
-export interface GeneratedQuestion {
-  primaryQuestion: string;
-  followUpQuestion: string;
-  category: string;
-  contextHint: string;
+export interface InterviewTopic {
+  name: string;
+  objective: string;
+}
+
+export interface InterviewBlueprint {
+  topics: InterviewTopic[];
+  firstQuestion: string;
+}
+
+export interface ConversationalTurn {
+  acknowledgement: string;
+  action: 'follow_up' | 'new_topic';
+  nextQuestion: string;
+  nextTopic: string;
+  conversationSummary: string;
+}
+
+export interface QuestionReview {
+  question: string;
+  answer: string;
+  feedback: string;
+  score: number;
+}
+
+export interface FinalInterviewEvaluation {
+  overallScore: number;
+  performanceLevel: 'Excellent' | 'Good' | 'Average' | 'Needs Improvement';
+  summary: string;
+  strengths: string[];
+  areasToImprove: string[];
+  skillPerformance: Record<string, number>;
+  recommendations: string[];
+  questionReviews: QuestionReview[];
+}
+
+export interface TranscriptEntry {
+  question: string;
+  answer: string;
+  topic: string;
+  type: 'primary' | 'follow_up';
+  timestamp?: string;
 }
 
 const FALLBACK_MODELS = [
@@ -13,15 +50,6 @@ const FALLBACK_MODELS = [
   'gemini-3.7-flash',
   'gemini-3.6-flash',
 ];
-
-const ALLOWED_CATEGORIES = [
-  'Core Skills',
-  'Problem Solving',
-  'System Design',
-  'Best Practices',
-  'Debugging',
-  'Performance',
-] as const;
 
 export class AIService {
   private client: GoogleGenAI | null = null;
@@ -32,9 +60,7 @@ export class AIService {
   private getClient(): GoogleGenAI {
     if (!this.client) {
       if (!config.gemini.apiKey?.trim()) {
-        throw new Error(
-          'GEMINI_API_KEY is not set in environment variables',
-        );
+        throw new Error('GEMINI_API_KEY is not set in environment variables');
       }
 
       this.client = new GoogleGenAI({
@@ -89,140 +115,13 @@ export class AIService {
   }
 
   /**
-   * Generate technical interview questions with model fallback on temporary errors.
+   * Helper to execute Gemini generateContent with fallback models
    */
-  async generateInterviewQuestions(params: {
-    role: string;
-    skills: string[];
-    difficulty: string;
-    questionCount: number;
-    experience?: string;
-  }): Promise<GeneratedQuestion[]> {
-    const {
-      role,
-      skills,
-      difficulty,
-      questionCount,
-      experience,
-    } = params;
-
-    // -----------------------------------------
-    // Validate role
-    // -----------------------------------------
-    if (!role || typeof role !== 'string' || !role.trim()) {
-      throw new Error('Role is required');
-    }
-
-    // -----------------------------------------
-    // Validate question count
-    // -----------------------------------------
-    if (
-      typeof questionCount !== 'number' ||
-      !Number.isInteger(questionCount) ||
-      questionCount < 1 ||
-      questionCount > 50
-    ) {
-      throw new Error('Question count must be an integer between 1 and 50');
-    }
-
-    // -----------------------------------------
-    // Difficulty guide
-    // -----------------------------------------
-    const difficultyGuide: Record<string, string> = {
-      easy: 'fundamental and conceptual questions suitable for juniors or freshers',
-      medium: 'intermediate questions involving practical implementation, debugging, and trade-off reasoning',
-      hard: 'advanced or senior-level questions involving architecture, edge cases, optimization, scalability, system design, and deep technical reasoning',
-      adaptive: 'mixed difficulty that progressively tests deeper concepts based on the candidate profile',
-    };
-
-    const difficultyKey =
-      difficulty?.trim().toLowerCase() || 'medium';
-
-    const diffDesc =
-      difficultyGuide[difficultyKey] ?? difficultyGuide.medium;
-
-    // -----------------------------------------
-    // Clean skills safely
-    // -----------------------------------------
-    const cleanedSkills = Array.isArray(skills)
-      ? skills
-          .filter((skill) => typeof skill === 'string' && skill.trim().length > 0)
-          .map((skill) => skill.trim())
-      : [];
-
-    const skillList =
-      cleanedSkills.length > 0 ? cleanedSkills.join(', ') : role.trim();
-
-    // -----------------------------------------
-    // Experience note
-    // -----------------------------------------
-    const expNote = experience?.trim()
-      ? `The candidate has ${experience.trim()} of professional experience.`
-      : 'The candidate experience level is not specified.';
-
-    // -----------------------------------------
-    // Construct Prompt
-    // -----------------------------------------
-    const prompt = `
-You are an expert technical interviewer conducting a realistic professional job interview.
-
-Candidate Role:
-${role.trim()}
-
-Candidate Experience:
-${expNote}
-
-Candidate Skills:
-${skillList}
-
-Difficulty:
-${diffDesc}
-
-Generate exactly ${questionCount} interview questions.
-
-QUESTION GENERATION RULES:
-1. Every question must be directly relevant to the candidate's role.
-2. Every question must test at least one of the candidate's listed skills.
-3. Cover different skills across the questions without duplicates.
-4. Mix conceptual, practical, scenario-based, problem-solving, debugging, best practices, performance, and system design questions where appropriate.
-5. Prefer realistic, practical engineering questions over trivial memorization questions.
-6. Questions should sound natural and professional when spoken by an interviewer.
-7. Match every question strictly to the requested difficulty level.
-8. Use only these allowed categories:
-   - Core Skills
-   - Problem Solving
-   - System Design
-   - Best Practices
-   - Debugging
-   - Performance
-
-FOLLOW-UP QUESTION RULE:
-The candidate has NOT answered the primary question yet.
-Therefore, followUpQuestion must be a possible deeper follow-up question that an interviewer could ask AFTER the candidate answers the primary question.
-Do NOT assume the candidate's answer. The follow-up must explore deeper trade-offs, edge cases, internals, or alternatives related to the same topic.
-
-CONTEXT HINT RULE:
-contextHint must be a short, single-sentence explanation of what specific competency or concept the interviewer is evaluating.
-
-Return a JSON array containing exactly ${questionCount} question objects.
-`;
-
-    console.log('[AIService] Generating questions with params:', {
-      role: role.trim(),
-      skills: cleanedSkills,
-      difficulty: difficultyKey,
-      questionCount,
-      experience: experience?.trim() || undefined,
-    });
-
+  private async executeWithFallback(prompt: string, schema: any): Promise<any> {
     const client = this.getClient();
-
     let response: any = null;
     let lastError: any = null;
 
-    // -----------------------------------------
-    // Fallback Loop over models
-    // -----------------------------------------
     for (let i = 0; i < FALLBACK_MODELS.length; i++) {
       const model = FALLBACK_MODELS[i];
       const hasNext = i < FALLBACK_MODELS.length - 1;
@@ -235,42 +134,7 @@ Return a JSON array containing exactly ${questionCount} question objects.
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              minItems: questionCount,
-              maxItems: questionCount,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  primaryQuestion: {
-                    type: Type.STRING,
-                    description: 'The main technical interview question.',
-                  },
-                  followUpQuestion: {
-                    type: Type.STRING,
-                    description:
-                      'A possible deeper follow-up question related to the primary question that could be asked after the candidate answers.',
-                  },
-                  category: {
-                    type: Type.STRING,
-                    enum: [...ALLOWED_CATEGORIES],
-                    description: 'The category of the interview question.',
-                  },
-                  contextHint: {
-                    type: Type.STRING,
-                    description:
-                      'A short one-sentence explanation of what the interviewer is evaluating.',
-                  },
-                },
-                required: [
-                  'primaryQuestion',
-                  'followUpQuestion',
-                  'category',
-                  'contextHint',
-                ],
-                additionalProperties: false,
-              },
-            },
+            responseSchema: schema,
           },
         });
 
@@ -278,7 +142,7 @@ Return a JSON array containing exactly ${questionCount} question objects.
         lastError = null;
         break;
       } catch (err: any) {
-        console.error(`[AIService] Gemini model "${model}" failed`);
+        console.error(`[AIService] Gemini model "${model}" failed:`, err?.message || err);
         lastError = err;
 
         if (this.isTemporaryError(err) && hasNext) {
@@ -286,7 +150,6 @@ Return a JSON array containing exactly ${questionCount} question objects.
           continue;
         }
 
-        // If not a temporary error or no fallback models left, throw
         throw new Error(`Gemini API Error: ${err?.message || JSON.stringify(err)}`);
       }
     }
@@ -297,94 +160,348 @@ Return a JSON array containing exactly ${questionCount} question objects.
       );
     }
 
-    // -----------------------------------------
-    // Parse Gemini response
-    // -----------------------------------------
     const text = response.text?.trim();
     if (!text) {
-      console.error('[AIService] Gemini returned an empty response');
       throw new Error('Gemini returned an empty response');
     }
 
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(text);
+      return JSON.parse(text);
     } catch {
-      console.error('[AIService] Failed to parse JSON from Gemini:', text);
       throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 500)}`);
     }
+  }
 
-    if (!Array.isArray(parsed)) {
-      console.error('[AIService] Response is not an array:', parsed);
-      throw new Error('Gemini response is not a questions array');
+  /**
+   * STAGE 1: Generate a tailored interview blueprint based on role, experience, skills, and difficulty.
+   * Topics are dynamically decided by Gemini to fit candidate profile.
+   */
+  async generateInterviewPlan(params: {
+    role: string;
+    experience?: string;
+    skills?: string[];
+    difficulty?: string;
+    questionCount?: number;
+  }): Promise<InterviewBlueprint> {
+    const { role, experience, skills, difficulty } = params;
+
+    if (!role || typeof role !== 'string' || !role.trim()) {
+      throw new Error('Role is required');
     }
 
-    // -----------------------------------------
-    // Validate exact question count
-    // -----------------------------------------
-    if (parsed.length !== questionCount) {
-      console.error(
-        `[AIService] Question count mismatch. Got ${parsed.length}, expected ${questionCount}`,
-      );
-      throw new Error(
-        `Gemini returned ${parsed.length} questions, expected ${questionCount}`,
-      );
+    const cleanedSkills = Array.isArray(skills)
+      ? skills.filter((s) => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())
+      : [];
+
+    const skillList = cleanedSkills.length > 0 ? cleanedSkills.join(', ') : role.trim();
+    const expNote = experience?.trim()
+      ? `Experience: ${experience.trim()}`
+      : 'Experience: Not specified';
+    const diffNote = difficulty?.trim() || 'Medium';
+
+    const prompt = `
+You are an expert technical interviewer planning a realistic job interview.
+
+Role: ${role.trim()}
+${expNote}
+Difficulty: ${diffNote}
+Skills Context: ${skillList}
+
+Task:
+1. Dynamically determine 4 to 6 appropriate, realistic interview topics tailored specifically to this candidate's role and seniority.
+   - For a junior candidate, focus on practical fundamentals, daily tools, implementation, and debugging.
+   - For a senior candidate, include architecture, trade-offs, scalability, and system design.
+   - For non-technical or specialized roles, adapt topics strictly to that profession.
+2. Generate the first opening question for Topic 1 (max 1 natural spoken sentence).
+
+Return structured JSON.
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        topics: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING, description: 'Role-appropriate topic name (e.g. Flutter & Dart Basics, State Management, API Integration, Debugging)' },
+              objective: { type: Type.STRING, description: 'What the interviewer evaluates in this topic.' },
+            },
+            required: ['name', 'objective'],
+            additionalProperties: false,
+          },
+          description: '4 to 6 role-tailored interview topics.',
+        },
+        firstQuestion: {
+          type: Type.STRING,
+          description: 'A single, short, spoken opening question for the first topic (1 sentence max).',
+        },
+      },
+      required: ['topics', 'firstQuestion'],
+      additionalProperties: false,
+    };
+
+    console.log('[AIService] Generating role-tailored interview blueprint for:', role.trim());
+    const result = await this.executeWithFallback(prompt, schema);
+
+    const topics: InterviewTopic[] = Array.isArray(result.topics) && result.topics.length > 0
+      ? result.topics.map((t: any) => ({
+          name: String(t.name || 'Core Experience').trim(),
+          objective: String(t.objective || 'Evaluate competency').trim(),
+        }))
+      : [
+          { name: 'Practical Experience', objective: 'Understand recent development experience' },
+          { name: 'Core Foundations', objective: 'Check technical foundation' },
+          { name: 'State & Architecture', objective: 'Assess architecture decisions' },
+          { name: 'Problem Solving', objective: 'Evaluate troubleshooting and debugging' },
+          { name: 'Collaboration & Ownership', objective: 'Assess communication and ownership' },
+        ];
+
+    const firstQuestion = String(result.firstQuestion || '').trim() ||
+      `To start off, could you tell me about a recent project you worked on as a ${role.trim()}?`;
+
+    return { topics, firstQuestion };
+  }
+
+  /**
+   * STAGE 2: Ultra-lightweight conversational turn.
+   * Token-optimized: sends only compact memory summary and immediate Q&A context.
+   */
+  async getNextConversationalTurn(params: {
+    role: string;
+    currentTopic: string;
+    topicObjective?: string;
+    previousQuestion: string;
+    candidateAnswer: string;
+    conversationSummary: string;
+    topicsRemaining: string[];
+    followUpsUsed: number;
+  }): Promise<ConversationalTurn> {
+    const {
+      role,
+      currentTopic,
+      topicObjective = '',
+      previousQuestion,
+      candidateAnswer,
+      conversationSummary,
+      topicsRemaining,
+      followUpsUsed,
+    } = params;
+
+    const cleanedAnswer = candidateAnswer.trim() || 'No answer provided.';
+    const nextTopicName = topicsRemaining[0] || currentTopic;
+
+    const prompt = `
+Interviewer for: ${role}
+Current Topic: ${currentTopic} (${topicObjective})
+Memory: "${conversationSummary || 'Start of interview'}"
+
+Last Q: "${previousQuestion}"
+Candidate A: "${cleanedAnswer}"
+Follow-ups used on this topic: ${followUpsUsed} (max 1)
+Next topic if moving on: "${nextTopicName}"
+
+Task:
+1. acknowledgement: 1-4 words natural reaction (e.g. "Got it.", "That makes sense.", "Interesting.", "Alright.") or "" (avoid repeating same reaction).
+2. action: "follow_up" (ONLY if followUpsUsed == 0 and candidate gave an incomplete/interesting point) OR "new_topic" (if answer was sufficient or follow-up was already used).
+3. nextQuestion: EXACTLY ONE short, natural spoken question (max 15 words).
+4. nextTopic: "${currentTopic}" if follow_up, or "${nextTopicName}" if new_topic.
+5. conversationSummary: updated compact 1-2 sentence memory of candidate's answers.
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        acknowledgement: {
+          type: Type.STRING,
+          description: 'Short natural reaction (1-4 words or empty string).',
+        },
+        action: {
+          type: Type.STRING,
+          enum: ['follow_up', 'new_topic'],
+          description: 'Follow-up or transition to next topic.',
+        },
+        nextQuestion: {
+          type: Type.STRING,
+          description: 'Single short natural question (max 15 words).',
+        },
+        nextTopic: {
+          type: Type.STRING,
+          description: 'Topic name.',
+        },
+        conversationSummary: {
+          type: Type.STRING,
+          description: 'Updated 1-2 sentence memory summary.',
+        },
+      },
+      required: ['acknowledgement', 'action', 'nextQuestion', 'nextTopic', 'conversationSummary'],
+      additionalProperties: false,
+    };
+
+    const result = await this.executeWithFallback(prompt, schema);
+
+    return {
+      acknowledgement: String(result.acknowledgement ?? '').trim(),
+      action: result.action === 'follow_up' && followUpsUsed < 1 ? 'follow_up' : 'new_topic',
+      nextQuestion: String(result.nextQuestion ?? '').trim(),
+      nextTopic: String(result.nextTopic ?? currentTopic).trim(),
+      conversationSummary: String(result.conversationSummary ?? conversationSummary).trim(),
+    };
+  }
+
+  /**
+   * STAGE 3: Final evaluation after interview ends with dynamic, role-tailored skill metrics.
+   */
+  async generateFinalEvaluation(params: {
+    role: string;
+    experience?: string;
+    difficulty?: string;
+    skills?: string[];
+    transcript: TranscriptEntry[];
+  }): Promise<FinalInterviewEvaluation> {
+    const { role, experience, difficulty, skills, transcript } = params;
+
+    if (!transcript || transcript.length === 0) {
+      throw new Error('Interview transcript is required for final evaluation');
     }
 
-    // -----------------------------------------
-    // Validate each question
-    // -----------------------------------------
-    const validQuestions: GeneratedQuestion[] = [];
+    const transcriptFormatted = transcript
+      .map((item, idx) => `[Turn ${idx + 1}] (${item.topic})\nInterviewer: ${item.question}\nCandidate: ${item.answer || 'No response.'}`)
+      .join('\n\n');
 
-    for (let index = 0; index < parsed.length; index++) {
-      const item = parsed[index];
+    const skillList = skills && skills.length > 0 ? skills.join(', ') : role;
 
-      if (!item || typeof item !== 'object') {
-        throw new Error(`Invalid question object at index ${index}`);
+    const prompt = `
+You are the Lead Hiring Manager evaluating a candidate's complete interview scorecard.
+
+Role: ${role}
+Experience: ${experience || 'Not specified'}
+Difficulty: ${difficulty || 'Medium'}
+Skill Context: ${skillList}
+
+INTERVIEW TRANSCRIPT:
+${transcriptFormatted}
+
+EVALUATION INSTRUCTIONS:
+1. OVERALL SCORE: 0 to 100 based strictly on candidate's answers and technical depth shown.
+2. PERFORMANCE LEVEL: "Excellent" (85-100), "Good" (70-84), "Average" (55-69), or "Needs Improvement" (<55).
+3. SUMMARY: 2-3 sentence executive debrief on candidate competence and readiness.
+4. STRENGTHS: 3 to 5 concrete strengths demonstrated during the interview.
+5. AREAS TO IMPROVE: 3 to 5 actionable areas for growth.
+6. SKILL PERFORMANCE: Generate 4 to 6 skill assessment scores (0-100) dynamically tailored to this specific role (e.g. for Flutter: "Flutter & Dart", "State Management", "API & Async", "Debugging", "UI Architecture").
+7. RECOMMENDATIONS: 3 to 4 specific study topics or practical drills for next steps.
+8. QUESTION REVIEWS: For each question asked, give a score (0-100) and 1 sentence of constructive feedback.
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        overallScore: { type: Type.INTEGER, description: 'Overall score from 0 to 100.' },
+        performanceLevel: {
+          type: Type.STRING,
+          enum: ['Excellent', 'Good', 'Average', 'Needs Improvement'],
+          description: 'Overall performance level.',
+        },
+        summary: { type: Type.STRING, description: 'Executive debrief paragraph.' },
+        strengths: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '3-5 key candidate strengths.',
+        },
+        areasToImprove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '3-5 areas for improvement.',
+        },
+        skillPerformance: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              skill: { type: Type.STRING, description: 'Name of the skill competency tailored to this role.' },
+              score: { type: Type.INTEGER, description: 'Score between 0 and 100.' },
+            },
+            required: ['skill', 'score'],
+            additionalProperties: false,
+          },
+          description: '4 to 6 role-tailored skill scores.',
+        },
+        recommendations: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Recommended study topics or drills.',
+        },
+        questionReviews: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              question: { type: Type.STRING },
+              answer: { type: Type.STRING },
+              feedback: { type: Type.STRING },
+              score: { type: Type.INTEGER },
+            },
+            required: ['question', 'answer', 'feedback', 'score'],
+            additionalProperties: false,
+          },
+          description: 'Turn-by-turn question reviews.',
+        },
+      },
+      required: [
+        'overallScore',
+        'performanceLevel',
+        'summary',
+        'strengths',
+        'areasToImprove',
+        'skillPerformance',
+        'recommendations',
+        'questionReviews',
+      ],
+      additionalProperties: false,
+    };
+
+    console.log('[AIService] Generating role-tailored final evaluation for', transcript.length, 'turns.');
+    const result = await this.executeWithFallback(prompt, schema);
+
+    const clamp = (val: any) => Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+
+    // Map dynamic skill array into Record<string, number>
+    const skillPerformance: Record<string, number> = {};
+    if (Array.isArray(result.skillPerformance)) {
+      for (const item of result.skillPerformance) {
+        if (item && item.skill) {
+          skillPerformance[String(item.skill).trim()] = clamp(item.score);
+        }
       }
-
-      const q = item as Record<string, unknown>;
-
-      if (typeof q.primaryQuestion !== 'string' || !q.primaryQuestion.trim()) {
-        throw new Error(`Invalid or empty primaryQuestion at index ${index}`);
-      }
-
-      if (typeof q.followUpQuestion !== 'string' || !q.followUpQuestion.trim()) {
-        throw new Error(`Invalid or empty followUpQuestion at index ${index}`);
-      }
-
-      if (typeof q.category !== 'string' || !q.category.trim()) {
-        throw new Error(`Invalid or empty category at index ${index}`);
-      }
-
-      if (typeof q.contextHint !== 'string' || !q.contextHint.trim()) {
-        throw new Error(`Invalid or empty contextHint at index ${index}`);
-      }
-
-      const trimmedCategory = q.category.trim();
-      if (!ALLOWED_CATEGORIES.includes(trimmedCategory as any)) {
-        throw new Error(
-          `Invalid category "${trimmedCategory}" at index ${index}. Allowed categories: ${ALLOWED_CATEGORIES.join(', ')}`,
-        );
-      }
-
-      validQuestions.push({
-        primaryQuestion: q.primaryQuestion.trim(),
-        followUpQuestion: q.followUpQuestion.trim(),
-        category: trimmedCategory,
-        contextHint: q.contextHint.trim(),
-      });
     }
 
-    if (validQuestions.length !== questionCount) {
-      throw new Error(
-        `Gemini returned ${validQuestions.length} valid questions, expected ${questionCount}`,
-      );
+    // Default fallback if array was empty
+    if (Object.keys(skillPerformance).length === 0) {
+      skillPerformance[`${role} Core`] = clamp(result.overallScore);
+      skillPerformance['Problem Solving'] = clamp(result.overallScore);
+      skillPerformance['Communication'] = clamp(result.overallScore);
     }
 
-    console.log(`[AIService] Successfully generated ${validQuestions.length} questions`);
+    const questionReviews: QuestionReview[] = Array.isArray(result.questionReviews)
+      ? result.questionReviews.map((qr: any) => ({
+          question: String(qr.question || '').trim(),
+          answer: String(qr.answer || '').trim(),
+          feedback: String(qr.feedback || '').trim(),
+          score: clamp(qr.score),
+        }))
+      : [];
 
-    return validQuestions;
+    return {
+      overallScore: clamp(result.overallScore),
+      performanceLevel: result.performanceLevel ?? 'Good',
+      summary: String(result.summary ?? '').trim(),
+      strengths: Array.isArray(result.strengths) ? result.strengths.map((s: any) => String(s).trim()) : [],
+      areasToImprove: Array.isArray(result.areasToImprove) ? result.areasToImprove.map((s: any) => String(s).trim()) : [],
+      skillPerformance,
+      recommendations: Array.isArray(result.recommendations) ? result.recommendations.map((s: any) => String(s).trim()) : [],
+      questionReviews,
+    };
   }
 }
 
