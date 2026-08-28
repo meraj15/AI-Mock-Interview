@@ -18,8 +18,7 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  late TextEditingController _firstNameController;
-  late TextEditingController _lastNameController;
+  late TextEditingController _fullNameController;
   late TextEditingController _phoneController;
   late TextEditingController _roleController;
   late TextEditingController _skillsController;
@@ -30,8 +29,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   void initState() {
     super.initState();
     final profile = context.read<ProfileController>();
-    _firstNameController = TextEditingController(text: profile.profile?.firstName ?? '');
-    _lastNameController = TextEditingController(text: profile.profile?.lastName ?? '');
+    _fullNameController = TextEditingController(text: profile.fullName);
     _phoneController = TextEditingController(text: profile.phone);
     _roleController = TextEditingController(text: profile.targetRole);
     _skillsController = TextEditingController(text: profile.skills.join(', '));
@@ -43,8 +41,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
+    _fullNameController.dispose();
     _phoneController.dispose();
     _roleController.dispose();
     _skillsController.dispose();
@@ -74,13 +71,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
         .where((s) => s.isNotEmpty)
         .toList();
 
+    final fullNameTrim = _fullNameController.text.trim();
+    String? firstName;
+    String? lastName;
+    if (fullNameTrim.isNotEmpty) {
+      final parts = fullNameTrim.split(RegExp(r'\s+'));
+      firstName = parts.first;
+      if (parts.length > 1) {
+        lastName = parts.sublist(1).join(' ');
+      } else {
+        lastName = '';
+      }
+    }
+
     final success = await profileCtrl.updateProfile(
-      firstName: _firstNameController.text.trim().isNotEmpty
-          ? _firstNameController.text.trim()
-          : null,
-      lastName: _lastNameController.text.trim().isNotEmpty
-          ? _lastNameController.text.trim()
-          : null,
+      firstName: firstName,
+      lastName: lastName,
       phone: _phoneController.text.trim().isNotEmpty
           ? _phoneController.text.trim()
           : null,
@@ -117,11 +123,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final profileCtrl = context.watch<ProfileController>();
 
     // Derive initials dynamically as user types
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
-    final nameForInitials = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
-    final initials = nameForInitials.isNotEmpty
-        ? nameForInitials
+    final fullName = _fullNameController.text.trim();
+    final initials = fullName.isNotEmpty
+        ? fullName
             .split(' ')
             .where((s) => s.isNotEmpty)
             .take(2)
@@ -140,7 +144,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
           const SizedBox(height: 16),
 
-          // Avatar (static — no image upload)
+          // Avatar
           Center(
             child: Container(
               width: 88,
@@ -159,23 +163,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
           const SizedBox(height: 28),
 
-          // First Name
-          Text('First name', style: AppTypography.semiBold(12, color: colors.foreground)),
+          // Full Name
+          Text('Full name', style: AppTypography.semiBold(12, color: colors.foreground)),
           const SizedBox(height: 8),
           AppTextField(
-            controller: _firstNameController,
-            placeholder: 'Your first name',
-            onChanged: (_) => setState(() {}),
-          ),
-
-          const SizedBox(height: 14),
-
-          // Last Name
-          Text('Last name', style: AppTypography.semiBold(12, color: colors.foreground)),
-          const SizedBox(height: 8),
-          AppTextField(
-            controller: _lastNameController,
-            placeholder: 'Your last name',
+            controller: _fullNameController,
+            placeholder: 'Your full name',
             onChanged: (_) => setState(() {}),
           ),
 

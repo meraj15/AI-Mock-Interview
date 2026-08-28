@@ -84,77 +84,73 @@ class ProfilePage extends StatelessWidget {
           ],
           Material(
             color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const EditProfilePage()),
-                );
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: colors.navy,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      alignment: Alignment.center,
-                      child: profileCtrl.isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              displayInitials,
-                              style: AppTypography.bold(22, color: Colors.white),
-                            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6.0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: colors.navy,
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  displayName,
-                                  style: AppTypography.bold(20, color: colors.foreground),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Icon(FeatherIcons.edit3, size: 17, color: colors.foreground),
-                            ],
+                    alignment: Alignment.center,
+                    child: profileCtrl.isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            displayInitials,
+                            style: AppTypography.bold(22, color: Colors.white),
                           ),
-                          const SizedBox(height: 4),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                displayName,
+                                style: AppTypography.bold(20, color: colors.foreground),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            GestureDetector(child: Icon(FeatherIcons.edit3, size: 17, color: colors.foreground), onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const EditProfilePage()),
+                              );
+                            }),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          userEmail,
+                          style: AppTypography.regular(11, color: colors.mutedForeground),
+                        ),
+                        const SizedBox(height: 8),
+                        if (targetRole.isNotEmpty)
+                          PillBadge(label: targetRole, tone: PillTone.success)
+                        else
                           Text(
-                            userEmail,
-                            style: AppTypography.regular(11, color: colors.mutedForeground),
+                            'Tap to complete profile',
+                            style: AppTypography.regular(10, color: colors.mutedForeground),
                           ),
-                          const SizedBox(height: 8),
-                          if (targetRole.isNotEmpty)
-                            PillBadge(label: targetRole, tone: PillTone.success)
-                          else
-                            Text(
-                              'Tap to complete profile',
-                              style: AppTypography.regular(10, color: colors.mutedForeground),
-                            ),
-                        ],
-                      ),
+                      ],
                     ),
-                  
-                  ],
-                ),
+                  ),
+                
+                ],
               ),
             ),
           ),

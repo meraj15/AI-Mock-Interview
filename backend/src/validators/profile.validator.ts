@@ -23,6 +23,7 @@ const certificationItemSchema = z.object({
 
 // ── Full update profile schema ────────────────────────────────────────────────
 export const updateProfileSchema = z.object({
+  fullName: z.string().trim().max(100, 'Full name must not exceed 100 characters').nullable().optional(),
   firstName: z.string().trim().max(50, 'First name must not exceed 50 characters').nullable().optional(),
   lastName: z.string().trim().max(50, 'Last name must not exceed 50 characters').nullable().optional(),
   phone: z.string().trim().max(20, 'Phone must not exceed 20 characters').nullable().optional(),
