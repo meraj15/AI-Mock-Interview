@@ -66,9 +66,12 @@ class DashboardController extends ChangeNotifier {
     return '$s ${s == 1 ? 'day' : 'days'}';
   }
 
+  InterviewSessionSummary? get latestSession =>
+      _recentSessions.isNotEmpty ? _recentSessions.first : null;
+
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  /// Load stats + last 5 sessions. Safe to call multiple times.
+  /// Load stats + sessions from backend. Safe to call multiple times.
   Future<void> load() async {
     if (_loadState == DashboardLoadState.loading) return;
     _loadState = DashboardLoadState.loading;
@@ -78,7 +81,7 @@ class DashboardController extends ChangeNotifier {
     try {
       final results = await Future.wait([
         _dataSource.getStats(),
-        _dataSource.listSessions(limit: 5),
+        _dataSource.listSessions(limit: 50),
       ]);
 
       _stats          = results[0] as InterviewStatsModel;

@@ -112,31 +112,71 @@ class InterviewStatsModel {
   );
 }
 
-/// Lightweight summary of one session for the Recent Interviews list.
+/// Summary of one session for the Recent & Historical Interviews list.
 class InterviewSessionSummary {
   final String id;
   final String role;
+  final String difficulty;
+  final String hiringBand;
+  final int questionCount;
   final int score;
+  final String summary;
+  final List<String> strengths;
+  final List<String> areasToImprove;
+  final Map<String, int> skillScores;
   final DateTime createdAt;
   final int durationSecs;
 
   const InterviewSessionSummary({
     required this.id,
     required this.role,
+    this.difficulty = 'Medium',
+    this.hiringBand = 'Good',
+    this.questionCount = 5,
     required this.score,
+    this.summary = '',
+    this.strengths = const [],
+    this.areasToImprove = const [],
+    this.skillScores = const {},
     required this.createdAt,
     required this.durationSecs,
   });
 
-  factory InterviewSessionSummary.fromJson(Map<String, dynamic> j) =>
-      InterviewSessionSummary(
-        id:          j['id'] as String,
-        role:        j['role'] as String? ?? '',
-        score:       (j['score'] as num?)?.toInt() ?? 0,
-        createdAt:   DateTime.tryParse(j['createdAt'] as String? ?? '') ??
-            DateTime.now(),
-        durationSecs: (j['durationSecs'] as num?)?.toInt() ?? 0,
-      );
+  factory InterviewSessionSummary.fromJson(Map<String, dynamic> j) {
+    final rawStrengths = j['strengths'];
+    final strengths = rawStrengths is List
+        ? rawStrengths.map((e) => e.toString()).toList()
+        : <String>[];
+
+    final rawAreas = j['areasToImprove'];
+    final areasToImprove = rawAreas is List
+        ? rawAreas.map((e) => e.toString()).toList()
+        : <String>[];
+
+    final rawSkills = j['skillScores'];
+    final skillScores = rawSkills is Map
+        ? Map<String, int>.fromEntries(
+            rawSkills.entries.map(
+              (e) => MapEntry(e.key.toString(), (e.value as num).toInt()),
+            ),
+          )
+        : <String, int>{};
+
+    return InterviewSessionSummary(
+      id: j['id'] as String? ?? '',
+      role: j['role'] as String? ?? 'Candidate',
+      difficulty: j['difficulty'] as String? ?? 'Medium',
+      hiringBand: j['hiringBand'] as String? ?? 'Good',
+      questionCount: (j['questionCount'] as num?)?.toInt() ?? 5,
+      score: (j['score'] as num?)?.toInt() ?? 0,
+      summary: j['summary'] as String? ?? '',
+      strengths: strengths,
+      areasToImprove: areasToImprove,
+      skillScores: skillScores,
+      createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+      durationSecs: (j['durationSecs'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
 
 // ── Data source ───────────────────────────────────────────────────────────────

@@ -46,7 +46,7 @@ class _HomePageState extends State<HomePage> {
         : auth.user?.email.split('@').first ?? 'User';
     final firstName = fullName.split(' ').first;
     final initials  = profileCtrl.initials.isNotEmpty
-        ? profileCtrl.initials
+        ? profileCtrl.initials.toUpperCase()
         : firstName.isNotEmpty ? firstName[0].toUpperCase() : 'U';
 
     return AppScaffold(
@@ -97,6 +97,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
+            
             ],
           ),
 
@@ -252,9 +253,9 @@ class _HomePageState extends State<HomePage> {
         
           ],
 
-          // ── Recent Interviews ────────────────────────────────────────────
+          // ── Recent Interview (Only 1 most recent) ───────────────────────
           SectionTitle(
-            title: 'Recent interviews',
+            title: 'Recent interview',
             action: 'See all',
             onAction: () => widget.onTabSwitch?.call(1),
           ),
@@ -264,14 +265,10 @@ class _HomePageState extends State<HomePage> {
           else if (dashboard.recentSessions.isEmpty)
             _EmptyRecentInterviews(colors: colors)
           else
-            Column(
-              children: dashboard.recentSessions
-                  .take(3)
-                  .map((s) => _RecentSessionCard(
-                        session: s,
-                        colors: colors,
-                      ))
-                  .toList(),
+            _RecentSessionCard(
+              session: dashboard.recentSessions.first,
+              colors: colors,
+              onTap: () => widget.onTabSwitch?.call(1),
             ),
 
           // ── Recommended ──────────────────────────────────────────────────
@@ -341,10 +338,12 @@ class _HomePageState extends State<HomePage> {
 class _RecentSessionCard extends StatelessWidget {
   final InterviewSessionSummary session;
   final AppColorScheme colors;
+  final VoidCallback? onTap;
 
   const _RecentSessionCard({
     required this.session,
     required this.colors,
+    this.onTap,
   });
 
   String _timeAgo(DateTime dt) {
@@ -372,61 +371,70 @@ class _RecentSessionCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: colors.accent,
-              borderRadius: BorderRadius.circular(14),
+              color: colors.card,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: colors.border),
             ),
-            alignment: Alignment.center,
-            child: Icon(FeatherIcons.code,
-                size: 19, color: colors.accentForeground),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  session.role,
-                  style:
-                      AppTypography.semiBold(14, color: colors.foreground),
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: colors.accent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(FeatherIcons.code,
+                      size: 19, color: colors.accentForeground),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_timeAgo(session.createdAt)}'
-                  '${_duration(session.durationSecs)}',
-                  style: AppTypography.regular(
-                      10, color: colors.mutedForeground),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.role,
+                        style:
+                            AppTypography.semiBold(14, color: colors.foreground),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_timeAgo(session.createdAt)}'
+                        '${_duration(session.durationSecs)}',
+                        style: AppTypography.regular(
+                            10, color: colors.mutedForeground),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '${session.score}',
+                      style: AppTypography.bold(20, color: scoreColor),
+                    ),
+                    Text(
+                      '/100',
+                      style:
+                          AppTypography.medium(10, color: colors.mutedForeground),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '${session.score}',
-                style: AppTypography.bold(20, color: scoreColor),
-              ),
-              Text(
-                '/100',
-                style:
-                    AppTypography.medium(10, color: colors.mutedForeground),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
