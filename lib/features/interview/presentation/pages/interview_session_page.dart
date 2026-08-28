@@ -1,24 +1,25 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_result_page.dart';
 
-// ── Turn state ────────────────────────────────────────────────────────────────
+// ── Voice Interview Room States ──────────────────────────────────────────────
 
-enum _Turn {
-  loading,     // Generating questions
-  aiSpeaking,  // TTS reading the question
-  userTurn,    // Mic is hot — user speaks
-  processing,  // Submitting answer, generating next question
-  done,        // Interview finished
+enum InterviewPhase {
+  loading,   // Initial session setup / planning
+  speaking,  // AI interviewer is speaking question & streaming text
+  listening, // AI is waiting for candidate to start speaking
+  recording, // Candidate is actively recording response
+  thinking,  // Answer received, AI is processing / generating next question
+  done,      // Session finished
 }
 
 class InterviewSessionPage extends StatefulWidget {
@@ -31,34 +32,28 @@ class InterviewSessionPage extends StatefulWidget {
 class _InterviewSessionPageState extends State<InterviewSessionPage>
     with TickerProviderStateMixin {
 
-  // ── TTS ───────────────────────────────────────────────────────────────────
+  // ── TTS & STT ─────────────────────────────────────────────────────────────
   final FlutterTts _tts = FlutterTts();
   bool _ttsAvailable = false;
 
-  // ── STT ───────────────────────────────────────────────────────────────────
   final stt.SpeechToText _stt = stt.SpeechToText();
   bool _sttAvailable = false;
-  String _transcript = '';
-  String _partialTranscript = '';
+  String _liveTranscript = '';
 
-  // ── Session state ──────────────────────────────────────────────────────────
-  _Turn _turn = _Turn.loading;
+  // ── Word-by-Word Streaming Question State ─────────────────────────────────
+  Timer? _streamingTimer;
+  int _displayedWordCount = 0;
+  List<String> _questionWords = [];
+  bool _isAcknowledgementFinished = false;
+
+  // ── State & Timers ────────────────────────────────────────────────────────
+  InterviewPhase _phase = InterviewPhase.loading;
   int _sessionElapsedSeconds = 0;
   Timer? _sessionTimer;
 
-  // ── Animations ────────────────────────────────────────────────────────────
-  late AnimationController _pulseCtrl;
-  late AnimationController _waveCtrl;
-  late Animation<double> _pulseAnim;
-  late Animation<double> _waveAnim;
-
-  // Visualizer bars
-  final List<double> _bars = List.generate(24, (_) => 0.15);
-  Timer? _barTimer;
-  final _rng = math.Random();
-
-  // Scroll controller for transcribed text when long
-  final ScrollController _transcriptScrollCtrl = ScrollController();
+  // ── Wave & Pulse Animations ───────────────────────────────────────────────
+  late AnimationController _waveAnimCtrl;
+  late AnimationController _pulseAnimCtrl;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -66,20 +61,15 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   void initState() {
     super.initState();
 
-    _pulseCtrl = AnimationController(
+    _waveAnimCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
 
-    _waveCtrl = AnimationController(
+    _pulseAnimCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
-
-    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
-
-    _waveAnim = CurvedAnimation(parent: _waveCtrl, curve: Curves.linear);
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
 
     _initStt();
 
@@ -94,17 +84,16 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   @override
   void dispose() {
+    _streamingTimer?.cancel();
     _tts.stop();
     _stt.stop();
-    _pulseCtrl.dispose();
-    _waveCtrl.dispose();
     _sessionTimer?.cancel();
-    _barTimer?.cancel();
-    _transcriptScrollCtrl.dispose();
+    _waveAnimCtrl.dispose();
+    _pulseAnimCtrl.dispose();
     super.dispose();
   }
 
-  // ── Init helpers ──────────────────────────────────────────────────────────
+  // ── Engine Initializers ───────────────────────────────────────────────────
 
   Future<void> _initTts() async {
     final langResult = await _tts.setLanguage('en-US');
@@ -117,15 +106,21 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     await _tts.setVolume(1.0);
 
     _tts.setCompletionHandler(() {
-      if (mounted && _turn == _Turn.aiSpeaking) {
-        _setTurn(_Turn.userTurn);
+      if (mounted) {
+        _completeTextStreaming();
+        if (_phase == InterviewPhase.speaking) {
+          _setPhase(InterviewPhase.listening);
+        }
       }
     });
 
     _tts.setErrorHandler((msg) {
-      debugPrint('TTS error: $msg');
-      if (mounted && _turn == _Turn.aiSpeaking) {
-        _setTurn(_Turn.userTurn);
+      debugPrint('[TTS Error]: $msg');
+      if (mounted) {
+        _completeTextStreaming();
+        if (_phase == InterviewPhase.speaking) {
+          _setPhase(InterviewPhase.listening);
+        }
       }
     });
 
@@ -135,15 +130,21 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   Future<void> _initStt() async {
     final ok = await _stt.initialize(
       onError: (e) {
-        if (mounted && _turn == _Turn.userTurn) {
-          setState(() => _partialTranscript = '');
+        debugPrint('[STT Error]: ${e.errorMsg}');
+        if (mounted && _phase == InterviewPhase.recording) {
+          _setPhase(InterviewPhase.listening);
+        }
+      },
+      onStatus: (status) {
+        if (status == 'notListening' && _phase == InterviewPhase.recording) {
+          // Idle status
         }
       },
     );
     if (mounted) setState(() => _sttAvailable = ok);
   }
 
-  // ── Session flow ──────────────────────────────────────────────────────────
+  // ── Session Orchestration ─────────────────────────────────────────────────
 
   Future<void> _startSession() async {
     final ic = context.read<InterviewController>();
@@ -179,8 +180,15 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final ic = context.read<InterviewController>();
     if (!mounted || ic.prompts.isEmpty) return;
 
-    _setTurn(_Turn.aiSpeaking);
-    _animateBars(calm: true);
+    _setPhase(InterviewPhase.speaking);
+
+    // Prepare streaming word list
+    final questionText = ic.currentQuestion.trim();
+    _questionWords = questionText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    _displayedWordCount = 0;
+    _isAcknowledgementFinished = ic.currentAcknowledgement.isEmpty;
+
+    _startTextStreaming();
 
     final speech = ic.currentAcknowledgement.isNotEmpty
         ? '${ic.currentAcknowledgement} ${ic.currentQuestion}'
@@ -189,43 +197,66 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     if (_ttsAvailable) {
       _tts.speak(speech);
     } else {
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && _turn == _Turn.aiSpeaking) {
-          _setTurn(_Turn.userTurn);
+      Future.delayed(Duration(milliseconds: 400 + (_questionWords.length * 200)), () {
+        if (mounted && _phase == InterviewPhase.speaking) {
+          _completeTextStreaming();
+          _setPhase(InterviewPhase.listening);
         }
       });
     }
   }
 
-  // ── Mic control ───────────────────────────────────────────────────────────
+  // ── Word-by-Word Streaming Engine ─────────────────────────────────────────
 
-  Future<void> _startListening() async {
-    if (!_sttAvailable || _turn != _Turn.userTurn) return;
-    setState(() {
-      _transcript = '';
-      _partialTranscript = '';
+  void _startTextStreaming() {
+    _streamingTimer?.cancel();
+
+    // Stream words progressively at speech tempo (~190ms per word)
+    const wordInterval = Duration(milliseconds: 190);
+    _streamingTimer = Timer.periodic(wordInterval, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        if (!_isAcknowledgementFinished) {
+          _isAcknowledgementFinished = true;
+        } else if (_displayedWordCount < _questionWords.length) {
+          _displayedWordCount++;
+        } else {
+          timer.cancel();
+        }
+      });
     });
-    _animateBars(calm: false);
+  }
+
+  void _completeTextStreaming() {
+    _streamingTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _isAcknowledgementFinished = true;
+        _displayedWordCount = _questionWords.length;
+      });
+    }
+  }
+
+  // ── Voice Input Lifecycle ─────────────────────────────────────────────────
+
+  Future<void> _startRecording() async {
+    if (!_sttAvailable || _phase == InterviewPhase.recording) return;
+
+    setState(() {
+      _liveTranscript = '';
+    });
+    _setPhase(InterviewPhase.recording);
 
     await _stt.listen(
       onResult: (result) {
         if (!mounted) return;
         setState(() {
-          if (result.finalResult) {
-            _transcript = result.recognizedWords;
-            _partialTranscript = '';
-          } else {
-            _partialTranscript = result.recognizedWords;
-          }
+          _liveTranscript = result.recognizedWords;
         });
-        // Auto scroll to bottom of live transcript
-        if (_transcriptScrollCtrl.hasClients) {
-          _transcriptScrollCtrl.animateTo(
-            _transcriptScrollCtrl.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-          );
-        }
       },
       listenOptions: stt.SpeechListenOptions(
         listenMode: stt.ListenMode.dictation,
@@ -235,18 +266,19 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     );
   }
 
-  Future<void> _stopListening() async {
+  Future<void> _finishRecordingAndSubmit() async {
     await _stt.stop();
-    _stopBarAnimation();
-    final answer = _transcript.isNotEmpty ? _transcript : _partialTranscript;
-    if (answer.trim().isNotEmpty) {
-      _submitAnswer(answer.trim());
+    final answer = _liveTranscript.trim();
+    if (answer.isNotEmpty) {
+      _submitAnswer(answer);
+    } else {
+      _setPhase(InterviewPhase.listening);
     }
   }
 
   Future<void> _submitAnswer(String answer) async {
     final ic = context.read<InterviewController>();
-    _setTurn(_Turn.processing);
+    _setPhase(InterviewPhase.thinking);
 
     await ic.submitAnswer(answer);
 
@@ -259,14 +291,27 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     }
 
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) _speakCurrentQuestion();
+      if (mounted) {
+        setState(() {
+          _liveTranscript = '';
+        });
+        _speakCurrentQuestion();
+      }
     });
   }
 
-  void _navigateToResult(InterviewController ic) {
+  void _skipTts() {
     _tts.stop();
+    _completeTextStreaming();
+    _setPhase(InterviewPhase.listening);
+  }
+
+  void _navigateToResult(InterviewController ic) {
+    _streamingTimer?.cancel();
+    _tts.stop();
+    _stt.stop();
     _sessionTimer?.cancel();
-    Future.delayed(const Duration(milliseconds: 600), () {
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const InterviewResultPage()),
@@ -274,7 +319,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     });
   }
 
-  // ── Timers & animations ───────────────────────────────────────────────────
+  // ── Session Controls ──────────────────────────────────────────────────────
 
   void _startSessionTimer() {
     _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -282,37 +327,9 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     });
   }
 
-  void _animateBars({required bool calm}) {
-    _barTimer?.cancel();
-    _barTimer = Timer.periodic(
-      Duration(milliseconds: calm ? 100 : 50),
-      (_) {
-        if (!mounted) return;
-        setState(() {
-          for (int i = 0; i < _bars.length; i++) {
-            _bars[i] = calm
-                ? 0.12 + _rng.nextDouble() * 0.35
-                : 0.25 + _rng.nextDouble() * 0.7;
-          }
-        });
-      },
-    );
-  }
-
-  void _stopBarAnimation() {
-    _barTimer?.cancel();
-    if (mounted) {
-      setState(() {
-        for (int i = 0; i < _bars.length; i++) {
-          _bars[i] = 0.08;
-        }
-      });
-    }
-  }
-
-  void _setTurn(_Turn t) {
+  void _setPhase(InterviewPhase p) {
     if (!mounted) return;
-    setState(() => _turn = t);
+    setState(() => _phase = p);
   }
 
   String _formatTime(int s) {
@@ -321,472 +338,680 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
-  void _exitSession() {
-    _tts.stop();
-    _stt.stop();
-    Navigator.of(context).pop();
+  void _confirmExit(AppColorScheme colors) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: colors.border.withValues(alpha: 0.4)),
+        ),
+        title: Text('Exit Interview?', style: AppTypography.bold(16, color: colors.text)),
+        content: Text(
+          'Are you sure you want to end this mock interview session?',
+          style: AppTypography.regular(13, color: colors.mutedForeground),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Continue', style: AppTypography.semiBold(13, color: colors.mutedForeground)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colors.destructive,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _streamingTimer?.cancel();
+              _tts.stop();
+              _stt.stop();
+              Navigator.of(context).pop();
+            },
+            child: Text('End Session', style: AppTypography.bold(13, color: colors.destructiveForeground)),
+          ),
+        ],
+      ),
+    );
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Main UI Build ─────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColorScheme.of(context);
     final ic = context.watch<InterviewController>();
 
-    if (ic.sessionStatus == SessionStatus.complete && _turn != _Turn.done) {
+    if (ic.sessionStatus == SessionStatus.complete && _phase != InterviewPhase.done) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          setState(() => _turn = _Turn.done);
+          setState(() => _phase = InterviewPhase.done);
           _navigateToResult(ic);
         }
       });
     }
 
-    const bg = Color(0xFF090D1A);
-    const cardBg = Color(0xFF111728);
-    const mintGreen = Color(0xFF2DE4B6);
-    const coralRed = Color(0xFFFF6B6B);
-    const softWhite = Color(0xFFE8EEFF);
-
     final hasError = ic.sessionStatus == SessionStatus.error ||
         (ic.errorMessage != null && ic.prompts.isEmpty);
 
-    // ── Error state ──────────────────────────────────────────────────────────
     if (hasError) {
-      return Scaffold(
-        backgroundColor: bg,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: GestureDetector(
-                    onTap: _exitSession,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(FeatherIcons.x, size: 14, color: Colors.white54),
-                          const SizedBox(width: 5),
-                          Text('Exit', style: AppTypography.semiBold(11, color: Colors.white54)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: coralRed.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: coralRed.withValues(alpha: 0.4), width: 1.5),
-                  ),
-                  child: const Icon(FeatherIcons.alertTriangle, size: 28, color: coralRed),
-                ),
-                const SizedBox(height: 16),
-                Text('AI Interview Error', style: AppTypography.bold(18, color: softWhite)),
-                const SizedBox(height: 6),
-                Text(
-                  'Failed to connect to AI interview service. Please try again.',
-                  style: AppTypography.regular(12, color: Colors.white60),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: coralRed.withValues(alpha: 0.2)),
-                  ),
-                  child: SelectableText(
-                    ic.errorMessage ?? 'Unknown error occurred.',
-                    style: AppTypography.regular(11, color: Colors.white70),
-                  ),
-                ),
-                const Spacer(),
-                Row(
+      return _buildErrorView(ic, colors);
+    }
+
+    final isLoading = _phase == InterviewPhase.loading || ic.prompts.isEmpty;
+    final role = ic.config.role.isNotEmpty ? ic.config.role : 'Candidate';
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── 1. Compact Header ───────────────────────────────────────────
+            _buildCompactHeader(role, colors),
+
+            // ── 2. Interactive Interview Room Content ───────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
                   children: [
+                    const SizedBox(height: 12),
+
+                    // ── Sleek Dynamic AI Voice Status Pill ──────────────────
+                    _buildDynamicAIVoiceBar(colors, isLoading),
+
+                    const SizedBox(height: 14),
+
+                    // ── HERO: Word-by-Word Streaming Question Card ──────────
                     Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Center(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (!isLoading && ic.currentQuestion.isNotEmpty)
+                                _buildStreamingQuestionCard(ic, colors)
+                              else if (isLoading)
+                                _buildLoadingQuestionPlaceholder(colors),
+
+                              // Live Caption (Appears smoothly when recording)
+                              if (_phase == InterviewPhase.recording && _liveTranscript.isNotEmpty)
+                                _buildLiveCaptionCard(colors),
+                            ],
+                          ),
                         ),
-                        onPressed: _exitSession,
-                        child: Text('Exit', style: AppTypography.semiBold(13, color: Colors.white70)),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: mintGreen,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () {
-                          final rc = context.read<ResumeController>();
-                          ic.startInterview(resume: rc.resume).then((_) {
-                            if (mounted && ic.sessionStatus == SessionStatus.active) {
-                              _speakCurrentQuestion();
-                            }
-                          });
-                        },
-                        child: Text('Retry', style: AppTypography.bold(13, color: const Color(0xFF0B0F1E))),
-                      ),
-                    ),
+
+                    const SizedBox(height: 12),
+
+                    // ── 3. Voice Controls & Primary Actions ─────────────────
+                    _buildVoiceControlCenter(isLoading, colors),
+
+                    const SizedBox(height: 18),
                   ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Compact Header ────────────────────────────────────────────────────────
+
+  Widget _buildCompactHeader(String role, AppColorScheme colors) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: colors.background,
+        border: Border(
+          bottom: BorderSide(color: colors.border.withValues(alpha: 0.3)),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Exit Button
+          GestureDetector(
+            onTap: () => _confirmExit(colors),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: colors.border.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(FeatherIcons.x, size: 12, color: colors.mutedForeground),
+                  const SizedBox(width: 4),
+                  Text('Exit', style: AppTypography.semiBold(11, color: colors.text)),
+                ],
+              ),
+            ),
+          ),
+
+          // Role Title & Subtitle
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    role,
+                    style: AppTypography.bold(12.5, color: colors.text),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    'AI Mock Interview',
+                    style: AppTypography.medium(10, color: colors.mint),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Timer Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.border.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FeatherIcons.clock, size: 11, color: colors.mutedForeground),
+                const SizedBox(width: 4),
+                Text(
+                  _formatTime(_sessionElapsedSeconds),
+                  style: AppTypography.semiBold(11, color: colors.text),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // ── Sleek Dynamic AI Voice Status Capsule ─────────────────────────────────
+
+  Widget _buildDynamicAIVoiceBar(AppColorScheme colors, bool isLoading) {
+    Color accentColor;
+    String statusLabel;
+    IconData icon;
+
+    if (isLoading) {
+      accentColor = colors.primary;
+      statusLabel = 'AI Interviewer • Preparing question…';
+      icon = FeatherIcons.loader;
+    } else {
+      switch (_phase) {
+        case InterviewPhase.speaking:
+          accentColor = colors.mint;
+          statusLabel = 'AI Interviewer • Speaking';
+          icon = FeatherIcons.volume2;
+          break;
+        case InterviewPhase.listening:
+          accentColor = colors.primary;
+          statusLabel = 'AI Interviewer • Listening to you';
+          icon = FeatherIcons.radio;
+          break;
+        case InterviewPhase.recording:
+          accentColor = colors.destructive;
+          statusLabel = 'You • Recording answer…';
+          icon = FeatherIcons.mic;
+          break;
+        case InterviewPhase.thinking:
+          accentColor = colors.violet;
+          statusLabel = 'AI Interviewer • Evaluating response…';
+          icon = FeatherIcons.cpu;
+          break;
+        case InterviewPhase.done:
+        case InterviewPhase.loading:
+          accentColor = colors.mint;
+          statusLabel = 'AI Interviewer';
+          icon = FeatherIcons.check;
+          break;
+      }
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.card.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accentColor.withValues(alpha: 0.35), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.12),
+            blurRadius: 12,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Animated Waveform Bars / Glowing Dot
+          if (_phase == InterviewPhase.speaking || _phase == InterviewPhase.recording)
+            _MiniVoiceWaveVisualizer(
+              color: accentColor,
+              anim: _waveAnimCtrl,
+            )
+          else
+            Icon(icon, size: 13, color: accentColor),
+
+          const SizedBox(width: 8),
+
+          Text(
+            statusLabel,
+            style: AppTypography.semiBold(11.5, color: accentColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── HERO: Word-by-Word Streaming Question Card ────────────────────────────
+
+  Widget _buildStreamingQuestionCard(InterviewController ic, AppColorScheme colors) {
+    final acknowledgement = ic.currentAcknowledgement.trim();
+    final isStreamingActive = _phase == InterviewPhase.speaking &&
+        _displayedWordCount < _questionWords.length;
+
+    // Display revealed words up to _displayedWordCount
+    final displayedText = isStreamingActive
+        ? _questionWords.take(_displayedWordCount).join(' ')
+        : ic.currentQuestion.trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: _phase == InterviewPhase.speaking
+              ? colors.mint.withValues(alpha: 0.45)
+              : colors.border.withValues(alpha: 0.6),
+          width: 1.3,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Acknowledgement Banner (if available)
+          if (acknowledgement.isNotEmpty && _isAcknowledgementFinished) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(FeatherIcons.check, size: 13, color: colors.mint),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '"$acknowledgement"',
+                    style: AppTypography.medium(
+                      12.5,
+                      color: colors.mint,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Divider(color: colors.border.withValues(alpha: 0.4), height: 1),
+            const SizedBox(height: 14),
+          ],
+
+          // Question Text (Streaming word-by-word with pulsing caret)
+          RichText(
+            text: TextSpan(
+              style: AppTypography.semiBold(
+                17,
+                color: colors.text,
+                height: 1.48,
+              ),
+              children: [
+                TextSpan(text: displayedText),
+                if (isStreamingActive)
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: FadeTransition(
+                      opacity: _pulseAnimCtrl,
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 4),
+                        width: 7,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: colors.mint,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingQuestionPlaceholder(AppColorScheme colors) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 34),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.border.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Formulating your next question…',
+            style: AppTypography.medium(13, color: colors.mutedForeground),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Temporary Live Caption Widget ─────────────────────────────────────────
+
+  Widget _buildLiveCaptionCard(AppColorScheme colors) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxHeight: 90),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.destructive.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colors.destructive.withValues(alpha: 0.3)),
+        ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: colors.destructive,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _liveTranscript,
+                  style: AppTypography.regular(
+                    12.5,
+                    color: colors.text,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Voice Interaction & Minimal Controls ──────────────────────────────────
+
+  Widget _buildVoiceControlCenter(bool isLoading, AppColorScheme colors) {
+    if (isLoading) {
+      return const SizedBox(height: 72);
+    }
+
+    if (_phase == InterviewPhase.speaking) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: colors.border.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(FeatherIcons.volume2, size: 14, color: colors.mint),
+            const SizedBox(width: 8),
+            Text(
+              'AI speaking…',
+              style: AppTypography.medium(12, color: colors.mutedForeground),
+            ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: _skipTts,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.mint.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'Skip',
+                  style: AppTypography.bold(11, color: colors.mint),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    final isLoading = _turn == _Turn.loading || ic.prompts.isEmpty;
-    final isAI = _turn == _Turn.aiSpeaking;
-    final isUser = _turn == _Turn.userTurn;
-    final isProcessing = _turn == _Turn.processing;
+    if (_phase == InterviewPhase.thinking) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: colors.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Evaluating response…',
+              style: AppTypography.semiBold(12, color: colors.text),
+            ),
+          ],
+        ),
+      );
+    }
 
-    final questionNum = ic.questionNumber;
-    final totalQ = ic.totalQuestions;
-    final progress = totalQ > 0 ? questionNum / totalQ : 0.0;
-    final question = ic.currentQuestion;
-    final category = ic.currentCategory;
-    final acknowledgement = ic.currentAcknowledgement;
+    // Listening or Recording Phase
+    final isRecording = _phase == InterviewPhase.recording;
+    final btnColor = isRecording ? colors.destructive : colors.mint;
+    final actionLabel = isRecording ? 'Tap to finish' : 'Tap to speak answer';
 
-    final displayTranscript = _transcript.isNotEmpty ? _transcript : _partialTranscript;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: isRecording ? _finishRecordingAndSubmit : _startRecording,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: btnColor.withValues(alpha: isRecording ? 0.22 : 0.12),
+              border: Border.all(color: btnColor, width: 1.8),
+              boxShadow: [
+                BoxShadow(
+                  color: btnColor.withValues(alpha: isRecording ? 0.45 : 0.2),
+                  blurRadius: isRecording ? 18 : 10,
+                  spreadRadius: isRecording ? 2 : 0,
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isRecording ? FeatherIcons.square : FeatherIcons.mic,
+              size: 22,
+              color: btnColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          actionLabel,
+          style: AppTypography.semiBold(11.5, color: btnColor),
+        ),
+      ],
+    );
+  }
 
+  // ── Error View ────────────────────────────────────────────────────────────
+
+  Widget _buildErrorView(InterviewController ic, AppColorScheme colors) {
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: colors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             children: [
-              const SizedBox(height: 10),
-
-              // ── Top Bar ──────────────────────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Exit
-                  GestureDetector(
-                    onTap: _exitSession,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(FeatherIcons.x, size: 13, color: Colors.white54),
-                          const SizedBox(width: 4),
-                          Text('Exit', style: AppTypography.semiBold(11, color: Colors.white54)),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Topic Header
-                  Column(
-                    children: [
-                      Text(
-                        isLoading ? 'Preparing…' : 'Topic $questionNum of $totalQ',
-                        style: AppTypography.bold(12, color: softWhite),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        category.isNotEmpty ? category : 'Interview Session',
-                        style: AppTypography.regular(10, color: mintGreen.withValues(alpha: 0.8)),
-                      ),
-                    ],
-                  ),
-
-                  // Timer Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              Align(
+                alignment: Alignment.topLeft,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(8),
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: colors.border.withValues(alpha: 0.4)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(FeatherIcons.clock, size: 11, color: Colors.white38),
-                        const SizedBox(width: 4),
-                        Text(
-                          _formatTime(_sessionElapsedSeconds),
-                          style: AppTypography.semiBold(11, color: Colors.white54),
-                        ),
+                        Icon(FeatherIcons.x, size: 14, color: colors.mutedForeground),
+                        const SizedBox(width: 5),
+                        Text('Exit', style: AppTypography.semiBold(11, color: colors.text)),
                       ],
+                    ),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: colors.destructive.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colors.destructive.withValues(alpha: 0.4), width: 1.5),
+                ),
+                child: Icon(FeatherIcons.alertTriangle, size: 26, color: colors.destructive),
+              ),
+              const SizedBox(height: 16),
+              Text('Connection Issue', style: AppTypography.bold(18, color: colors.text)),
+              const SizedBox(height: 6),
+              Text(
+                'Unable to reach the AI interview engine. Please verify backend connectivity.',
+                style: AppTypography.regular(12, color: colors.mutedForeground),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: colors.destructive.withValues(alpha: 0.2)),
+                ),
+                child: SelectableText(
+                  ic.errorMessage ?? 'Unknown error occurred.',
+                  style: AppTypography.regular(11, color: colors.text),
+                ),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: BorderSide(color: colors.border),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text('Exit', style: AppTypography.semiBold(13, color: colors.text)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () {
+                        final rc = context.read<ResumeController>();
+                        ic.startInterview(resume: rc.resume).then((_) {
+                          if (mounted && ic.sessionStatus == SessionStatus.active) {
+                            _speakCurrentQuestion();
+                          }
+                        });
+                      },
+                      child: Text('Retry', style: AppTypography.bold(13, color: colors.primaryForeground)),
                     ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 8),
-
-              // ── Progress Bar ─────────────────────────────────────────
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  minHeight: 2.5,
-                  backgroundColor: Colors.white.withValues(alpha: 0.06),
-                  valueColor: const AlwaysStoppedAnimation<Color>(mintGreen),
-                ),
-              ),
-
-              const SizedBox(height: 14),
-
-              // ── Sleek Compact AI Voice Visualizer & Status Bar ──────
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: cardBg.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isAI
-                        ? mintGreen.withValues(alpha: 0.25)
-                        : isUser
-                            ? coralRed.withValues(alpha: 0.25)
-                            : Colors.white.withValues(alpha: 0.06),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    // Pulse status icon
-                    ScaleTransition(
-                      scale: _pulseAnim,
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: (isUser ? coralRed : isAI ? mintGreen : Colors.white24)
-                              .withValues(alpha: 0.15),
-                        ),
-                        child: Icon(
-                          isUser
-                              ? FeatherIcons.mic
-                              : isAI
-                                  ? FeatherIcons.volume2
-                                  : isProcessing
-                                      ? FeatherIcons.cpu
-                                      : FeatherIcons.loader,
-                          size: 13,
-                          color: isUser ? coralRed : isAI ? mintGreen : Colors.white60,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Status label
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isLoading
-                                ? 'AI Planning Interview…'
-                                : isAI
-                                    ? 'Interviewer is speaking'
-                                    : isUser
-                                        ? (_stt.isListening ? 'Listening to your answer…' : 'Your turn to answer')
-                                        : 'Evaluating response…',
-                            style: AppTypography.semiBold(
-                              11,
-                              color: isUser ? coralRed : isAI ? mintGreen : Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Mini waveform animation
-                    if (!isLoading)
-                      SizedBox(
-                        width: 70,
-                        height: 20,
-                        child: AnimatedBuilder(
-                          animation: _waveAnim,
-                          builder: (_, __) => CustomPaint(
-                            painter: _WavePainter(
-                              bars: _bars.sublist(0, 14),
-                              color: isUser ? coralRed : mintGreen,
-                              animValue: _waveCtrl.value,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ── Conversational Content Area (Flex-safe) ─────────────
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Question Card
-                      if (!isLoading && question.isNotEmpty)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: cardBg,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isAI
-                                  ? mintGreen.withValues(alpha: 0.3)
-                                  : Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 5,
-                                    height: 5,
-                                    decoration: const BoxDecoration(
-                                      color: mintGreen,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    category.toUpperCase(),
-                                    style: AppTypography.bold(
-                                      9,
-                                      color: mintGreen,
-                                      letterSpacing: 1.1,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (acknowledgement.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  '"$acknowledgement"',
-                                  style: AppTypography.medium(
-                                    11.5,
-                                    color: mintGreen.withValues(alpha: 0.9),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
-                              Text(
-                                question,
-                                style: AppTypography.semiBold(
-                                  13.5,
-                                  color: softWhite,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      // Live User Answer Card (When user speaks or has transcribed text)
-                      if (isUser && displayTranscript.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          width: double.infinity,
-                          constraints: const BoxConstraints(maxHeight: 180),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: coralRed.withValues(alpha: 0.07),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: coralRed.withValues(alpha: 0.28),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(FeatherIcons.mic, size: 11, color: coralRed),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'YOUR LIVE ANSWER',
-                                    style: AppTypography.bold(9, color: coralRed, letterSpacing: 1.0),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Flexible(
-                                child: Scrollbar(
-                                  controller: _transcriptScrollCtrl,
-                                  thumbVisibility: true,
-                                  child: SingleChildScrollView(
-                                    controller: _transcriptScrollCtrl,
-                                    physics: const BouncingScrollPhysics(),
-                                    child: Text(
-                                      displayTranscript,
-                                      style: AppTypography.regular(
-                                        12,
-                                        color: Colors.white.withValues(alpha: 0.9),
-                                        height: 1.45,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // ── Unified Bottom Control Area ──────────────────────────
-              if (!isLoading)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 18),
-                  child: _UnifiedBottomControls(
-                    turn: _turn,
-                    sttAvailable: _sttAvailable,
-                    isListening: _stt.isListening,
-                    mintGreen: mintGreen,
-                    coralRed: coralRed,
-                    onStartListening: _startListening,
-                    onStopListening: _stopListening,
-                    onSkip: () {
-                      _tts.stop();
-                      _setTurn(_Turn.userTurn);
-                      _animateBars(calm: false);
-                    },
-                  ),
-                ),
             ],
           ),
         ),
@@ -795,165 +1020,47 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   }
 }
 
-// ── Unified Bottom Controls ───────────────────────────────────────────────────
+// ── Mini Voice Wave Visualizer Bars ──────────────────────────────────────────
 
-class _UnifiedBottomControls extends StatelessWidget {
-  final _Turn turn;
-  final bool sttAvailable;
-  final bool isListening;
-  final Color mintGreen;
-  final Color coralRed;
-  final VoidCallback onStartListening;
-  final VoidCallback onStopListening;
-  final VoidCallback onSkip;
+class _MiniVoiceWaveVisualizer extends StatelessWidget {
+  final Color color;
+  final Animation<double> anim;
 
-  const _UnifiedBottomControls({
-    required this.turn,
-    required this.sttAvailable,
-    required this.isListening,
-    required this.mintGreen,
-    required this.coralRed,
-    required this.onStartListening,
-    required this.onStopListening,
-    required this.onSkip,
+  const _MiniVoiceWaveVisualizer({
+    required this.color,
+    required this.anim,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (turn == _Turn.aiSpeaking) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          GestureDetector(
-            onTap: onSkip,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(FeatherIcons.skipForward, size: 13, color: Colors.white70),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Skip reading',
-                    style: AppTypography.semiBold(11.5, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (turn == _Turn.userTurn) {
-      final listening = isListening;
-      final label = listening ? 'Tap to finish answer' : 'Tap to speak answer';
-      final color = listening ? coralRed : mintGreen;
-
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: listening ? onStopListening : onStartListening,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: listening ? 64 : 58,
-              height: listening ? 64 : 58,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color.withValues(alpha: 0.15),
-                border: Border.all(color: color, width: 1.5),
-                boxShadow: listening
-                    ? [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.4),
-                          blurRadius: 18,
-                          spreadRadius: 3,
-                        ),
-                      ]
-                    : null,
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                listening ? FeatherIcons.square : FeatherIcons.mic,
-                size: 22,
-                color: color,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: AppTypography.semiBold(11, color: color),
-          ),
-        ],
-      );
-    }
-
-    // Processing state spinner
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(mintGreen),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          'Processing…',
-          style: AppTypography.semiBold(11, color: Colors.white54),
-        ),
-      ],
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (ctx, _) {
+        final v = anim.value;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _bar(4 + (v * 8)),
+            const SizedBox(width: 2.5),
+            _bar(10 - (v * 6)),
+            const SizedBox(width: 2.5),
+            _bar(6 + (v * 7)),
+            const SizedBox(width: 2.5),
+            _bar(12 - (v * 8)),
+          ],
+        );
+      },
     );
   }
-}
 
-// ── Waveform painter ──────────────────────────────────────────────────────────
-
-class _WavePainter extends CustomPainter {
-  final List<double> bars;
-  final Color color;
-  final double animValue;
-
-  const _WavePainter({
-    required this.bars,
-    required this.color,
-    required this.animValue,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (bars.isEmpty) return;
-
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round;
-
-    final w = size.width / bars.length;
-    for (int i = 0; i < bars.length; i++) {
-      final amp = bars[i] *
-          (0.6 + 0.4 * math.sin(animValue * 2 * math.pi + i * 0.6));
-      final h = (amp * size.height).clamp(3.0, size.height * 0.9);
-      final x = w * i + w / 2;
-      final cy = size.height / 2;
-      canvas.drawLine(
-        Offset(x, cy - h / 2),
-        Offset(x, cy + h / 2),
-        paint,
-      );
-    }
+  Widget _bar(double height) {
+    return Container(
+      width: 2.5,
+      height: height.clamp(3.0, 14.0),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(_WavePainter old) => true;
 }

@@ -17,9 +17,10 @@ class ApiConfig {
   /// • 10.0.2.2      — Android emulator alias for host localhost
   /// • localhost     — Windows / web / desktop runner
   static const List<String> developmentCandidates = [
-    'http://192.168.0.113:3000',
-    'http://10.0.2.2:3000',
-    'http://localhost:3000',
+    'http://192.168.0.115:3000',
+    // 'http://192.168.0.113:3000',
+    // 'http://10.0.2.2:3000',
+    // 'http://localhost:3000',
   ];
 
   /// Currently active discovered base URL — set after first successful request.
