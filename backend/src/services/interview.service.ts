@@ -309,7 +309,7 @@ export class InterviewService {
           summary: evaluation.summary,
           strengths: evaluation.strengths,
           areasToImprove: evaluation.areasToImprove,
-          skillScores: evaluation.skillPerformance,
+          skillScores: evaluation.skillPerformance ?? {},
           durationSecs,
         });
         logger.info(`[InterviewService] Saved interview ${sessionId} into database for user=${userId}`);

@@ -74,15 +74,6 @@ class _InterviewResultPageState extends State<InterviewResultPage>
           'Practice concise STAR-format answers.',
         ];
 
-    final skillScores = eval?.skillScores ??
-        {
-          'Technical': 88,
-          'Communication': 82,
-          'Problem Solving': 86,
-          'Confidence': 79,
-          'Role Mastery': 90,
-        };
-
     // Score colour
     final scoreColor = score >= 85
         ? colors.mint
@@ -151,18 +142,6 @@ class _InterviewResultPageState extends State<InterviewResultPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── Skill breakdown ─────────────────────────────
-                      _SectionLabel(
-                          label: 'Skill Breakdown', colors: colors),
-                      const SizedBox(height: 12),
-                      _SkillCard(
-                        scores: skillScores,
-                        colors: colors,
-                        ringAnim: _ringAnim,
-                      ),
-
-                      const SizedBox(height: 20),
-
                       // ── Strengths & Improve side by side ────────────
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -616,123 +595,6 @@ class _SectionLabel extends StatelessWidget {
       label.toUpperCase(),
       style: AppTypography.semiBold(11,
           color: colors.mutedForeground, letterSpacing: 1.1),
-    );
-  }
-}
-
-// ── Skill Card ────────────────────────────────────────────────────────────────
-
-class _SkillCard extends StatelessWidget {
-  final Map<String, int> scores;
-  final AppColorScheme colors;
-  final Animation<double> ringAnim;
-
-  const _SkillCard({
-    required this.scores,
-    required this.colors,
-    required this.ringAnim,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final entries = scores.entries.toList();
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.border),
-      ),
-      child: Column(
-        children: [
-          for (int i = 0; i < entries.length; i++) ...[
-            _SkillBar(
-              label: entries[i].key,
-              value: entries[i].value,
-              colors: colors,
-              anim: ringAnim,
-            ),
-            if (i < entries.length - 1)
-              const SizedBox(height: 14),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SkillBar extends StatelessWidget {
-  final String label;
-  final int value;
-  final AppColorScheme colors;
-  final Animation<double> anim;
-
-  const _SkillBar({
-    required this.label,
-    required this.value,
-    required this.colors,
-    required this.anim,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isStrong = value >= 85;
-    final isGood = value >= 70;
-    final barColor = isStrong
-        ? colors.mint
-        : isGood
-            ? colors.primary
-            : colors.coral;
-    final tag = isStrong ? 'Strong' : isGood ? 'Good' : 'Growing';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: AppTypography.medium(12, color: colors.foreground),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$value%',
-                  style: AppTypography.bold(12, color: barColor),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: barColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    tag,
-                    style: AppTypography.semiBold(9, color: barColor),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        AnimatedBuilder(
-          animation: anim,
-          builder: (_, __) => ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: (value / 100) * anim.value,
-              minHeight: 6,
-              backgroundColor: colors.secondary,
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

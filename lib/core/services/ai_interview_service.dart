@@ -186,15 +186,7 @@ class AIEvaluationResult {
       performanceLabel: level,
       hiringBand: hiringBand,
       benchmark: benchmark,
-      skillScores: skillScores.isNotEmpty
-          ? skillScores
-          : {
-              'Technical Knowledge': overall,
-              'Communication & Clarity': overall,
-              'Problem Solving': overall,
-              'Architecture & Design': overall,
-              'Role Mastery': overall,
-            },
+      skillScores: skillScores,
       strengths: rawStrengths.isNotEmpty
           ? rawStrengths
           : ['Demonstrated clear domain concepts and structured answers.'],

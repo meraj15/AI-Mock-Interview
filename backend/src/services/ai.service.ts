@@ -32,7 +32,7 @@ export interface FinalInterviewEvaluation {
   summary: string;
   strengths: string[];
   areasToImprove: string[];
-  skillPerformance: Record<string, number>;
+  skillPerformance?: Record<string, number>;
   recommendations: string[];
   questionReviews: QuestionReview[];
 }
@@ -389,9 +389,8 @@ EVALUATION INSTRUCTIONS:
 3. SUMMARY: 2-3 sentence executive debrief on candidate competence and readiness.
 4. STRENGTHS: 3 to 5 concrete strengths demonstrated during the interview.
 5. AREAS TO IMPROVE: 3 to 5 actionable areas for growth.
-6. SKILL PERFORMANCE: Generate 4 to 6 skill assessment scores (0-100) dynamically tailored to this specific role (e.g. for Flutter: "Flutter & Dart", "State Management", "API & Async", "Debugging", "UI Architecture").
-7. RECOMMENDATIONS: 3 to 4 specific study topics or practical drills for next steps.
-8. QUESTION REVIEWS: For each question asked, give a score (0-100) and 1 sentence of constructive feedback.
+6. RECOMMENDATIONS: 3 to 4 specific study topics or practical drills for next steps.
+7. QUESTION REVIEWS: For each question asked, give a score (0-100) and 1 sentence of constructive feedback.
 `;
 
     const schema = {
@@ -413,19 +412,6 @@ EVALUATION INSTRUCTIONS:
           type: Type.ARRAY,
           items: { type: Type.STRING },
           description: '3-5 areas for improvement.',
-        },
-        skillPerformance: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              skill: { type: Type.STRING, description: 'Name of the skill competency tailored to this role.' },
-              score: { type: Type.INTEGER, description: 'Score between 0 and 100.' },
-            },
-            required: ['skill', 'score'],
-            additionalProperties: false,
-          },
-          description: '4 to 6 role-tailored skill scores.',
         },
         recommendations: {
           type: Type.ARRAY,
@@ -454,7 +440,6 @@ EVALUATION INSTRUCTIONS:
         'summary',
         'strengths',
         'areasToImprove',
-        'skillPerformance',
         'recommendations',
         'questionReviews',
       ],
@@ -465,23 +450,6 @@ EVALUATION INSTRUCTIONS:
     const result = await this.executeWithFallback(prompt, schema);
 
     const clamp = (val: any) => Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
-
-    // Map dynamic skill array into Record<string, number>
-    const skillPerformance: Record<string, number> = {};
-    if (Array.isArray(result.skillPerformance)) {
-      for (const item of result.skillPerformance) {
-        if (item && item.skill) {
-          skillPerformance[String(item.skill).trim()] = clamp(item.score);
-        }
-      }
-    }
-
-    // Default fallback if array was empty
-    if (Object.keys(skillPerformance).length === 0) {
-      skillPerformance[`${role} Core`] = clamp(result.overallScore);
-      skillPerformance['Problem Solving'] = clamp(result.overallScore);
-      skillPerformance['Communication'] = clamp(result.overallScore);
-    }
 
     const questionReviews: QuestionReview[] = Array.isArray(result.questionReviews)
       ? result.questionReviews.map((qr: any) => ({
@@ -498,7 +466,6 @@ EVALUATION INSTRUCTIONS:
       summary: String(result.summary ?? '').trim(),
       strengths: Array.isArray(result.strengths) ? result.strengths.map((s: any) => String(s).trim()) : [],
       areasToImprove: Array.isArray(result.areasToImprove) ? result.areasToImprove.map((s: any) => String(s).trim()) : [],
-      skillPerformance,
       recommendations: Array.isArray(result.recommendations) ? result.recommendations.map((s: any) => String(s).trim()) : [],
       questionReviews,
     };
