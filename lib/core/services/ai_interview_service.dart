@@ -208,7 +208,7 @@ class AIEvaluationResult {
 abstract class AIInterviewService {
   Future<ConversationalStartResult> startConversationalInterview({
     required InterviewConfigEntity config,
-    required ResumeEntity resume,
+    ResumeEntity? resume,
   });
 
   Future<ConversationalTurnResult> submitConversationalAnswer({
@@ -232,11 +232,11 @@ class GeminiAIInterviewService implements AIInterviewService {
   @override
   Future<ConversationalStartResult> startConversationalInterview({
     required InterviewConfigEntity config,
-    required ResumeEntity resume,
+    ResumeEntity? resume,
   }) async {
     final skills = config.skills.isNotEmpty
         ? config.skills
-        : resume.skills.isNotEmpty
+        : (resume != null && resume.skills.isNotEmpty)
             ? resume.skills
             : [config.role];
 

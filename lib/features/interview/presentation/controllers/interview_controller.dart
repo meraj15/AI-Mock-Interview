@@ -166,7 +166,7 @@ class InterviewController extends ChangeNotifier {
       debugPrint('[InterviewController] Starting live conversational interview for "${_config.role}"...');
       final startResult = await ai.startConversationalInterview(
         config: _config,
-        resume: resume ?? ResumeEntity.defaultResume(),
+        resume: resume,
       );
 
       _sessionId = startResult.sessionId;

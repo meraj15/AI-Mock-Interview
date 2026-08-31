@@ -114,83 +114,30 @@ class ResumeEntity {
   const ResumeEntity({
     required this.id,
     required this.name,
-    this.candidateName = 'Meraj Khan',
-    this.email = 'meraj.khan@email.com',
-    this.phone = '+1 (555) 349-2810',
-    this.linkedinUrl = 'linkedin.com/in/merajkhan',
-    this.githubUrl = 'github.com/meraj15',
+    this.candidateName = '',
+    this.email = '',
+    this.phone = '',
+    this.linkedinUrl,
+    this.githubUrl,
     required this.source,
     required this.status,
     this.isDefault = false,
-    this.uploadedDate = 'Aug 14, 2026',
-    this.fileSize = '1.4 MB',
-    this.summary =
-        'Passionate Flutter & mobile engineer with hands-on experience in Clean Architecture, state management (Provider, Riverpod, BLoC), and resilient REST API integrations.',
+    this.uploadedDate = '',
+    this.fileSize = '',
+    this.summary = '',
     required this.skills,
-    this.languages = const ['Dart', 'Kotlin', 'TypeScript', 'Java', 'Python'],
-    this.frameworks = const ['Flutter SDK', 'Provider', 'Riverpod', 'BLoC', 'Express.js'],
-    this.databases = const ['Firebase Firestore', 'PostgreSQL', 'SQLite', 'Hive'],
-    this.cloudTools = const ['AWS S3', 'Docker', 'GitHub Actions', 'Fastlane', 'Supabase'],
-    this.tools = const ['Git', 'Postman', 'Figma', 'VS Code', 'Android Studio'],
+    this.languages = const [],
+    this.frameworks = const [],
+    this.databases = const [],
+    this.cloudTools = const [],
+    this.tools = const [],
     required this.experience,
-    this.education = 'B.Tech / B.Sc in Computer Science (2022–2026)',
+    this.education = '',
     required this.projects,
-    this.confidenceScore = 96,
-    this.projectItems = const [
-      ResumeProjectItem(
-        title: 'OTT Mobile Streaming Engine',
-        role: 'Lead Mobile Architect',
-        description:
-            'Architected offline caching, video player controls, and REST API network layer with 99.8% crash-free sessions.',
-        techStack: ['Flutter', 'Dart', 'Provider', 'REST APIs', 'Hive'],
-        metricAchievement: 'Reduced video buffer latency by 35% and supported 50k+ active daily users.',
-      ),
-      ResumeProjectItem(
-        title: 'FinTech Secure Payment Wallet',
-        role: 'Frontend Mobile Engineer',
-        description:
-            'Implemented end-to-end tokenization, biometrics authentication, and responsive state synchronization.',
-        techStack: ['Flutter', 'Firebase', 'Clean Architecture', 'Supabase'],
-        metricAchievement: 'Passed PCI-DSS security compliance with zero high-severity audit vulnerabilities.',
-      ),
-    ],
-    this.workExperiences = const [
-      ResumeWorkExperience(
-        company: 'Nova Mobile Labs',
-        role: 'Software Engineer (Flutter)',
-        duration: 'Jun 2024 – Present',
-        location: 'Bengaluru, India',
-        responsibilities: [
-          'Developed and shipped 3 production Flutter cross-platform applications for iOS and Android.',
-          'Reduced API payload size and latency by 40% through local SQLite caching and repository pattern.',
-          'Collaborated with design and backend teams to implement automated CI/CD deployment pipelines.',
-        ],
-        technologiesUsed: ['Flutter', 'Dart', 'Clean Architecture', 'Provider', 'Firebase', 'CI/CD'],
-      ),
-      ResumeWorkExperience(
-        company: 'AppVenture Studio',
-        role: 'Mobile Development Intern',
-        duration: 'Jan 2024 – May 2024',
-        location: 'Remote',
-        responsibilities: [
-          'Built responsive UI components and integrated RESTful endpoints with error handling.',
-          'Wrote unit and widget tests achieving 82% code coverage across core user flows.',
-        ],
-        technologiesUsed: ['Flutter', 'REST APIs', 'Git', 'Dart'],
-      ),
-    ],
-    this.certifications = const [
-      ResumeCertification(
-        name: 'Meta Certified Mobile Engineer',
-        issuer: 'Meta / Coursera',
-        issueYear: '2025',
-      ),
-      ResumeCertification(
-        name: 'Associate Android Developer',
-        issuer: 'Google Developers',
-        issueYear: '2024',
-      ),
-    ],
+    this.confidenceScore = 90,
+    this.projectItems = const [],
+    this.workExperiences = const [],
+    this.certifications = const [],
   });
 
   ResumeEntity copyWith({
@@ -250,53 +197,4 @@ class ResumeEntity {
       confidenceScore: confidenceScore ?? this.confidenceScore,
     );
   }
-
-  static ResumeEntity defaultResume() => const ResumeEntity(
-        id: 'res_default',
-        name: 'Meraj_Resume_Flutter.pdf',
-        candidateName: 'Meraj Khan',
-        email: 'meraj.khan@email.com',
-        phone: '+1 (555) 349-2810',
-        source: ResumeSource.upload,
-        status: ResumeStatus.ready,
-        isDefault: true,
-        uploadedDate: 'Aug 14, 2026',
-        fileSize: '1.4 MB',
-        summary:
-            'Mobile engineer specializing in Flutter, Dart, Clean Architecture, responsive UI design, and high-performance cross-platform apps.',
-        skills: ['Flutter', 'Dart', 'Firebase', 'REST APIs', 'Provider', 'Supabase', 'Clean Architecture', 'Riverpod'],
-        languages: ['Dart', 'Kotlin', 'TypeScript', 'Java'],
-        frameworks: ['Flutter SDK', 'Provider', 'Riverpod', 'BLoC'],
-        databases: ['Firebase Firestore', 'PostgreSQL', 'Hive', 'SQLite'],
-        cloudTools: ['AWS', 'Docker', 'Fastlane', 'GitHub Actions'],
-        tools: ['Git', 'Postman', 'Figma', 'VS Code'],
-        experience: '1.2 years',
-        education: 'B.Sc in Computer Science (2022–2026)',
-        projects: 5,
-        confidenceScore: 96,
-      );
-
-  static ResumeEntity secondaryResume() => const ResumeEntity(
-        id: 'res_fullstack',
-        name: 'Meraj_FullStack_Profile.pdf',
-        candidateName: 'Meraj Khan',
-        email: 'meraj.khan@email.com',
-        source: ResumeSource.upload,
-        status: ResumeStatus.ready,
-        isDefault: false,
-        uploadedDate: 'Aug 08, 2026',
-        fileSize: '1.1 MB',
-        summary:
-            'Full Stack engineer with hands-on experience across Node.js backend services, React frontends, and Flutter mobile applications.',
-        skills: ['TypeScript', 'Node.js', 'React', 'Flutter', 'PostgreSQL', 'Docker', 'Express', 'Redis'],
-        languages: ['TypeScript', 'JavaScript', 'Dart', 'SQL'],
-        frameworks: ['Express', 'Next.js', 'Flutter', 'React'],
-        databases: ['PostgreSQL', 'Redis', 'MongoDB'],
-        cloudTools: ['Docker', 'AWS S3', 'Vercel'],
-        tools: ['Git', 'Docker', 'Postman', 'Jest'],
-        experience: '2.0 years',
-        education: 'B.Sc in Computer Science (2022–2026)',
-        projects: 6,
-        confidenceScore: 92,
-      );
 }

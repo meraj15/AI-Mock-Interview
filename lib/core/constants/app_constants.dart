@@ -9,7 +9,7 @@ class AppConstants {
   static const String keyUser = 'user_data';
   static const String keyActiveResume = 'active_resume_id';
 
-  // Default Mock Values
+  // Default Session Values
   static const int defaultQuestionCount = 10;
   static const int defaultSessionMinutes = 20;
 }

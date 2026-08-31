@@ -55,6 +55,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   late AnimationController _waveAnimCtrl;
   late AnimationController _pulseAnimCtrl;
 
+  Timer? _ttsSafetyTimer;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
@@ -85,6 +87,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   @override
   void dispose() {
     _streamingTimer?.cancel();
+    _ttsSafetyTimer?.cancel();
     _tts.stop();
     _stt.stop();
     _sessionTimer?.cancel();
@@ -106,6 +109,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     await _tts.setVolume(1.0);
 
     _tts.setCompletionHandler(() {
+      _ttsSafetyTimer?.cancel();
       if (mounted) {
         _completeTextStreaming();
         if (_phase == InterviewPhase.speaking) {
@@ -115,6 +119,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     });
 
     _tts.setErrorHandler((msg) {
+      _ttsSafetyTimer?.cancel();
       debugPrint('[TTS Error]: $msg');
       if (mounted) {
         _completeTextStreaming();
@@ -151,28 +156,17 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final rc = context.read<ResumeController>();
     final pc = context.read<ProfileController>();
 
-    if (ic.sessionStatus == SessionStatus.loading ||
-        ic.sessionStatus == SessionStatus.active) {
-      if (ic.sessionStatus != SessionStatus.active &&
-          ic.sessionStatus != SessionStatus.error) {
-        await _waitForQuestions(ic);
-      }
-    } else if (ic.sessionStatus != SessionStatus.error) {
-      await ic.startInterview(resume: rc.resume, profile: pc.profile);
-    }
-
-    if (!mounted) return;
-    if (ic.sessionStatus == SessionStatus.error || ic.prompts.isEmpty) {
+    if (ic.sessionStatus == SessionStatus.active && ic.prompts.isNotEmpty) {
+      _speakCurrentQuestion();
       return;
     }
-    _speakCurrentQuestion();
-  }
 
-  Future<void> _waitForQuestions(InterviewController ic) async {
-    int waited = 0;
-    while (ic.sessionStatus == SessionStatus.loading && waited < 40 && mounted) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      waited++;
+    if (ic.sessionStatus == SessionStatus.idle) {
+      await ic.startInterview(resume: rc.resume, profile: pc.profile);
+      if (!mounted) return;
+      if (ic.sessionStatus == SessionStatus.active && ic.prompts.isNotEmpty) {
+        _speakCurrentQuestion();
+      }
     }
   }
 
@@ -180,6 +174,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final ic = context.read<InterviewController>();
     if (!mounted || ic.prompts.isEmpty) return;
 
+    _ttsSafetyTimer?.cancel();
     _setPhase(InterviewPhase.speaking);
 
     // Prepare streaming word list
@@ -196,6 +191,14 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
     if (_ttsAvailable) {
       _tts.speak(speech);
+      // Safety timer in case native TTS completion handler is skipped
+      final safetyMs = 1500 + (_questionWords.length * 400);
+      _ttsSafetyTimer = Timer(Duration(milliseconds: safetyMs), () {
+        if (mounted && _phase == InterviewPhase.speaking) {
+          _completeTextStreaming();
+          _setPhase(InterviewPhase.listening);
+        }
+      });
     } else {
       Future.delayed(Duration(milliseconds: 400 + (_questionWords.length * 200)), () {
         if (mounted && _phase == InterviewPhase.speaking) {
@@ -204,6 +207,13 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         }
       });
     }
+  }
+
+  void _skipTts() {
+    _ttsSafetyTimer?.cancel();
+    _tts.stop();
+    _completeTextStreaming();
+    _setPhase(InterviewPhase.listening);
   }
 
   // ── Word-by-Word Streaming Engine ─────────────────────────────────────────
@@ -300,11 +310,6 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     });
   }
 
-  void _skipTts() {
-    _tts.stop();
-    _completeTextStreaming();
-    _setPhase(InterviewPhase.listening);
-  }
 
   void _navigateToResult(InterviewController ic) {
     _streamingTimer?.cancel();
@@ -388,6 +393,17 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         if (mounted) {
           setState(() => _phase = InterviewPhase.done);
           _navigateToResult(ic);
+        }
+      });
+    }
+
+    // Reactive sync: When controller transitions to active with questions, start speaking if still in loading phase
+    if (_phase == InterviewPhase.loading &&
+        ic.sessionStatus == SessionStatus.active &&
+        ic.prompts.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _phase == InterviewPhase.loading) {
+          _speakCurrentQuestion();
         }
       });
     }

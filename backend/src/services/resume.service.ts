@@ -92,7 +92,7 @@ export class ResumeService {
       );
     } else {
       logger.warn(
-        'GEMINI_API_KEY not set — resume parsing will use fallback extraction'
+        'GEMINI_API_KEY is not set'
       );
     }
   }
@@ -126,8 +126,7 @@ export class ResumeService {
     );
 
     return this.structureWithAI(
-      rawText,
-      fileName
+      rawText
     );
   }
 
@@ -154,18 +153,18 @@ export class ResumeService {
   // ── Step 2: AI structuring ─────────────────────────────────────────────────
 
   private async structureWithAI(
-    resumeText: string,
-    fileName: string
+    resumeText: string
   ): Promise<ResumeProfile> {
-    if (this.client) {
-      return this.structureWithGemini(
-        resumeText
-      );
+    if (!this.client) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error('GEMINI_API_KEY is not configured');
+      }
+      this.client = new GoogleGenAI({ apiKey: apiKey.trim() });
     }
 
-    return this.basicFallbackExtraction(
-      resumeText,
-      fileName
+    return this.structureWithGemini(
+      resumeText
     );
   }
 
@@ -456,193 +455,7 @@ ${truncated}
     }
   }
 
-  // ── Step 4: Regex-based fallback ───────────────────────────────────────────
-
-  /**
-   * Fallback extraction when GEMINI_API_KEY is not configured.
-   */
-  private basicFallbackExtraction(
-    text: string,
-    fileName: string
-  ): ResumeProfile {
-    const lines = text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    // ── Email ────────────────────────────────────────────────────────────────
-
-    const emailMatch = text.match(
-      /[\w.+-]+@[\w-]+\.[a-z]{2,}/i
-    );
-
-    const email =
-      emailMatch?.[0] ?? '';
-
-    // ── Phone ────────────────────────────────────────────────────────────────
-
-    const phoneMatch = text.match(
-      /(\+?\d[\d\s\-().]{7,15}\d)/
-    );
-
-    const phone =
-      phoneMatch?.[0]?.trim() ?? '';
-
-    // ── Name ─────────────────────────────────────────────────────────────────
-
-    const name =
-      lines[0] ??
-      fileName
-        .replace(/\.[^.]+$/, '')
-        .replace(/[_-]/g, ' ');
-
-    // ── Skills ───────────────────────────────────────────────────────────────
-
-    const skillKeywords = [
-      'flutter',
-      'dart',
-      'react',
-      'node',
-      'python',
-      'java',
-      'kotlin',
-      'swift',
-      'typescript',
-      'javascript',
-      'firebase',
-      'postgresql',
-      'mongodb',
-      'docker',
-      'aws',
-      'git',
-      'redis',
-      'express',
-      'django',
-      'fastapi',
-      'spring',
-      'mysql',
-      'sql',
-      'rest',
-      'graphql',
-      'bloc',
-      'provider',
-      'riverpod',
-      'clean architecture',
-      'cicd',
-      'kubernetes',
-      'terraform',
-    ];
-
-    const skills: string[] = [];
-
-    const lowerText =
-      text.toLowerCase();
-
-    skillKeywords.forEach((keyword) => {
-      if (
-        lowerText.includes(keyword) &&
-        !skills.includes(keyword)
-      ) {
-        skills.push(
-          keyword.charAt(0).toUpperCase() +
-            keyword.slice(1)
-        );
-      }
-    });
-
-    // ── Experience ──────────────────────────────────────────────────────────
-
-    const expMatch = text.match(
-      /(\d+\.?\d*)\s*(year|yr)/i
-    );
-
-    const experience_years =
-      expMatch
-        ? parseFloat(expMatch[1])
-        : 0;
-
-    // ── Target role ──────────────────────────────────────────────────────────
-
-    const roleLine = lines
-      .slice(0, 5)
-      .join(' ')
-      .toLowerCase();
-
-    let target_role =
-      'Software Engineer';
-
-    if (roleLine.includes('flutter')) {
-      target_role =
-        'Flutter Developer';
-    } else if (
-      roleLine.includes('backend')
-    ) {
-      target_role =
-        'Backend Engineer';
-    } else if (
-      roleLine.includes('frontend') ||
-      roleLine.includes('react')
-    ) {
-      target_role =
-        'Frontend Developer';
-    } else if (
-      roleLine.includes('fullstack') ||
-      roleLine.includes('full stack')
-    ) {
-      target_role =
-        'Full Stack Engineer';
-    } else if (
-      roleLine.includes('android')
-    ) {
-      target_role =
-        'Android Developer';
-    } else if (
-      roleLine.includes('ios')
-    ) {
-      target_role =
-        'iOS Developer';
-    } else if (
-      roleLine.includes('devops')
-    ) {
-      target_role =
-        'DevOps Engineer';
-    } else if (
-      roleLine.includes('data') ||
-      roleLine.includes('ml')
-    ) {
-      target_role =
-        'Data / ML Engineer';
-    }
-
-    // ── Summary ──────────────────────────────────────────────────────────────
-
-    const summary =
-      `${name} is a ${target_role} with ${
-        experience_years > 0
-          ? `${experience_years} years`
-          : 'early-career'
-      } experience. Skills include ${
-        skills.slice(0, 5).join(', ')
-      }.`;
-
-    // ── Return ───────────────────────────────────────────────────────────────
-
-    return this.sanitizeProfile({
-      name,
-      email,
-      phone,
-      target_role,
-      experience_years,
-      summary,
-      skills,
-      education: [],
-      work_experience: [],
-      projects: [],
-      certifications: [],
-    });
-  }
-
-  // ── Sanitize profile ───────────────────────────────────────────────────────
+  // ── Step 4: Sanitize profile ───────────────────────────────────────────────
 
   private sanitizeProfile(
     p: Partial<ResumeProfile>

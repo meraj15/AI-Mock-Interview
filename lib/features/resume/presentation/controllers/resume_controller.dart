@@ -1,22 +1,37 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import '../../../../core/services/resume_parsing_service.dart';
 import '../../../resume/data/datasources/resume_remote_data_source.dart';
 import '../../domain/entities/resume_entity.dart';
 
+enum ParsingStage {
+  readingDocument,
+  extractingSkills,
+  analyzingExperience,
+  finalizingProfile,
+  completed,
+}
+
+class ParsingProgress {
+  final ParsingStage stage;
+  final String stageMessage;
+  final double progressPercent;
+
+  const ParsingProgress({
+    required this.stage,
+    required this.stageMessage,
+    required this.progressPercent,
+  });
+}
+
 class ResumeController extends ChangeNotifier {
-  final ResumeParsingService _parsingService = MockResumeParsingService();
   final ResumeRemoteDataSource? remoteDataSource;
 
   ResumeController({this.remoteDataSource});
 
-  List<ResumeEntity> _resumes = [
-    ResumeEntity.defaultResume(),
-    ResumeEntity.secondaryResume(),
-  ];
+  List<ResumeEntity> _resumes = [];
 
-  String _activeResumeId = 'res_default';
+  String? _activeResumeId;
   bool _isParsing = false;
   ParsingProgress? _parsingProgress;
   bool _hasUserUploadedResume = false;
@@ -24,9 +39,10 @@ class ResumeController extends ChangeNotifier {
   List<ResumeEntity> get resumes => _resumes;
   bool get isParsing => _isParsing;
   ParsingProgress? get parsingProgress => _parsingProgress;
-  bool get hasUserResume => _hasUserUploadedResume;
+  bool get hasUserResume => _hasUserUploadedResume || _resumes.isNotEmpty;
 
-  ResumeEntity get resume {
+  ResumeEntity? get resume {
+    if (_resumes.isEmpty) return null;
     return _resumes.firstWhere(
       (r) => r.id == _activeResumeId,
       orElse: () => _resumes.first,
@@ -40,69 +56,58 @@ class ResumeController extends ChangeNotifier {
   }
 
   void deleteResume(String id) {
-    if (_resumes.length <= 1) return;
+    if (_resumes.isEmpty) return;
     _resumes.removeWhere((r) => r.id == id);
     if (_activeResumeId == id) {
-      _activeResumeId = _resumes.first.id;
-      _resumes.first = _resumes.first.copyWith(isDefault: true);
+      _activeResumeId = _resumes.isNotEmpty ? _resumes.first.id : null;
+      if (_resumes.isNotEmpty) {
+        _resumes.first = _resumes.first.copyWith(isDefault: true);
+      }
     }
     notifyListeners();
   }
 
-  Future<ResumeEntity> uploadAndParse({
-    String fileName = 'Meraj_Senior_Resume.pdf',
-    String fileSize = '1.8 MB',
-  }) async {
-    _isParsing = true;
-    _parsingProgress = const ParsingProgress(
-      stage: ParsingStage.readingDocument,
-      stageMessage: 'Uploading and extracting document…',
-      progressPercent: 0.1,
-    );
-    notifyListeners();
-
-    final parsedResume = await _parsingService.parseDocument(
-      fileName: fileName,
-      fileSizeBytes: fileSize,
-      onProgress: (progress) {
-        _parsingProgress = progress;
-        notifyListeners();
-      },
-    );
-
-    _resumes.insert(0, parsedResume);
-    _activeResumeId = parsedResume.id;
-    _isParsing = false;
-    _parsingProgress = null;
-    notifyListeners();
-
-    return parsedResume;
-  }
-
   Future<ResumeEntity> pasteAndParse(String text) async {
-    if (text.trim().isEmpty) return resume;
+    if (text.trim().isEmpty) {
+      throw Exception('Resume text cannot be empty.');
+    }
 
     _isParsing = true;
     _parsingProgress = const ParsingProgress(
       stage: ParsingStage.readingDocument,
-      stageMessage: 'Reading text structure…',
-      progressPercent: 0.1,
+      stageMessage: 'Structuring text profile…',
+      progressPercent: 0.2,
     );
     notifyListeners();
 
     try {
-      final parsedResume = await _parsingService.parseRawText(
-        rawText: text,
-        onProgress: (progress) {
-          _parsingProgress = progress;
-          notifyListeners();
-        },
+      final newId = 'res_paste_${DateTime.now().millisecondsSinceEpoch}';
+      final summary = text.length > 200 ? '${text.substring(0, 200)}…' : text;
+
+      final parsedResume = ResumeEntity(
+        id: newId,
+        name: 'Pasted Text Profile',
+        candidateName: '',
+        email: '',
+        phone: '',
+        source: ResumeSource.paste,
+        status: ResumeStatus.ready,
+        isDefault: true,
+        uploadedDate: _formattedToday(),
+        fileSize: '${(text.length / 1024).toStringAsFixed(1)} KB',
+        summary: summary,
+        skills: [],
+        experience: 'Not specified',
+        education: '',
+        projects: 0,
+        confidenceScore: 85,
       );
 
       _resumes.insert(0, parsedResume);
       _activeResumeId = parsedResume.id;
       _isParsing = false;
       _parsingProgress = null;
+      _hasUserUploadedResume = true;
       notifyListeners();
       return parsedResume;
     } catch (e) {
@@ -133,8 +138,8 @@ class ResumeController extends ChangeNotifier {
   }
 
   void addSkillToActiveResume(String skill) {
-    if (skill.trim().isEmpty) return;
-    final current = resume;
+    if (skill.trim().isEmpty || resume == null) return;
+    final current = resume!;
     if (!current.skills.contains(skill.trim())) {
       final updated = current.copyWith(
         skills: [...current.skills, skill.trim()],
@@ -144,7 +149,8 @@ class ResumeController extends ChangeNotifier {
   }
 
   void removeSkillFromActiveResume(String skill) {
-    final current = resume;
+    if (resume == null) return;
+    final current = resume!;
     final updated = current.copyWith(
       skills: current.skills.where((s) => s != skill).toList(),
     );
@@ -152,16 +158,15 @@ class ResumeController extends ChangeNotifier {
   }
 
   /// Upload a file from the device and parse it via the backend Gemini service.
-  ///
-  /// Flow: Flutter → POST /api/resume/parse (multipart) → Node.js → Gemini → structured profile
-  ///
-  /// Falls back to the mock service if [remoteDataSource] is not injected
-  /// (e.g. during UI development without a running backend).
   Future<ResumeEntity> uploadFromFilePicker({
     required String fileName,
     String? filePath,
     void Function(double progress)? onProgress,
   }) async {
+    if (remoteDataSource == null || filePath == null) {
+      throw Exception('Backend resume parsing service is not available or file path is invalid.');
+    }
+
     _isParsing = true;
     _parsingProgress = const ParsingProgress(
       stage: ParsingStage.readingDocument,
@@ -173,57 +178,44 @@ class ResumeController extends ChangeNotifier {
     ResumeEntity parsedResume;
 
     try {
-      if (remoteDataSource != null && filePath != null) {
-        // ── Real backend path (Flutter → Node.js → Gemini) ───────────────
-        _parsingProgress = const ParsingProgress(
-          stage: ParsingStage.readingDocument,
-          stageMessage: 'Sending resume to server…',
-          progressPercent: 0.2,
-        );
-        notifyListeners();
+      _parsingProgress = const ParsingProgress(
+        stage: ParsingStage.readingDocument,
+        stageMessage: 'Sending resume to server…',
+        progressPercent: 0.2,
+      );
+      notifyListeners();
 
-        final profile = await remoteDataSource!.parseResume(
-          filePath: filePath,
-          fileName: fileName,
-          onProgress: (p) {
-            onProgress?.call(p);
-            _parsingProgress = ParsingProgress(
-              stage: p < 0.5
-                  ? ParsingStage.readingDocument
-                  : p < 0.8
-                      ? ParsingStage.extractingSkills
-                      : ParsingStage.finalizingProfile,
-              stageMessage: p < 0.5
-                  ? 'Extracting text from PDF…'
-                  : p < 0.8
-                      ? 'Gemini is building your profile…'
-                      : 'Finalizing structured profile…',
-              progressPercent: p,
-            );
-            notifyListeners();
-          },
-        );
+      final profile = await remoteDataSource!.parseResume(
+        filePath: filePath,
+        fileName: fileName,
+        onProgress: (p) {
+          onProgress?.call(p);
+          _parsingProgress = ParsingProgress(
+            stage: p < 0.5
+                ? ParsingStage.readingDocument
+                : p < 0.8
+                    ? ParsingStage.extractingSkills
+                    : ParsingStage.finalizingProfile,
+            stageMessage: p < 0.5
+                ? 'Extracting text from PDF…'
+                : p < 0.8
+                    ? 'Gemini is building your profile…'
+                    : 'Finalizing structured profile…',
+            progressPercent: p,
+          );
+          notifyListeners();
+        },
+      );
 
-        String fileSize = '—';
-        try {
-          fileSize = await _readableFileSize(filePath);
-        } catch (_) {}
+      String fileSize = '—';
+      try {
+        fileSize = await _readableFileSize(filePath);
+      } catch (_) {}
 
-        parsedResume = profile.toResumeEntity(
-          fileName: fileName,
-          fileSize: fileSize,
-        );
-      } else {
-        // ── Mock fallback (no backend / no filePath) ──────────────────────
-        parsedResume = await _parsingService.parseDocument(
-          fileName: fileName,
-          fileSizeBytes: '—',
-          onProgress: (progress) {
-            _parsingProgress = progress;
-            notifyListeners();
-          },
-        );
-      }
+      parsedResume = profile.toResumeEntity(
+        fileName: fileName,
+        fileSize: fileSize,
+      );
     } catch (e) {
       _isParsing = false;
       _parsingProgress = null;
