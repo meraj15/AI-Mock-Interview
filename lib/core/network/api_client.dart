@@ -47,6 +47,7 @@ class ApiClient {
     Map<String, String>? headers,
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
+    Duration? timeout,
   }) async {
     return _sendRequestWithFallback(
       method: 'GET',
@@ -54,6 +55,7 @@ class ApiClient {
       headers: headers,
       queryParameters: queryParameters,
       requiresAuth: requiresAuth,
+      customTimeout: timeout,
     );
   }
 
@@ -63,6 +65,7 @@ class ApiClient {
     Map<String, String>? headers,
     bool requiresAuth = true,
     bool autoRefresh = true,
+    Duration? timeout,
   }) async {
     return _sendRequestWithFallback(
       method: 'POST',
@@ -71,6 +74,7 @@ class ApiClient {
       headers: headers,
       requiresAuth: requiresAuth,
       autoRefresh: autoRefresh,
+      customTimeout: timeout,
     );
   }
 
@@ -134,6 +138,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
     bool autoRefresh = true,
+    Duration? customTimeout,
   }) async {
     if (ApiConfig.currentEnvironment != Environment.development || ApiConfig.isResolved) {
       return _sendSingleRequest(
@@ -145,6 +150,7 @@ class ApiClient {
         queryParameters: queryParameters,
         requiresAuth: requiresAuth,
         autoRefresh: autoRefresh,
+        customTimeout: customTimeout,
       );
     }
 
@@ -157,6 +163,11 @@ class ApiClient {
 
     Exception? lastException;
 
+    // During host discovery, use a short probe timeout so we fail-fast on
+    // unreachable hosts. Once a host is confirmed, the real (possibly longer)
+    // customTimeout is used by the resolved path above on future requests.
+    final discoveryTimeout = ApiConfig.connectTimeout;
+
     for (final host in candidateHosts) {
       try {
         final res = await _sendSingleRequest(
@@ -168,7 +179,7 @@ class ApiClient {
           queryParameters: queryParameters,
           requiresAuth: requiresAuth,
           autoRefresh: autoRefresh,
-          customTimeout: ApiConfig.connectTimeout,
+          customTimeout: customTimeout ?? discoveryTimeout,
         );
         // Host is reachable — remember it in memory and persist it so the
         // next cold-start skips the discovery loop entirely.
@@ -202,6 +213,7 @@ class ApiClient {
         NetworkException(
             'Unable to reach backend server. Please make sure the server is running.');
   }
+
 
   // ── Core Single Request Execution ─────────────────────────────────────────
 

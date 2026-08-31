@@ -57,6 +57,19 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   Timer? _ttsSafetyTimer;
 
+  // ── Loading Status Rotation ───────────────────────────────────────────────
+  static const _loadingStatuses = [
+    'Preparing your interview…',
+    'Analyzing your profile…',
+    'Selecting interview topics…',
+    'Getting your first question ready…',
+    'Almost there…',
+  ];
+  int _loadingStatusIndex = 0;
+  Timer? _loadingStatusTimer;
+  late AnimationController _loadingFadeCtrl;
+  late Animation<double> _loadingFadeAnim;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
@@ -73,7 +86,18 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
 
+    _loadingFadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _loadingFadeAnim = CurvedAnimation(
+      parent: _loadingFadeCtrl,
+      curve: Curves.easeInOut,
+    );
+    _loadingFadeCtrl.forward();
+
     _initStt();
+    _startLoadingStatusCycle();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initTts();
@@ -88,12 +112,39 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   void dispose() {
     _streamingTimer?.cancel();
     _ttsSafetyTimer?.cancel();
+    _loadingStatusTimer?.cancel();
     _tts.stop();
     _stt.stop();
     _sessionTimer?.cancel();
     _waveAnimCtrl.dispose();
     _pulseAnimCtrl.dispose();
+    _loadingFadeCtrl.dispose();
     super.dispose();
+  }
+
+  // ── Engine Initializers ───────────────────────────────────────────────────
+
+  // ── Loading Status Cycle ─────────────────────────────────────────────────
+
+  void _startLoadingStatusCycle() {
+    _loadingStatusTimer?.cancel();
+    _loadingStatusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      // Fade out → change text → fade in
+      _loadingFadeCtrl.reverse().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _loadingStatusIndex =
+              (_loadingStatusIndex + 1) % _loadingStatuses.length;
+        });
+        _loadingFadeCtrl.forward();
+      });
+    });
+  }
+
+  void _stopLoadingStatusCycle() {
+    _loadingStatusTimer?.cancel();
+    _loadingStatusTimer = null;
   }
 
   // ── Engine Initializers ───────────────────────────────────────────────────
@@ -157,6 +208,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final pc = context.read<ProfileController>();
 
     if (ic.sessionStatus == SessionStatus.active && ic.prompts.isNotEmpty) {
+      _stopLoadingStatusCycle();
       _speakCurrentQuestion();
       return;
     }
@@ -165,6 +217,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       await ic.startInterview(resume: rc.resume, profile: pc.profile);
       if (!mounted) return;
       if (ic.sessionStatus == SessionStatus.active && ic.prompts.isNotEmpty) {
+        _stopLoadingStatusCycle();
         _speakCurrentQuestion();
       }
     }
@@ -737,32 +790,89 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   }
 
   Widget _buildLoadingQuestionPlaceholder(AppColorScheme colors) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 34),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.border.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+    return AnimatedBuilder(
+      animation: _loadingFadeCtrl,
+      builder: (context, _) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+          decoration: BoxDecoration(
+            color: colors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colors.primary.withValues(alpha: 0.28 + 0.12 * _loadingFadeAnim.value),
+              width: 1.3,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: colors.primary.withValues(alpha: 0.08 + 0.06 * _loadingFadeAnim.value),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            'Formulating your next question…',
-            style: AppTypography.medium(13, color: colors.mutedForeground),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Animated AI icon ring
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colors.primary.withValues(alpha: 0.10),
+                  border: Border.all(
+                    color: colors.primary.withValues(alpha: 0.30),
+                    width: 1.5,
+                  ),
+                ),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Rotating status text with fade
+              FadeTransition(
+                opacity: _loadingFadeAnim,
+                child: Text(
+                  _loadingStatuses[_loadingStatusIndex],
+                  style: AppTypography.semiBold(
+                    14.5,
+                    color: colors.text,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              Text(
+                'This usually takes a few seconds',
+                style: AppTypography.regular(
+                  11.5,
+                  color: colors.mutedForeground,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 20),
+
+              // Progress dots
+              _AnimatedProgressDots(color: colors.primary),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1077,6 +1187,68 @@ class _MiniVoiceWaveVisualizer extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(2),
       ),
+    );
+  }
+}
+
+// ── Animated Progress Dots ────────────────────────────────────────────────────
+
+class _AnimatedProgressDots extends StatefulWidget {
+  final Color color;
+
+  const _AnimatedProgressDots({required this.color});
+
+  @override
+  State<_AnimatedProgressDots> createState() => _AnimatedProgressDotsState();
+}
+
+class _AnimatedProgressDotsState extends State<_AnimatedProgressDots>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  int _activeIndex = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _ctrl.forward();
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      setState(() => _activeIndex = (_activeIndex + 1) % 3);
+      _ctrl.forward(from: 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        final isActive = i == _activeIndex;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 10 : 7,
+          height: isActive ? 10 : 7,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isActive
+                ? widget.color
+                : widget.color.withValues(alpha: 0.25),
+          ),
+        );
+      }),
     );
   }
 }

@@ -40,7 +40,9 @@ export class InterviewService {
 
   /**
    * STAGE 1: Start a new conversational interview session.
-   * Generates the blueprint and first natural question via Gemini.
+   * Generates ONLY the first question via Gemini (fast, ~3-6 s).
+   * Topics are generated asynchronously in the background so
+   * the response is returned immediately without blocking.
    */
   async startConversationalInterview(
     userId: string,
@@ -62,6 +64,7 @@ export class InterviewService {
   }> {
     const { role, skills = [], difficulty = 'Medium', experience, questionCount = 5 } = params;
 
+    // ── Fast call: first question only ────────────────────────────────────
     const plan = await aiService.generateInterviewPlan({
       role,
       skills,
@@ -69,6 +72,11 @@ export class InterviewService {
       experience,
       questionCount,
     });
+
+    // Placeholder topics used until background call completes.
+    const placeholderTopics: InterviewTopic[] = [
+      { name: 'Introduction', objective: 'Understand the candidate\'s background' },
+    ];
 
     const sessionId = randomUUID();
     const session: ActiveConversationalSession = {
@@ -78,18 +86,18 @@ export class InterviewService {
       difficulty,
       skills,
       experience,
-      topics: plan.topics,
+      topics: placeholderTopics,
       currentTopicIndex: 0,
       topicsCovered: [],
       followUpsUsedForCurrentTopic: 0,
       totalTurns: 1,
-      maxTurns: Math.min(12, Math.max(6, plan.topics.length * 2)),
+      maxTurns: 10, // default; updated when background topics arrive
       conversationSummary: '',
       interactions: [
         {
           question: plan.firstQuestion,
           answer: '',
-          topic: plan.topics[0]?.name || 'Introduction',
+          topic: 'Introduction',
           type: 'primary',
           timestamp: new Date().toISOString(),
         },
@@ -100,6 +108,9 @@ export class InterviewService {
     };
 
     this.activeSessions.set(sessionId, session);
+
+    // ── Background: generate topics without blocking the response ──────────
+    this._populateTopicsAsync(sessionId, { role, skills, difficulty, experience });
 
     logger.info(`[InterviewService] Started conversational interview ${sessionId} for user=${userId} role="${role}"`);
 
@@ -112,6 +123,44 @@ export class InterviewService {
       totalTopics: session.topics.length,
       firstQuestion: plan.firstQuestion,
     };
+  }
+
+  /**
+   * Fire-and-forget: generates interview topics in the background and
+   * patches the active session once they arrive. Errors are swallowed
+   * so a topic-generation failure never crashes the interview.
+   */
+  private _populateTopicsAsync(
+    sessionId: string,
+    params: { role: string; skills?: string[]; difficulty?: string; experience?: string }
+  ): void {
+    aiService
+      .generateTopics(params)
+      .then((topics) => {
+        const session = this.activeSessions.get(sessionId);
+        if (!session || session.status === 'completed') return;
+
+        if (topics.length > 0) {
+          session.topics = topics;
+          session.maxTurns = Math.min(12, Math.max(6, topics.length * 2));
+          // Keep currentTopicIndex valid after update
+          if (session.currentTopicIndex >= topics.length) {
+            session.currentTopicIndex = topics.length - 1;
+          }
+          // Update current interaction topic label
+          if (session.interactions.length > 0 && session.interactions[0].topic === 'Introduction') {
+            session.interactions[0].topic = topics[0]?.name || 'Introduction';
+          }
+          logger.info(
+            `[InterviewService] Topics populated for session ${sessionId}: ${topics.map((t) => t.name).join(', ')}`,
+          );
+        }
+      })
+      .catch((err) => {
+        logger.warn(
+          `[InterviewService] Background topic generation failed for session ${sessionId}: ${err?.message || err}`,
+        );
+      });
   }
 
   /**

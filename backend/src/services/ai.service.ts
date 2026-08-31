@@ -11,7 +11,7 @@ export interface InterviewTopic {
 }
 
 export interface InterviewBlueprint {
-  topics: InterviewTopic[];
+  topics: InterviewTopic[]; // populated async after start returns
   firstQuestion: string;
 }
 
@@ -254,11 +254,13 @@ export class AIService {
   }
 
   // ==========================================================
-  // STAGE 1
+  // STAGE 1-A
   //
   // ONLY GENERATE THE FIRST QUESTION.
   //
-  // DO NOT GENERATE 5 QUESTIONS.
+  // Intentionally small prompt — no topics array in schema.
+  // This keeps latency to ~3-6 s instead of ~15-30 s.
+  // Topics are generated separately via generateTopics().
   // ==========================================================
 
   async generateInterviewPlan(params: {
@@ -305,65 +307,117 @@ export class AIService {
     const difficultyText =
       difficulty?.trim() || 'Medium';
 
+    // ── Minimal prompt: ONE question only ──────────────────────
     const prompt = `
-You are a real human interviewer starting a live
-technical job interview.
+You are a real human interviewer starting a live technical job interview.
 
 CANDIDATE
+Role: ${role.trim()}
+Experience: ${experienceText}
+Skills: ${skillList}
+Difficulty: ${difficultyText}
 
-Role:
-${role.trim()}
+Generate exactly ONE short opening question.
 
-Experience:
-${experienceText}
-
-Skills:
-${skillList}
-
-Difficulty:
-${difficultyText}
-
-Your task is ONLY to start the interview.
-
-Do NOT generate a list of questions.
-
-Generate exactly ONE opening question.
-
-The opening question should:
-
-- Be short.
-- Be natural when spoken aloud.
-- Sound like a real interviewer.
-- Match the candidate's experience.
-- Match the selected difficulty.
-- Be relevant to the role.
-- NOT necessarily use one of the listed skills.
-- Prefer practical or experience-based questions.
-- Avoid textbook wording.
-- Avoid long questions.
+Rules:
 - Maximum 15 words.
+- Natural when spoken aloud.
+- Sound like a real interviewer, not a textbook.
+- Prefer practical or experience-based questions.
+- Do NOT always use the same opening pattern.
 
-The interviewer should NOT sound robotic.
-
-For example:
-
+Examples:
 "Could you tell me about a recent project you worked on?"
+"What was the most challenging part of your last role?"
 
-or
+Return ONLY JSON.
+`;
 
-"What was the most challenging part of your last project?"
+    // ── Schema: firstQuestion only — no topics array ───────────
+    const schema = {
+      type: Type.OBJECT,
 
-Do NOT always use the same opening pattern.
+      properties: {
+        firstQuestion: {
+          type: Type.STRING,
+        },
+      },
 
-Also identify 4-6 broad areas the interviewer could potentially
-explore later.
+      required: ['firstQuestion'],
 
-IMPORTANT:
+      additionalProperties: false,
+    };
 
-These are NOT a fixed question sequence.
+    console.log(
+      '[AIService] Generating first question (lightweight)...',
+    );
 
-The interviewer must decide dynamically what to ask next
-based on the candidate's answers.
+    const result =
+      await this.executeWithFallback(
+        prompt,
+        schema,
+      );
+
+    const firstQuestion =
+      String(
+        result.firstQuestion || '',
+      ).trim();
+
+    if (!firstQuestion) {
+      throw new Error(
+        'Gemini failed to generate the first question',
+      );
+    }
+
+    // Return with empty topics — they will be populated async
+    // by interview.service.ts calling generateTopics() separately.
+    return {
+      topics: [],
+      firstQuestion,
+    };
+  }
+
+  // ==========================================================
+  // STAGE 1-B
+  //
+  // GENERATE INTERVIEW TOPICS (async, called after start returns).
+  //
+  // Called as fire-and-forget from interview.service.ts so the
+  // /start response is not blocked by topic generation.
+  // ==========================================================
+
+  async generateTopics(params: {
+    role: string;
+    experience?: string;
+    skills?: string[];
+    difficulty?: string;
+  }): Promise<InterviewTopic[]> {
+    const { role, experience, skills, difficulty } = params;
+
+    const cleanedSkills = Array.isArray(skills)
+      ? skills.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())
+      : [];
+
+    const skillList =
+      cleanedSkills.length > 0
+        ? cleanedSkills.join(', ')
+        : 'No specific skills provided';
+
+    const prompt = `
+You are a technical interviewer planning a mock interview.
+
+CANDIDATE
+Role: ${role.trim()}
+Experience: ${experience?.trim() || 'Not specified'}
+Skills: ${skillList}
+Difficulty: ${difficulty?.trim() || 'Medium'}
+
+Identify 4-6 broad topic areas to evaluate this candidate.
+
+Each topic should:
+- Be a genuine evaluation area (not a specific question).
+- Have a clear objective for the interviewer.
+- Be relevant to the role and experience level.
 
 Return ONLY JSON.
 `;
@@ -379,82 +433,42 @@ Return ONLY JSON.
             type: Type.OBJECT,
 
             properties: {
-              name: {
-                type: Type.STRING,
-              },
-
-              objective: {
-                type: Type.STRING,
-              },
+              name: { type: Type.STRING },
+              objective: { type: Type.STRING },
             },
 
-            required: [
-              'name',
-              'objective',
-            ],
-
+            required: ['name', 'objective'],
             additionalProperties: false,
           },
         },
-
-        firstQuestion: {
-          type: Type.STRING,
-        },
       },
 
-      required: [
-        'topics',
-        'firstQuestion',
-      ],
-
+      required: ['topics'],
       additionalProperties: false,
     };
 
     console.log(
-      '[AIService] Creating interview session...',
+      '[AIService] Generating interview topics (background)...',
     );
 
-    const result =
-      await this.executeWithFallback(
-        prompt,
-        schema,
-      );
+    const result = await this.executeWithFallback(prompt, schema);
 
-    const topics: InterviewTopic[] =
-      Array.isArray(result.topics)
-        ? result.topics
-            .map((topic: any) => ({
-              name: String(
-                topic?.name ||
-                  'General Technical Discussion',
-              ).trim(),
+    const topics: InterviewTopic[] = Array.isArray(result.topics)
+      ? result.topics
+          .map((topic: any) => ({
+            name: String(topic?.name || 'General Technical Discussion').trim(),
+            objective: String(
+              topic?.objective || 'Evaluate candidate competence',
+            ).trim(),
+          }))
+          .filter((topic: InterviewTopic) => topic.name.length > 0)
+      : [];
 
-              objective: String(
-                topic?.objective ||
-                  'Evaluate candidate competence',
-              ).trim(),
-            }))
-            .filter(
-              (topic: InterviewTopic) =>
-                topic.name.length > 0,
-            )
-        : [];
+    console.log(
+      `[AIService] Topics generated: ${topics.map((t) => t.name).join(', ')}`,
+    );
 
-    const firstQuestion =
-      String(
-        result.firstQuestion || '',
-      ).trim();
-
-    if (!firstQuestion) {
-      throw new Error(
-        'Gemini failed to generate the first question',
-      );
-    }
-
-    return {
-      topics,
-      firstQuestion,
-    };
+    return topics;
   }
 
   // ==========================================================

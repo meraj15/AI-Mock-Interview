@@ -259,6 +259,7 @@ class GeminiAIInterviewService implements AIInterviewService {
         ApiConfig.interviewStartEndpoint,
         body: requestBody,
         requiresAuth: true,
+        timeout: ApiConfig.aiTimeout,
       );
 
       final data = response.data is Map<String, dynamic>
@@ -301,6 +302,7 @@ class GeminiAIInterviewService implements AIInterviewService {
         endpoint,
         body: requestBody,
         requiresAuth: true,
+        timeout: ApiConfig.aiTimeout,
       );
 
       final data = response.data is Map<String, dynamic>
@@ -340,6 +342,7 @@ class GeminiAIInterviewService implements AIInterviewService {
       final response = await apiClient.get(
         endpoint,
         requiresAuth: true,
+        timeout: ApiConfig.aiTimeout,
       );
 
       final data = response.data is Map<String, dynamic>

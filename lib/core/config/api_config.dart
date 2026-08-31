@@ -105,6 +105,10 @@ class ApiConfig {
   static String interviewResultEndpoint(String sessionId) => '/api/v1/interviews/$sessionId/result';
 
   // ── Network Timeouts ───────────────────────────────────────────────────────
-  static const Duration connectTimeout = Duration(seconds: 45);
-  static const Duration receiveTimeout = Duration(seconds: 45);
+  /// Standard timeout for non-AI endpoints (auth, profile, etc.).
+  static const Duration connectTimeout = Duration(seconds: 20);
+
+  /// Extended timeout for Gemini-backed AI endpoints.
+  /// Gemini can take 8-30 s depending on model load and prompt size.
+  static const Duration aiTimeout = Duration(seconds: 60);
 }
