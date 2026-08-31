@@ -192,15 +192,27 @@ export class InterviewService {
     }
 
     // Call Gemini for next turn
+    const recentQuestions = session.interactions
+      .slice(-8)
+      .map((i) => i.question)
+      .filter(Boolean);
+
     const turn = await aiService.getNextConversationalTurn({
       role: session.role,
+      experience: session.experience,
+      skills: session.skills,
+      difficulty: session.difficulty,
       currentTopic: currentTopicObj.name,
       topicObjective: currentTopicObj.objective,
       previousQuestion: lastInteraction?.question || '',
       candidateAnswer: answer,
       conversationSummary: session.conversationSummary,
+      topicsCovered: session.topicsCovered,
       topicsRemaining,
       followUpsUsed: session.followUpsUsedForCurrentTopic,
+      recentQuestions,
+      turnNumber: session.totalTurns,
+      maxTurns: session.maxTurns,
     });
 
     session.conversationSummary = turn.conversationSummary;

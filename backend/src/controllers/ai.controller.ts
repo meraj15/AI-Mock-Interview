@@ -14,6 +14,7 @@ const conversationalTurnSchema = z.object({
   role: z.string().min(1, 'role is required').max(100),
   experience: z.string().optional(),
   skills: z.array(z.string()).optional().default([]),
+  difficulty: z.string().optional().default('Medium'),
   currentTopic: z.string().min(1, 'currentTopic is required'),
   topicObjective: z.string().optional().default(''),
   previousQuestion: z.string().min(1, 'previousQuestion is required'),
@@ -22,6 +23,9 @@ const conversationalTurnSchema = z.object({
   topicsCovered: z.array(z.string()).optional().default([]),
   topicsRemaining: z.array(z.string()).optional().default([]),
   followUpsUsed: z.number().int().min(0).optional().default(0),
+  recentQuestions: z.array(z.string()).optional().default([]),
+  turnNumber: z.number().int().min(1).optional(),
+  maxTurns: z.number().int().min(1).optional(),
 });
 
 const evaluateSessionSchema = z.object({
@@ -71,13 +75,20 @@ export class AIController {
 
       const turn = await aiService.getNextConversationalTurn({
         role: validated.role,
+        experience: validated.experience,
+        skills: validated.skills,
+        difficulty: validated.difficulty,
         currentTopic: validated.currentTopic,
         topicObjective: validated.topicObjective,
         previousQuestion: validated.previousQuestion,
         candidateAnswer: validated.candidateAnswer,
         conversationSummary: validated.conversationSummary,
+        topicsCovered: validated.topicsCovered,
         topicsRemaining: validated.topicsRemaining,
         followUpsUsed: validated.followUpsUsed,
+        recentQuestions: validated.recentQuestions,
+        turnNumber: validated.turnNumber,
+        maxTurns: validated.maxTurns,
       });
 
       res.status(200).json({

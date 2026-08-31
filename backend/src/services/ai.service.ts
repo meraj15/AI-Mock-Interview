@@ -1,6 +1,10 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { config } from '../config';
 
+// ============================================================
+// TYPES
+// ============================================================
+
 export interface InterviewTopic {
   name: string;
   objective: string;
@@ -28,12 +32,22 @@ export interface QuestionReview {
 
 export interface FinalInterviewEvaluation {
   overallScore: number;
-  performanceLevel: 'Excellent' | 'Good' | 'Average' | 'Needs Improvement';
+  performanceLevel:
+    | 'Excellent'
+    | 'Good'
+    | 'Average'
+    | 'Needs Improvement';
+
   summary: string;
+
   strengths: string[];
+
   areasToImprove: string[];
-  skillPerformance?: Record<string, number>;
+
+  skillPerformance: Record<string, number>;
+
   recommendations: string[];
+
   questionReviews: QuestionReview[];
 }
 
@@ -45,22 +59,33 @@ export interface TranscriptEntry {
   timestamp?: string;
 }
 
+// ============================================================
+// MODELS
+// ============================================================
+
 const FALLBACK_MODELS = [
   'gemini-3.7-flash',
   'gemini-3.5-flash-lite',
   'gemini-3.6-flash',
 ];
 
+// ============================================================
+// AI SERVICE
+// ============================================================
+
 export class AIService {
   private client: GoogleGenAI | null = null;
 
-  /**
-   * Create or return the singleton Gemini client instance.
-   */
+  // ==========================================================
+  // CLIENT
+  // ==========================================================
+
   private getClient(): GoogleGenAI {
     if (!this.client) {
       if (!config.gemini.apiKey?.trim()) {
-        throw new Error('GEMINI_API_KEY is not set in environment variables');
+        throw new Error(
+          'GEMINI_API_KEY is not configured',
+        );
       }
 
       this.client = new GoogleGenAI({
@@ -71,13 +96,15 @@ export class AIService {
     return this.client;
   }
 
-  /**
-   * Determine if an error is temporary (503, 429, high demand, overloaded, etc.)
-   */
+  // ==========================================================
+  // TEMPORARY ERROR CHECK
+  // ==========================================================
+
   private isTemporaryError(err: unknown): boolean {
     if (!err) return false;
 
     const errorObj = err as Record<string, any>;
+
     const status =
       errorObj?.status ||
       errorObj?.statusCode ||
@@ -86,96 +113,154 @@ export class AIService {
       errorObj?.error?.status;
 
     if (
-      status === 503 ||
       status === 429 ||
+      status === 503 ||
+      status === '429' ||
+      status === '503' ||
       status === 'UNAVAILABLE' ||
       status === 'RESOURCE_EXHAUSTED'
     ) {
       return true;
     }
 
-    const errorStr = (
+    const message = (
       typeof err === 'string'
         ? err
-        : errorObj?.message || JSON.stringify(err)
+        : errorObj?.message ||
+          errorObj?.error?.message ||
+          JSON.stringify(err)
     ).toLowerCase();
 
-    const temporaryKeywords = [
-      '503',
+    return [
       '429',
-      'unavailable',
-      'high demand',
-      'overloaded',
+      '503',
       'rate limit',
       'resource exhausted',
+      'unavailable',
+      'overloaded',
+      'high demand',
       'temporarily unavailable',
-    ];
-
-    return temporaryKeywords.some((keyword) => errorStr.includes(keyword));
+    ].some((value) => message.includes(value));
   }
 
-  /**
-   * Helper to execute Gemini generateContent with fallback models
-   */
-  private async executeWithFallback(prompt: string, schema: any): Promise<any> {
+  // ==========================================================
+  // GEMINI EXECUTOR
+  // ==========================================================
+
+  private async executeWithFallback(
+    prompt: string,
+    schema: any,
+  ): Promise<any> {
     const client = this.getClient();
+
     let response: any = null;
     let lastError: any = null;
 
-    for (let i = 0; i < FALLBACK_MODELS.length; i++) {
-      const model = FALLBACK_MODELS[i];
-      const hasNext = i < FALLBACK_MODELS.length - 1;
+    for (
+      let index = 0;
+      index < FALLBACK_MODELS.length;
+      index++
+    ) {
+      const model = FALLBACK_MODELS[index];
 
-      console.log(`[AIService] Calling Gemini model "${model}"...`);
+      const hasNext =
+        index < FALLBACK_MODELS.length - 1;
 
       try {
-        response = await client.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: schema,
-          },
-        });
+        console.log(
+          `[AIService] Calling model: ${model}`,
+        );
 
-        console.log(`[AIService] Gemini model "${model}" succeeded`);
+        response =
+          await client.models.generateContent({
+            model,
+            contents: prompt,
+
+            config: {
+              responseMimeType:
+                'application/json',
+
+              responseSchema: schema,
+
+              // Slight creativity for natural/random interviews.
+              temperature: 0.8,
+
+              topP: 0.9,
+            },
+          });
+
+        console.log(
+          `[AIService] Model ${model} succeeded`,
+        );
+
         lastError = null;
+
         break;
       } catch (err: any) {
-        console.error(`[AIService] Gemini model "${model}" failed:`, err?.message || err);
+        console.error(
+          `[AIService] Model ${model} failed:`,
+          err?.message || err,
+        );
+
         lastError = err;
 
-        if (this.isTemporaryError(err) && hasNext) {
-          console.log('[AIService] Trying next Gemini model...');
+        if (
+          this.isTemporaryError(err) &&
+          hasNext
+        ) {
+          console.log(
+            '[AIService] Trying fallback model...',
+          );
+
           continue;
         }
 
-        throw new Error(`Gemini API Error: ${err?.message || JSON.stringify(err)}`);
+        throw new Error(
+          `Gemini API Error: ${
+            err?.message ||
+            JSON.stringify(err)
+          }`,
+        );
       }
     }
 
     if (!response) {
       throw new Error(
-        `All Gemini models failed. Last error: ${lastError?.message || JSON.stringify(lastError)}`,
+        `All Gemini models failed. Last error: ${
+          lastError?.message ||
+          JSON.stringify(lastError)
+        }`,
       );
     }
 
     const text = response.text?.trim();
+
     if (!text) {
-      throw new Error('Gemini returned an empty response');
+      throw new Error(
+        'Gemini returned an empty response',
+      );
     }
 
     try {
       return JSON.parse(text);
     } catch {
-      throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 500)}`);
+      throw new Error(
+        `Gemini returned invalid JSON: ${text.slice(
+          0,
+          500,
+        )}`,
+      );
     }
   }
 
-  /**
-   * STAGE 1: Generate a tailored interview blueprint based on role, experience, skills, and difficulty.
-   * Topics are dynamically decided by Gemini to fit candidate profile.
-   */
+  // ==========================================================
+  // STAGE 1
+  //
+  // ONLY GENERATE THE FIRST QUESTION.
+  //
+  // DO NOT GENERATE 5 QUESTIONS.
+  // ==========================================================
+
   async generateInterviewPlan(params: {
     role: string;
     experience?: string;
@@ -183,293 +268,1133 @@ export class AIService {
     difficulty?: string;
     questionCount?: number;
   }): Promise<InterviewBlueprint> {
-    const { role, experience, skills, difficulty } = params;
+    const {
+      role,
+      experience,
+      skills,
+      difficulty,
+    } = params;
 
-    if (!role || typeof role !== 'string' || !role.trim()) {
+    if (
+      !role ||
+      typeof role !== 'string' ||
+      !role.trim()
+    ) {
       throw new Error('Role is required');
     }
 
     const cleanedSkills = Array.isArray(skills)
-      ? skills.filter((s) => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())
+      ? skills
+          .filter(
+            (skill) =>
+              typeof skill === 'string' &&
+              skill.trim(),
+          )
+          .map((skill) => skill.trim())
       : [];
 
-    const skillList = cleanedSkills.length > 0 ? cleanedSkills.join(', ') : role.trim();
-    const expNote = experience?.trim()
-      ? `Experience: ${experience.trim()}`
-      : 'Experience: Not specified';
-    const diffNote = difficulty?.trim() || 'Medium';
+    const skillList =
+      cleanedSkills.length > 0
+        ? cleanedSkills.join(', ')
+        : 'No specific skills provided';
+
+    const experienceText =
+      experience?.trim() ||
+      'Experience not specified';
+
+    const difficultyText =
+      difficulty?.trim() || 'Medium';
 
     const prompt = `
-You are an expert technical interviewer planning a realistic job interview.
+You are a real human interviewer starting a live
+technical job interview.
 
-Role: ${role.trim()}
-${expNote}
-Difficulty: ${diffNote}
-Skills Context: ${skillList}
+CANDIDATE
 
-Task:
-1. Dynamically determine 4 to 6 appropriate, realistic interview topics tailored specifically to this candidate's role and seniority.
-   - For a junior candidate, focus on practical fundamentals, daily tools, implementation, and debugging.
-   - For a senior candidate, include architecture, trade-offs, scalability, and system design.
-   - For non-technical or specialized roles, adapt topics strictly to that profession.
-2. Generate the first opening question for Topic 1 (max 1 natural spoken sentence).
+Role:
+${role.trim()}
 
-Return structured JSON.
+Experience:
+${experienceText}
+
+Skills:
+${skillList}
+
+Difficulty:
+${difficultyText}
+
+Your task is ONLY to start the interview.
+
+Do NOT generate a list of questions.
+
+Generate exactly ONE opening question.
+
+The opening question should:
+
+- Be short.
+- Be natural when spoken aloud.
+- Sound like a real interviewer.
+- Match the candidate's experience.
+- Match the selected difficulty.
+- Be relevant to the role.
+- NOT necessarily use one of the listed skills.
+- Prefer practical or experience-based questions.
+- Avoid textbook wording.
+- Avoid long questions.
+- Maximum 15 words.
+
+The interviewer should NOT sound robotic.
+
+For example:
+
+"Could you tell me about a recent project you worked on?"
+
+or
+
+"What was the most challenging part of your last project?"
+
+Do NOT always use the same opening pattern.
+
+Also identify 4-6 broad areas the interviewer could potentially
+explore later.
+
+IMPORTANT:
+
+These are NOT a fixed question sequence.
+
+The interviewer must decide dynamically what to ask next
+based on the candidate's answers.
+
+Return ONLY JSON.
 `;
 
     const schema = {
       type: Type.OBJECT,
+
       properties: {
         topics: {
           type: Type.ARRAY,
+
           items: {
             type: Type.OBJECT,
+
             properties: {
-              name: { type: Type.STRING, description: 'Role-appropriate topic name (e.g. Flutter & Dart Basics, State Management, API Integration, Debugging)' },
-              objective: { type: Type.STRING, description: 'What the interviewer evaluates in this topic.' },
+              name: {
+                type: Type.STRING,
+              },
+
+              objective: {
+                type: Type.STRING,
+              },
             },
-            required: ['name', 'objective'],
+
+            required: [
+              'name',
+              'objective',
+            ],
+
             additionalProperties: false,
           },
-          description: '4 to 6 role-tailored interview topics.',
         },
+
         firstQuestion: {
           type: Type.STRING,
-          description: 'A single, short, spoken opening question for the first topic (1 sentence max).',
         },
       },
-      required: ['topics', 'firstQuestion'],
+
+      required: [
+        'topics',
+        'firstQuestion',
+      ],
+
       additionalProperties: false,
     };
 
-    console.log('[AIService] Generating role-tailored interview blueprint for:', role.trim());
-    const result = await this.executeWithFallback(prompt, schema);
+    console.log(
+      '[AIService] Creating interview session...',
+    );
 
-    const topics: InterviewTopic[] = Array.isArray(result.topics) && result.topics.length > 0
-      ? result.topics.map((t: any) => ({
-          name: String(t.name || 'Core Experience').trim(),
-          objective: String(t.objective || 'Evaluate competency').trim(),
-        }))
-      : [
-          { name: 'Practical Experience', objective: 'Understand recent development experience' },
-          { name: 'Core Foundations', objective: 'Check technical foundation' },
-          { name: 'State & Architecture', objective: 'Assess architecture decisions' },
-          { name: 'Problem Solving', objective: 'Evaluate troubleshooting and debugging' },
-          { name: 'Collaboration & Ownership', objective: 'Assess communication and ownership' },
-        ];
+    const result =
+      await this.executeWithFallback(
+        prompt,
+        schema,
+      );
 
-    const firstQuestion = String(result.firstQuestion || '').trim() ||
-      `To start off, could you tell me about a recent project you worked on as a ${role.trim()}?`;
+    const topics: InterviewTopic[] =
+      Array.isArray(result.topics)
+        ? result.topics
+            .map((topic: any) => ({
+              name: String(
+                topic?.name ||
+                  'General Technical Discussion',
+              ).trim(),
 
-    return { topics, firstQuestion };
+              objective: String(
+                topic?.objective ||
+                  'Evaluate candidate competence',
+              ).trim(),
+            }))
+            .filter(
+              (topic: InterviewTopic) =>
+                topic.name.length > 0,
+            )
+        : [];
+
+    const firstQuestion =
+      String(
+        result.firstQuestion || '',
+      ).trim();
+
+    if (!firstQuestion) {
+      throw new Error(
+        'Gemini failed to generate the first question',
+      );
+    }
+
+    return {
+      topics,
+      firstQuestion,
+    };
   }
 
-  /**
-   * STAGE 2: Ultra-lightweight conversational turn.
-   * Token-optimized: sends only compact memory summary and immediate Q&A context.
-   */
+  // ==========================================================
+  // STAGE 2
+  //
+  // THIS IS THE IMPORTANT PART.
+  //
+  // Called AFTER EVERY ANSWER.
+  // ==========================================================
+
   async getNextConversationalTurn(params: {
     role: string;
+
+    experience?: string;
+
+    skills?: string[];
+
+    difficulty?: string;
+
     currentTopic: string;
+
     topicObjective?: string;
+
     previousQuestion: string;
+
     candidateAnswer: string;
+
     conversationSummary: string;
+
+    topicsCovered: string[];
+
     topicsRemaining: string[];
+
     followUpsUsed: number;
+
+    recentQuestions?: string[];
+
+    turnNumber?: number;
+
+    maxTurns?: number;
   }): Promise<ConversationalTurn> {
     const {
       role,
+      experience,
+      skills,
+      difficulty,
       currentTopic,
-      topicObjective = '',
+      topicObjective,
       previousQuestion,
       candidateAnswer,
       conversationSummary,
+      topicsCovered,
       topicsRemaining,
       followUpsUsed,
+      recentQuestions,
+      turnNumber,
+      maxTurns,
     } = params;
 
-    const cleanedAnswer = candidateAnswer.trim() || 'No answer provided.';
-    const nextTopicName = topicsRemaining[0] || currentTopic;
+    const cleanedAnswer =
+      candidateAnswer?.trim() ||
+      'The candidate gave little or no response.';
+
+    const skillList =
+      skills && skills.length > 0
+        ? skills.join(', ')
+        : 'General role knowledge';
+
+    const recentQuestionList =
+      recentQuestions &&
+      recentQuestions.length > 0
+        ? recentQuestions
+            .slice(-8)
+            .map(
+              (q, index) =>
+                `${index + 1}. ${q}`,
+            )
+            .join('\n')
+        : 'None';
+
+    const remainingTopics =
+      topicsRemaining &&
+      topicsRemaining.length > 0
+        ? topicsRemaining.join(', ')
+        : 'No predefined topics remaining';
 
     const prompt = `
-Interviewer for: ${role}
-Current Topic: ${currentTopic} (${topicObjective})
-Memory: "${conversationSummary || 'Start of interview'}"
+You are a REAL HUMAN technical interviewer
+having a live spoken interview.
 
-Last Q: "${previousQuestion}"
-Candidate A: "${cleanedAnswer}"
-Follow-ups used on this topic: ${followUpsUsed} (max 1)
-Next topic if moving on: "${nextTopicName}"
+You have just listened to the candidate's answer.
 
-Task:
-1. acknowledgement: 1-4 words natural reaction (e.g. "Got it.", "That makes sense.", "Interesting.", "Alright.") or "" (avoid repeating same reaction).
-2. action: "follow_up" (ONLY if followUpsUsed == 0 and candidate gave an incomplete/interesting point) OR "new_topic" (if answer was sufficient or follow-up was already used).
-3. nextQuestion: EXACTLY ONE short, natural spoken question (max 15 words).
-4. nextTopic: "${currentTopic}" if follow_up, or "${nextTopicName}" if new_topic.
-5. conversationSummary: updated compact 1-2 sentence memory of candidate's answers.
+Your job is to decide what the interviewer should say NEXT.
+
+==================================================
+CANDIDATE
+==================================================
+
+Role:
+${role}
+
+Experience:
+${experience || 'Not specified'}
+
+Difficulty:
+${difficulty || 'Medium'}
+
+Skills:
+${skillList}
+
+==================================================
+CURRENT CONVERSATION
+==================================================
+
+Current topic:
+${currentTopic}
+
+Topic objective:
+${topicObjective || 'Evaluate technical competence'}
+
+Previous question:
+"${previousQuestion}"
+
+Candidate answer:
+"${cleanedAnswer}"
+
+Compact conversation memory:
+"${conversationSummary || 'No previous memory.'}"
+
+Topics already discussed:
+${topicsCovered.join(', ') || 'None'}
+
+Possible topics:
+${remainingTopics}
+
+Follow-ups already used on current topic:
+${followUpsUsed}
+
+Interview turn:
+${turnNumber || 1}
+
+Maximum turns:
+${maxTurns || 10}
+
+==================================================
+RECENT QUESTIONS
+==================================================
+
+${recentQuestionList}
+
+==================================================
+MOST IMPORTANT RULE
+==================================================
+
+DO NOT behave like a fixed question list.
+
+The next question must be selected dynamically.
+
+Think like an experienced interviewer.
+
+First understand the candidate's answer.
+
+Then decide whether the candidate's answer creates a
+useful opportunity for a follow-up.
+
+==================================================
+OPTION 1 — FOLLOW UP
+==================================================
+
+Choose "follow_up" when:
+
+- The answer contains an interesting technical detail.
+- The candidate made an important claim.
+- The candidate's reasoning needs clarification.
+- The answer is incomplete.
+- The interviewer can naturally go one level deeper.
+- A practical trade-off should be explored.
+
+A follow-up should feel directly connected to
+what the candidate just said.
+
+Example:
+
+Candidate:
+"I used Riverpod because it made state management easier."
+
+Good follow-up:
+
+"What made Riverpod a better choice for that project?"
+
+Bad:
+
+"What are the advantages of Riverpod?"
+
+==================================================
+OPTION 2 — NEW TOPIC
+==================================================
+
+Choose "new_topic" when:
+
+- The candidate answered clearly.
+- The current topic has already been explored.
+- There is no valuable follow-up.
+- The interviewer should change direction.
+- A fresh question would provide better evaluation.
+
+The new question can be:
+
+- technical
+- practical
+- debugging
+- problem solving
+- architecture
+- performance
+- experience
+- behavioral
+
+It does NOT need to directly match a listed skill.
+
+==================================================
+RANDOMNESS
+==================================================
+
+The interview should NOT follow a predictable sequence.
+
+Do NOT always do:
+
+Question → Follow-up → New topic → Follow-up.
+
+Sometimes:
+
+Question → New topic.
+
+Sometimes:
+
+Question → Follow-up → Follow-up is NOT allowed.
+
+Sometimes:
+
+Question → New topic → New topic.
+
+The decision must depend on the candidate's answer.
+
+==================================================
+FOLLOW-UP LIMIT
+==================================================
+
+Maximum ONE follow-up on the same topic.
+
+If:
+
+followUpsUsed >= 1
+
+you MUST choose:
+
+"new_topic"
+
+==================================================
+QUESTION VARIETY
+==================================================
+
+Never repeat a recent question.
+
+Do NOT ask a slightly rewritten version of a previous question.
+
+Avoid repeated patterns.
+
+For example, do NOT ask:
+
+"What is Provider?"
+
+then:
+
+"What is Riverpod?"
+
+then:
+
+"What is Firebase?"
+
+That feels like an exam.
+
+Instead vary naturally:
+
+"Why did you choose that approach?"
+
+"How would you debug that?"
+
+"What would happen if the API failed?"
+
+"Tell me about a difficult issue you faced."
+
+"How would you improve that implementation?"
+
+==================================================
+QUESTION LENGTH
+==================================================
+
+The next question MUST be:
+
+- One sentence.
+- Short.
+- Spoken naturally.
+- Maximum 15 words.
+- Prefer 6-12 words.
+- No multi-part questions.
+- No essay-style questions.
+
+==================================================
+ACKNOWLEDGEMENT
+==================================================
+
+Optionally respond naturally before the question.
+
+Examples:
+
+"Got it."
+
+"Okay."
+
+"That makes sense."
+
+"Interesting."
+
+"Right."
+
+"I see."
+
+"Good."
+
+"Alright."
+
+"That's fair."
+
+Sometimes use an empty acknowledgement.
+
+IMPORTANT:
+
+Do NOT use the same acknowledgement repeatedly.
+
+Keep it under 4 words.
+
+==================================================
+CONVERSATION MEMORY
+==================================================
+
+Update the summary with only useful information learned
+from the candidate.
+
+Keep it short.
+
+Maximum 2 sentences.
+
+Do NOT copy the candidate's entire answer.
+
+==================================================
+TOPIC
+==================================================
+
+If choosing follow_up:
+
+nextTopic should normally remain:
+
+${currentTopic}
+
+If choosing new_topic:
+
+choose a genuinely different topic.
+
+Do NOT always select the first remaining topic.
+
+==================================================
+FINAL TURN
+==================================================
+
+If the interview is close to its maximum turn count,
+prefer a new topic that gives strong overall evaluation.
+
+Do not unnecessarily start a deep follow-up when there
+is not enough room for it.
+
+==================================================
+OUTPUT
+==================================================
+
+Return ONLY JSON.
+
+{
+  "acknowledgement": "...",
+  "action": "follow_up" | "new_topic",
+  "nextQuestion": "...",
+  "nextTopic": "...",
+  "conversationSummary": "..."
+}
 `;
 
     const schema = {
       type: Type.OBJECT,
+
       properties: {
         acknowledgement: {
           type: Type.STRING,
-          description: 'Short natural reaction (1-4 words or empty string).',
+
+          description:
+            'Very short natural interviewer reaction or empty string.',
         },
+
         action: {
           type: Type.STRING,
-          enum: ['follow_up', 'new_topic'],
-          description: 'Follow-up or transition to next topic.',
+
+          enum: [
+            'follow_up',
+            'new_topic',
+          ],
         },
+
         nextQuestion: {
           type: Type.STRING,
-          description: 'Single short natural question (max 15 words).',
+
+          description:
+            'Short natural spoken interview question, maximum 15 words.',
         },
+
         nextTopic: {
           type: Type.STRING,
-          description: 'Topic name.',
+
+          description:
+            'Topic for the next question.',
         },
+
         conversationSummary: {
           type: Type.STRING,
-          description: 'Updated 1-2 sentence memory summary.',
+
+          description:
+            'Short 1-2 sentence memory of useful candidate information.',
         },
       },
-      required: ['acknowledgement', 'action', 'nextQuestion', 'nextTopic', 'conversationSummary'],
+
+      required: [
+        'acknowledgement',
+        'action',
+        'nextQuestion',
+        'nextTopic',
+        'conversationSummary',
+      ],
+
       additionalProperties: false,
     };
 
-    const result = await this.executeWithFallback(prompt, schema);
+    const result =
+      await this.executeWithFallback(
+        prompt,
+        schema,
+      );
+
+    let action =
+      result.action === 'follow_up'
+        ? 'follow_up'
+        : 'new_topic';
+
+    // Hard safety rule.
+    if (followUpsUsed >= 1) {
+      action = 'new_topic';
+    }
+
+    let nextQuestion =
+      String(
+        result.nextQuestion || '',
+      ).trim();
+
+    let nextTopic =
+      String(
+        result.nextTopic ||
+          currentTopic,
+      ).trim();
+
+    let acknowledgement =
+      String(
+        result.acknowledgement || '',
+      ).trim();
+
+    const summary =
+      String(
+        result.conversationSummary ||
+          conversationSummary ||
+          '',
+      ).trim();
+
+    // ----------------------------------------------------------
+    // Safety cleanup
+    // ----------------------------------------------------------
+
+    if (acknowledgement.length > 40) {
+      acknowledgement =
+        acknowledgement
+          .split(/\s+/)
+          .slice(0, 4)
+          .join(' ');
+    }
+
+    if (!nextQuestion) {
+      throw new Error(
+        'Gemini failed to generate next interview question',
+      );
+    }
+
+    if (!nextTopic) {
+      nextTopic = currentTopic;
+    }
 
     return {
-      acknowledgement: String(result.acknowledgement ?? '').trim(),
-      action: result.action === 'follow_up' && followUpsUsed < 1 ? 'follow_up' : 'new_topic',
-      nextQuestion: String(result.nextQuestion ?? '').trim(),
-      nextTopic: String(result.nextTopic ?? currentTopic).trim(),
-      conversationSummary: String(result.conversationSummary ?? conversationSummary).trim(),
+      acknowledgement,
+
+      action: action as
+        | 'follow_up'
+        | 'new_topic',
+
+      nextQuestion,
+
+      nextTopic,
+
+      conversationSummary:
+        summary,
     };
   }
 
-  /**
-   * STAGE 3: Final evaluation after interview ends with dynamic, role-tailored skill metrics.
-   */
+  // ==========================================================
+  // STAGE 3
+  //
+  // FINAL EVALUATION
+  //
+  // ONLY CALL ONCE AFTER INTERVIEW ENDS.
+  // ==========================================================
+
   async generateFinalEvaluation(params: {
     role: string;
+
     experience?: string;
+
     difficulty?: string;
+
     skills?: string[];
+
     transcript: TranscriptEntry[];
   }): Promise<FinalInterviewEvaluation> {
-    const { role, experience, difficulty, skills, transcript } = params;
+    const {
+      role,
+      experience,
+      difficulty,
+      skills,
+      transcript,
+    } = params;
 
-    if (!transcript || transcript.length === 0) {
-      throw new Error('Interview transcript is required for final evaluation');
+    if (
+      !transcript ||
+      transcript.length === 0
+    ) {
+      throw new Error(
+        'Interview transcript is required',
+      );
     }
 
-    const transcriptFormatted = transcript
-      .map((item, idx) => `[Turn ${idx + 1}] (${item.topic})\nInterviewer: ${item.question}\nCandidate: ${item.answer || 'No response.'}`)
-      .join('\n\n');
+    const skillList =
+      skills && skills.length > 0
+        ? skills.join(', ')
+        : role;
 
-    const skillList = skills && skills.length > 0 ? skills.join(', ') : role;
+    const transcriptFormatted =
+      transcript
+        .map(
+          (item, index) =>
+            `[Turn ${index + 1}]
+Topic: ${item.topic}
+Type: ${item.type}
+Interviewer: ${item.question}
+Candidate: ${
+              item.answer ||
+              'No response captured.'
+            }`,
+        )
+        .join('\n\n');
 
     const prompt = `
-You are the Lead Hiring Manager evaluating a candidate's complete interview scorecard.
+You are a senior hiring manager evaluating
+a completed technical mock interview.
 
-Role: ${role}
-Experience: ${experience || 'Not specified'}
-Difficulty: ${difficulty || 'Medium'}
-Skill Context: ${skillList}
+ROLE:
+${role}
 
-INTERVIEW TRANSCRIPT:
+EXPERIENCE:
+${experience || 'Not specified'}
+
+DIFFICULTY:
+${difficulty || 'Medium'}
+
+SKILLS CONTEXT:
+${skillList}
+
+==================================================
+FULL INTERVIEW
+==================================================
+
 ${transcriptFormatted}
 
-EVALUATION INSTRUCTIONS:
-1. OVERALL SCORE: 0 to 100 based strictly on candidate's answers and technical depth shown.
-2. PERFORMANCE LEVEL: "Excellent" (85-100), "Good" (70-84), "Average" (55-69), or "Needs Improvement" (<55).
-3. SUMMARY: 2-3 sentence executive debrief on candidate competence and readiness.
-4. STRENGTHS: 3 to 5 concrete strengths demonstrated during the interview.
-5. AREAS TO IMPROVE: 3 to 5 actionable areas for growth.
-6. RECOMMENDATIONS: 3 to 4 specific study topics or practical drills for next steps.
-7. QUESTION REVIEWS: For each question asked, give a score (0-100) and 1 sentence of constructive feedback.
+==================================================
+EVALUATION
+==================================================
+
+Evaluate ONLY what the candidate actually demonstrated.
+
+Do not assume knowledge that was not demonstrated.
+
+Consider:
+
+- Technical knowledge
+- Practical understanding
+- Problem solving
+- Debugging ability
+- Architecture and design thinking
+- Communication
+- Role readiness
+- Quality of reasoning
+- Ability to explain decisions
+
+Do NOT punish a candidate simply because a topic
+was not asked.
+
+==================================================
+OVERALL SCORE
+==================================================
+
+0-100.
+
+Excellent: 85-100
+Good: 70-84
+Average: 55-69
+Needs Improvement: below 55
+
+==================================================
+SUMMARY
+==================================================
+
+Write a professional 2-3 sentence summary.
+
+==================================================
+STRENGTHS
+==================================================
+
+Provide 3-5 concrete strengths demonstrated
+during the interview.
+
+==================================================
+AREAS TO IMPROVE
+==================================================
+
+Provide 3-5 actionable improvements.
+
+==================================================
+SKILL PERFORMANCE
+==================================================
+
+Score these dimensions from 0-100:
+
+Technical Knowledge
+Problem Solving
+Architecture & Design
+Communication & Clarity
+Role Mastery
+
+==================================================
+RECOMMENDATIONS
+==================================================
+
+Provide 3-4 practical study topics or exercises.
+
+==================================================
+QUESTION REVIEWS
+==================================================
+
+For every interviewer question:
+
+- include the question
+- include candidate answer
+- score from 0-100
+- provide one concise feedback sentence
+
+Return ONLY JSON.
 `;
 
     const schema = {
       type: Type.OBJECT,
+
       properties: {
-        overallScore: { type: Type.INTEGER, description: 'Overall score from 0 to 100.' },
+        overallScore: {
+          type: Type.INTEGER,
+        },
+
         performanceLevel: {
           type: Type.STRING,
-          enum: ['Excellent', 'Good', 'Average', 'Needs Improvement'],
-          description: 'Overall performance level.',
+
+          enum: [
+            'Excellent',
+            'Good',
+            'Average',
+            'Needs Improvement',
+          ],
         },
-        summary: { type: Type.STRING, description: 'Executive debrief paragraph.' },
+
+        summary: {
+          type: Type.STRING,
+        },
+
         strengths: {
           type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description: '3-5 key candidate strengths.',
+
+          items: {
+            type: Type.STRING,
+          },
         },
+
         areasToImprove: {
           type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description: '3-5 areas for improvement.',
+
+          items: {
+            type: Type.STRING,
+          },
         },
+
+        skillPerformance: {
+          type: Type.OBJECT,
+
+          properties: {
+            'Technical Knowledge': {
+              type: Type.INTEGER,
+            },
+
+            'Problem Solving': {
+              type: Type.INTEGER,
+            },
+
+            'Architecture & Design': {
+              type: Type.INTEGER,
+            },
+
+            'Communication & Clarity': {
+              type: Type.INTEGER,
+            },
+
+            'Role Mastery': {
+              type: Type.INTEGER,
+            },
+          },
+
+          required: [
+            'Technical Knowledge',
+            'Problem Solving',
+            'Architecture & Design',
+            'Communication & Clarity',
+            'Role Mastery',
+          ],
+
+          additionalProperties: false,
+        },
+
         recommendations: {
           type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description: 'Recommended study topics or drills.',
+
+          items: {
+            type: Type.STRING,
+          },
         },
+
         questionReviews: {
           type: Type.ARRAY,
+
           items: {
             type: Type.OBJECT,
+
             properties: {
-              question: { type: Type.STRING },
-              answer: { type: Type.STRING },
-              feedback: { type: Type.STRING },
-              score: { type: Type.INTEGER },
+              question: {
+                type: Type.STRING,
+              },
+
+              answer: {
+                type: Type.STRING,
+              },
+
+              feedback: {
+                type: Type.STRING,
+              },
+
+              score: {
+                type: Type.INTEGER,
+              },
             },
-            required: ['question', 'answer', 'feedback', 'score'],
+
+            required: [
+              'question',
+              'answer',
+              'feedback',
+              'score',
+            ],
+
             additionalProperties: false,
           },
-          description: 'Turn-by-turn question reviews.',
         },
       },
+
       required: [
         'overallScore',
         'performanceLevel',
         'summary',
         'strengths',
         'areasToImprove',
+        'skillPerformance',
         'recommendations',
         'questionReviews',
       ],
+
       additionalProperties: false,
     };
 
-    console.log('[AIService] Generating role-tailored final evaluation for', transcript.length, 'turns.');
-    const result = await this.executeWithFallback(prompt, schema);
+    console.log(
+      `[AIService] Generating final evaluation for ${transcript.length} turns`,
+    );
 
-    const clamp = (val: any) => Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+    const result =
+      await this.executeWithFallback(
+        prompt,
+        schema,
+      );
 
-    const questionReviews: QuestionReview[] = Array.isArray(result.questionReviews)
-      ? result.questionReviews.map((qr: any) => ({
-          question: String(qr.question || '').trim(),
-          answer: String(qr.answer || '').trim(),
-          feedback: String(qr.feedback || '').trim(),
-          score: clamp(qr.score),
-        }))
-      : [];
+    const clamp = (
+      value: any,
+    ): number => {
+      return Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            Number(value) || 0,
+          ),
+        ),
+      );
+    };
+
+    const rawSkillPerformance =
+      result.skillPerformance || {};
+
+    const skillPerformance: Record<
+      string,
+      number
+    > = {};
+
+    for (
+      const [key, value] of Object.entries(
+        rawSkillPerformance,
+      )
+    ) {
+      skillPerformance[key] =
+        clamp(value);
+    }
+
+    const questionReviews:
+      QuestionReview[] =
+      Array.isArray(
+        result.questionReviews,
+      )
+        ? result.questionReviews.map(
+            (review: any) => ({
+              question: String(
+                review?.question ||
+                  '',
+              ).trim(),
+
+              answer: String(
+                review?.answer ||
+                  '',
+              ).trim(),
+
+              feedback: String(
+                review?.feedback ||
+                  '',
+              ).trim(),
+
+              score: clamp(
+                review?.score,
+              ),
+            }),
+          )
+        : [];
 
     return {
-      overallScore: clamp(result.overallScore),
-      performanceLevel: result.performanceLevel ?? 'Good',
-      summary: String(result.summary ?? '').trim(),
-      strengths: Array.isArray(result.strengths) ? result.strengths.map((s: any) => String(s).trim()) : [],
-      areasToImprove: Array.isArray(result.areasToImprove) ? result.areasToImprove.map((s: any) => String(s).trim()) : [],
-      recommendations: Array.isArray(result.recommendations) ? result.recommendations.map((s: any) => String(s).trim()) : [],
+      overallScore:
+        clamp(result.overallScore),
+
+      performanceLevel:
+        result.performanceLevel ||
+        'Average',
+
+      summary:
+        String(
+          result.summary || '',
+        ).trim(),
+
+      strengths:
+        Array.isArray(
+          result.strengths,
+        )
+          ? result.strengths.map(
+              (value: any) =>
+                String(value).trim(),
+            )
+          : [],
+
+      areasToImprove:
+        Array.isArray(
+          result.areasToImprove,
+        )
+          ? result.areasToImprove.map(
+              (value: any) =>
+                String(value).trim(),
+            )
+          : [],
+
+      skillPerformance,
+
+      recommendations:
+        Array.isArray(
+          result.recommendations,
+        )
+          ? result.recommendations.map(
+              (value: any) =>
+                String(value).trim(),
+            )
+          : [],
+
       questionReviews,
     };
   }
 }
 
-export const aiService = new AIService();
+export const aiService =
+  new AIService();
