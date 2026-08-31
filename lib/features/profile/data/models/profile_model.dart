@@ -5,8 +5,7 @@
 class ProfileModel {
   final String id;
   final String userId;
-  final String? firstName;
-  final String? lastName;
+  final String? fullName;
   final String? phone;
   final String? targetRole;
   final double? experienceYears;
@@ -23,8 +22,7 @@ class ProfileModel {
   const ProfileModel({
     required this.id,
     required this.userId,
-    this.firstName,
-    this.lastName,
+    this.fullName,
     this.phone,
     this.targetRole,
     this.experienceYears,
@@ -39,15 +37,12 @@ class ProfileModel {
 
   // ── Derived display helpers ────────────────────────────────────────────────
 
-  String get fullName {
-    final parts = [firstName ?? '', lastName ?? '']
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
-    return parts.isNotEmpty ? parts.join(' ') : '';
-  }
+  String get displayName => (fullName != null && fullName!.trim().isNotEmpty)
+      ? fullName!.trim()
+      : '';
 
   String get initials {
-    final name = fullName;
+    final name = displayName;
     if (name.isEmpty) return '';
     return name
         .split(' ')
@@ -75,8 +70,7 @@ class ProfileModel {
     return ProfileModel(
       id: json['id'] as String? ?? '',
       userId: json['userId'] as String? ?? '',
-      firstName: json['firstName'] as String?,
-      lastName: json['lastName'] as String?,
+      fullName: json['fullName'] as String?,
       phone: json['phone'] as String?,
       targetRole: json['targetRole'] as String?,
       experienceYears: (json['experienceYears'] as num?)?.toDouble(),
@@ -97,8 +91,7 @@ class ProfileModel {
   Map<String, dynamic> toJson() => {
         'id': id,
         'userId': userId,
-        'firstName': firstName,
-        'lastName': lastName,
+        'fullName': fullName,
         'phone': phone,
         'targetRole': targetRole,
         'experienceYears': experienceYears,
@@ -112,8 +105,7 @@ class ProfileModel {
   ProfileModel copyWith({
     String? id,
     String? userId,
-    String? firstName,
-    String? lastName,
+    String? fullName,
     String? phone,
     String? targetRole,
     double? experienceYears,
@@ -128,8 +120,7 @@ class ProfileModel {
     return ProfileModel(
       id: id ?? this.id,
       userId: userId ?? this.userId,
-      firstName: firstName ?? this.firstName,
-      lastName: lastName ?? this.lastName,
+      fullName: fullName ?? this.fullName,
       phone: phone ?? this.phone,
       targetRole: targetRole ?? this.targetRole,
       experienceYears: experienceYears ?? this.experienceYears,

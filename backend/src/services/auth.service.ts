@@ -14,16 +14,18 @@ import {
   NotFoundError,
 } from '../errors/AppError';
 import { AuthResult, AuthTokens, UserResponse } from '../types/auth.types';
-import { User } from '@prisma/client';
+import { User, UserProfile } from '@prisma/client';
 import crypto from 'crypto';
 
 export class AuthService {
   constructor(private readonly repo: AuthRepository = authRepository) {}
 
-  private sanitizeUser(user: User): UserResponse {
+  private sanitizeUser(user: User, profile?: UserProfile | null): UserResponse {
     return {
       id: user.id,
       email: user.email,
+      fullName: profile?.fullName ?? null,
+      name: profile?.fullName ?? null,
       isVerified: user.isVerified,
       isActive: user.isActive,
       createdAt: user.createdAt,
@@ -48,11 +50,10 @@ export class AuthService {
     const user = await this.repo.createUser(email, passwordHash);
 
     // Seed a UserProfile immediately so profile data exists from day one.
-    // firstName / lastName come from the registration form (optional fields).
-    await profileRepository.seedProfileAtRegistration(
+    // fullName comes from the registration form (optional field).
+    const profile = await profileRepository.seedProfileAtRegistration(
       user.id,
-      input.firstName ?? null,
-      input.lastName ?? null,
+      input.fullName ?? null,
     );
 
     // Generate tokens
@@ -64,7 +65,7 @@ export class AuthService {
     await this.repo.saveRefreshToken(user.id, tokenHash, expiresAt);
 
     return {
-      user: this.sanitizeUser(user),
+      user: this.sanitizeUser(user, profile),
       accessToken,
       refreshToken,
     };
@@ -93,6 +94,9 @@ export class AuthService {
     // Update lastLoginAt
     await this.repo.updateLastLogin(user.id);
 
+    // Fetch user profile to get fullName
+    const profile = await profileRepository.getProfileByUserId(user.id);
+
     // Generate tokens
     const accessToken = generateAccessToken(user.id);
     const { token: refreshToken, expiresAt } = generateRefreshToken(user.id);
@@ -102,7 +106,7 @@ export class AuthService {
     await this.repo.saveRefreshToken(user.id, tokenHash, expiresAt);
 
     return {
-      user: this.sanitizeUser(user),
+      user: this.sanitizeUser(user, profile),
       accessToken,
       refreshToken,
     };
@@ -181,7 +185,8 @@ export class AuthService {
     if (!user.isActive) {
       throw new ForbiddenError('Account is disabled', 'ACCOUNT_DISABLED');
     }
-    return this.sanitizeUser(user);
+    const profile = await profileRepository.getProfileByUserId(user.id);
+    return this.sanitizeUser(user, profile);
   }
 
   // ── Password Reset ──────────────────────────────────────────────────────────

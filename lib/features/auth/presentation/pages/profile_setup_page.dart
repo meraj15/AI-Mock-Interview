@@ -76,8 +76,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
     final authUser = context.read<AuthController>().user;
 
     // Name: prefer profile fullName → then auth user name
-    _existingName = profile?.fullName.isNotEmpty == true
-        ? profile!.fullName
+    _existingName = (profile?.fullName != null && profile!.fullName!.trim().isNotEmpty)
+        ? profile.fullName!.trim()
         : (authUser?.name ?? '');
 
     // Email: from auth user (always available after signup)

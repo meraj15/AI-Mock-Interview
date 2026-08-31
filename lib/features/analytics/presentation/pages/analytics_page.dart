@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_scaffold.dart';
-import '../../../../core/widgets/progress_bar.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../dashboard/presentation/controllers/dashboard_controller.dart';
@@ -42,17 +41,6 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     final scoreHistory = stats.scoreHistory.isNotEmpty
         ? stats.scoreHistory
         : <int>[];
-
-    // ── Skill rows ──────────────────────────────────────────────────────────
-    // If the backend returns skill averages, use them; otherwise show nothing
-    final skillColors = [
-      colors.primary,
-      colors.coral,
-      colors.violet,
-      colors.yellow,
-      colors.mint,
-    ];
-    final skillEntries = stats.skillAverages.entries.toList();
 
     // ── AI insight text ─────────────────────────────────────────────────────
     final insightText = _buildInsight(stats.overallChange, stats.totalInterviews,
@@ -310,7 +298,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           'Keep practising to track your improvement.';
     }
     final trendWord = overallChange > 0
-        ? 'improved by ${overallChange}%'
+        ? 'improved by $overallChange%'
         : overallChange < 0
             ? 'declined by ${overallChange.abs()}%'
             : 'stayed consistent';
@@ -343,16 +331,6 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         child: Text(
           'Complete interviews to see your score trend.',
           style: AppTypography.regular(12, color: colors.mutedForeground),
-          textAlign: TextAlign.center,
-        ),
-      );
-
-  Widget _emptySkills(AppColorScheme colors) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Text(
-          'Skill averages appear after your first completed interview.',
-          style:
-              AppTypography.regular(12, color: colors.mutedForeground),
           textAlign: TextAlign.center,
         ),
       );

@@ -7,8 +7,7 @@ abstract class AuthRemoteDataSource {
   Future<AuthResponseModel> register({
     required String email,
     required String password,
-    String? firstName,
-    String? lastName,
+    String? fullName,
   });
 
   Future<AuthResponseModel> login({
@@ -43,16 +42,14 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Future<AuthResponseModel> register({
     required String email,
     required String password,
-    String? firstName,
-    String? lastName,
+    String? fullName,
   }) async {
     final response = await apiClient.post(
       ApiConfig.registerEndpoint,
       body: {
         'email': email.trim().toLowerCase(),
         'password': password,
-        if (firstName != null && firstName.isNotEmpty) 'firstName': firstName,
-        if (lastName != null && lastName.isNotEmpty) 'lastName': lastName,
+        if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
       },
       requiresAuth: false,
     );

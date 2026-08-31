@@ -68,7 +68,7 @@ class AuthRepositoryImpl implements AuthRepository {
     final response = await remoteDataSource.register(
       email: email,
       password: password,
-      firstName: name,
+      fullName: name,
     );
 
     // Save tokens securely

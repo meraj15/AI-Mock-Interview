@@ -297,7 +297,7 @@ class _HeroSection extends StatelessWidget {
                       // Glow
                       AnimatedBuilder(
                         animation: ringAnim,
-                        builder: (_, __) => Container(
+                        builder: (context, child) => Container(
                           width: 148,
                           height: 148,
                           decoration: BoxDecoration(
@@ -316,7 +316,7 @@ class _HeroSection extends StatelessWidget {
                       // Ring
                       AnimatedBuilder(
                         animation: ringAnim,
-                        builder: (_, __) => _ScoreRing(
+                        builder: (context, child) => _ScoreRing(
                           score: score,
                           progress: ringAnim.value,
                           ringColor: scoreColor,
@@ -579,24 +579,6 @@ class _RingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_RingPainter old) =>
       old.value != value || old.color != color;
-}
-
-// ── Section Label ─────────────────────────────────────────────────────────────
-
-class _SectionLabel extends StatelessWidget {
-  final String label;
-  final AppColorScheme colors;
-
-  const _SectionLabel({required this.label, required this.colors});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      label.toUpperCase(),
-      style: AppTypography.semiBold(11,
-          color: colors.mutedForeground, letterSpacing: 1.1),
-    );
-  }
 }
 
 // ── Feedback Card (Strengths / Improve) ───────────────────────────────────────

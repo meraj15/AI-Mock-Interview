@@ -16,7 +16,6 @@ class VoiceSettingsPage extends StatefulWidget {
 
 class _VoiceSettingsPageState extends State<VoiceSettingsPage> {
   String _selectedVoice = 'Sarah (Principal Architect)';
-  String _selectedAccent = 'English (US)';
   double _speechRate = 1.0;
 
   final List<Map<String, String>> _voices = [

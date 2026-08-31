@@ -18,8 +18,7 @@ export class ProfileRepository {
     return prisma.userProfile.upsert({
       where: { userId },
       update: {
-        ...(data.firstName !== undefined && { firstName: data.firstName }),
-        ...(data.lastName !== undefined && { lastName: data.lastName }),
+        ...(data.fullName !== undefined && { fullName: data.fullName }),
         ...(data.phone !== undefined && { phone: data.phone }),
         ...(data.targetRole !== undefined && { targetRole: data.targetRole }),
         ...(data.experienceYears !== undefined && { experienceYears: data.experienceYears }),
@@ -31,8 +30,7 @@ export class ProfileRepository {
       },
       create: {
         userId,
-        firstName: data.firstName ?? null,
-        lastName: data.lastName ?? null,
+        fullName: data.fullName ?? null,
         phone: data.phone ?? null,
         targetRole: data.targetRole ?? null,
         experienceYears: data.experienceYears ?? null,
@@ -46,25 +44,21 @@ export class ProfileRepository {
   }
 
   /**
-   * Seed a minimal profile at registration time (firstName / lastName only).
+   * Seed a minimal profile at registration time (fullName only).
    * Uses upsert so it's safe to call even if a profile already exists.
    */
   async seedProfileAtRegistration(
     userId: string,
-    firstName?: string | null,
-    lastName?: string | null,
+    fullName?: string | null,
   ): Promise<UserProfile> {
     return prisma.userProfile.upsert({
       where: { userId },
       update: {
-        // Only set name fields if not already set
-        ...(firstName && { firstName }),
-        ...(lastName && { lastName }),
+        ...(fullName && { fullName }),
       },
       create: {
         userId,
-        firstName: firstName ?? null,
-        lastName: lastName ?? null,
+        fullName: fullName ?? null,
         skills: [],
         education: [],
         projects: [],

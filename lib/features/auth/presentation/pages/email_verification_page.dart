@@ -193,7 +193,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
             children: List.generate(6, (index) {
               return SizedBox(
                 width: 48,
-                height: 56,
+                height: 60,
                 child: TextField(
                   controller: _controllers[index],
                   focusNode: _focusNodes[index],

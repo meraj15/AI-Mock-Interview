@@ -15,17 +15,6 @@ export class ProfileService {
   }
 
   async updateProfile(userId: string, data: UpdateProfileInput): Promise<UserProfile> {
-    if (data.fullName !== undefined) {
-      const trimmed = (data.fullName ?? '').trim();
-      if (trimmed.length > 0) {
-        const parts = trimmed.split(/\s+/);
-        data.firstName = parts[0];
-        data.lastName = parts.length > 1 ? parts.slice(1).join(' ') : '';
-      } else {
-        data.firstName = null;
-        data.lastName = null;
-      }
-    }
     return this.repo.upsertProfile(userId, data);
   }
 
@@ -42,6 +31,7 @@ export class ProfileService {
 
     const merged: UpdateProfileInput = {
       // Preserve existing values; only fill from resume if field is empty
+      fullName: existing?.fullName || resumeData.fullName,
       targetRole: existing?.targetRole || resumeData.targetRole,
       experienceYears: existing?.experienceYears ?? resumeData.experienceYears,
       bio: existing?.bio || resumeData.bio,
@@ -67,10 +57,9 @@ export class ProfileService {
    */
   async seedProfileAtRegistration(
     userId: string,
-    firstName?: string | null,
-    lastName?: string | null,
+    fullName?: string | null,
   ): Promise<UserProfile> {
-    return this.repo.seedProfileAtRegistration(userId, firstName, lastName);
+    return this.repo.seedProfileAtRegistration(userId, fullName);
   }
 }
 

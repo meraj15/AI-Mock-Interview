@@ -64,8 +64,7 @@ class ProfileController extends ChangeNotifier {
   // ── Update profile on backend ─────────────────────────────────────────────
 
   Future<bool> updateProfile({
-    String? firstName,
-    String? lastName,
+    String? fullName,
     String? phone,
     String? targetRole,
     double? experienceYears,
@@ -81,8 +80,7 @@ class ProfileController extends ChangeNotifier {
 
     try {
       _profile = await _dataSource.updateProfile(
-        firstName: firstName,
-        lastName: lastName,
+        fullName: fullName,
         phone: phone,
         targetRole: targetRole,
         experienceYears: experienceYears,
@@ -108,6 +106,7 @@ class ProfileController extends ChangeNotifier {
   /// Merges resume-extracted data into the existing profile.
   /// User-provided values are NEVER overwritten by this call.
   Future<bool> mergeResumeProfile({
+    String? fullName,
     String? targetRole,
     double? experienceYears,
     String? bio,
@@ -122,6 +121,7 @@ class ProfileController extends ChangeNotifier {
 
     try {
       _profile = await _dataSource.mergeResumeProfile(
+        fullName: fullName,
         targetRole: targetRole,
         experienceYears: experienceYears,
         bio: bio,
@@ -150,14 +150,10 @@ class ProfileController extends ChangeNotifier {
   }) {
     // Only apply if we don't yet have a loaded profile
     if (_profile == null) {
-      final nameParts = name.trim().split(' ');
-      final firstName = nameParts.isNotEmpty ? nameParts.first : name;
-      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
       _profile = ProfileModel(
         id: '',
         userId: '',
-        firstName: firstName.isNotEmpty ? firstName : null,
-        lastName: lastName?.isNotEmpty == true ? lastName : null,
+        fullName: name.isNotEmpty ? name : null,
       );
       notifyListeners();
     }

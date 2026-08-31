@@ -3,6 +3,8 @@ import { Request } from 'express';
 export interface UserResponse {
   id: string;
   email: string;
+  fullName?: string | null;
+  name?: string | null;
   isVerified: boolean;
   isActive: boolean;
   createdAt: Date;

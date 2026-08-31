@@ -32,8 +32,7 @@ model User {
 model UserProfile {
   id              String   @id @default(uuid())
   userId          String   @unique
-  firstName       String?
-  lastName        String?
+  fullName        String?
   phone           String?
   targetRole      String?
   experienceYears Float?

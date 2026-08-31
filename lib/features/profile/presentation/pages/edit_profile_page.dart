@@ -72,21 +72,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         .toList();
 
     final fullNameTrim = _fullNameController.text.trim();
-    String? firstName;
-    String? lastName;
-    if (fullNameTrim.isNotEmpty) {
-      final parts = fullNameTrim.split(RegExp(r'\s+'));
-      firstName = parts.first;
-      if (parts.length > 1) {
-        lastName = parts.sublist(1).join(' ');
-      } else {
-        lastName = '';
-      }
-    }
 
     final success = await profileCtrl.updateProfile(
-      firstName: firstName,
-      lastName: lastName,
+      fullName: fullNameTrim.isNotEmpty ? fullNameTrim : null,
       phone: _phoneController.text.trim().isNotEmpty
           ? _phoneController.text.trim()
           : null,

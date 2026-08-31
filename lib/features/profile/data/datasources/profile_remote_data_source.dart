@@ -6,8 +6,7 @@ abstract class ProfileRemoteDataSource {
   Future<ProfileModel?> getProfile();
 
   Future<ProfileModel> updateProfile({
-    String? firstName,
-    String? lastName,
+    String? fullName,
     String? phone,
     String? targetRole,
     double? experienceYears,
@@ -22,6 +21,7 @@ abstract class ProfileRemoteDataSource {
   /// Existing user-provided values are NOT overwritten — only empty fields
   /// are filled from the resume data.
   Future<ProfileModel> mergeResumeProfile({
+    String? fullName,
     String? targetRole,
     double? experienceYears,
     String? bio,
@@ -51,8 +51,7 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
 
   @override
   Future<ProfileModel> updateProfile({
-    String? firstName,
-    String? lastName,
+    String? fullName,
     String? phone,
     String? targetRole,
     double? experienceYears,
@@ -63,8 +62,7 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
     List<CertificationItem>? certifications,
   }) async {
     final body = <String, dynamic>{
-      if (firstName != null) 'firstName': firstName,
-      if (lastName != null) 'lastName': lastName,
+      if (fullName != null) 'fullName': fullName,
       if (phone != null) 'phone': phone,
       if (targetRole != null) 'targetRole': targetRole,
       if (experienceYears != null) 'experienceYears': experienceYears,
@@ -85,6 +83,7 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
 
   @override
   Future<ProfileModel> mergeResumeProfile({
+    String? fullName,
     String? targetRole,
     double? experienceYears,
     String? bio,
@@ -94,6 +93,7 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
     List<CertificationItem>? certifications,
   }) async {
     final body = <String, dynamic>{
+      if (fullName != null) 'fullName': fullName,
       if (targetRole != null) 'targetRole': targetRole,
       if (experienceYears != null) 'experienceYears': experienceYears,
       if (bio != null) 'bio': bio,

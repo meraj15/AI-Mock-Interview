@@ -43,7 +43,9 @@ class _HomePageState extends State<HomePage> {
     // ── Name / initials ──────────────────────────────────────────────────────
     final fullName  = profileCtrl.fullName.isNotEmpty
         ? profileCtrl.fullName
-        : auth.user?.email.split('@').first ?? 'User';
+        : (auth.user?.name.isNotEmpty == true
+            ? auth.user!.name
+            : (auth.user?.email.split('@').first ?? 'User'));
     final firstName = fullName.split(' ').first;
     final initials  = profileCtrl.initials.isNotEmpty
         ? profileCtrl.initials.toUpperCase()

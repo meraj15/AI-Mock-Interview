@@ -7,7 +7,6 @@ import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
-import '../../../../core/services/ai_interview_service.dart';
 import '../controllers/interview_controller.dart';
 
 class QuestionReviewPage extends StatefulWidget {

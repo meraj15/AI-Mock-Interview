@@ -21,10 +21,14 @@ class UserModel extends UserEntity {
     final email = json['email'] as String? ?? 'user@example.com';
     // If name is not provided in backend User model, generate a friendly initial name from email
     final defaultName = email.contains('@') ? email.split('@').first : 'User';
+    final rawName = json['fullName'] as String? ?? json['name'] as String?;
+    final name = (rawName != null && rawName.trim().isNotEmpty)
+        ? rawName.trim()
+        : defaultName;
 
     return UserModel(
       id: json['id'] as String? ?? 'usr_1',
-      name: json['name'] as String? ?? defaultName,
+      name: name,
       email: email,
       targetRole: json['targetRole'] as String? ?? 'Flutter Developer',
       experienceYears: json['experienceYears'] as String? ?? '1.2 years',
@@ -43,6 +47,7 @@ class UserModel extends UserEntity {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'fullName': name,
       'name': name,
       'email': email,
       'targetRole': targetRole,
