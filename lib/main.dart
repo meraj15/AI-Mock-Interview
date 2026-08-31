@@ -14,7 +14,6 @@ import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/interview/presentation/controllers/interview_controller.dart';
 import 'features/interview/data/datasources/interview_remote_data_source.dart';
 import 'features/dashboard/presentation/controllers/dashboard_controller.dart';
-import 'features/job_prep/presentation/controllers/job_prep_controller.dart';
 import 'features/profile/data/datasources/profile_remote_data_source.dart';
 import 'features/profile/presentation/controllers/profile_controller.dart';
 import 'features/profile/presentation/controllers/theme_controller.dart';
@@ -123,9 +122,7 @@ void main() async {
             remoteDataSource: resumeRemoteDataSource,
           ),
         ),
-        ChangeNotifierProvider(
-          create: (_) => JobPrepController(),
-        ),
+      
       ],
       child: const InterviewCoachApp(),
     ),
