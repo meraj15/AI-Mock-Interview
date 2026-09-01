@@ -18,6 +18,7 @@ enum InterviewPhase {
   speaking,  // AI interviewer is speaking question & streaming text
   listening, // AI is waiting for candidate to start speaking
   recording, // Candidate is actively recording response
+  answered,  // Recording stopped; user reviews & edits answer before submitting
   thinking,  // Answer received, AI is processing / generating next question
   done,      // Session finished
 }
@@ -39,6 +40,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   final stt.SpeechToText _stt = stt.SpeechToText();
   bool _sttAvailable = false;
   String _liveTranscript = '';
+  final TextEditingController _answerCtrl = TextEditingController();
+  final FocusNode _answerFocusNode = FocusNode();
 
   // ── Word-by-Word Streaming Question State ─────────────────────────────────
   Timer? _streamingTimer;
@@ -119,6 +122,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     _waveAnimCtrl.dispose();
     _pulseAnimCtrl.dispose();
     _loadingFadeCtrl.dispose();
+    _answerCtrl.dispose();
+    _answerFocusNode.dispose();
     super.dispose();
   }
 
@@ -333,7 +338,9 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     await _stt.stop();
     final answer = _liveTranscript.trim();
     if (answer.isNotEmpty) {
-      _submitAnswer(answer);
+      // Move to answered phase: show editable transcript card
+      _answerCtrl.text = answer;
+      _setPhase(InterviewPhase.answered);
     } else {
       _setPhase(InterviewPhase.listening);
     }
@@ -358,6 +365,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         setState(() {
           _liveTranscript = '';
         });
+        _answerCtrl.clear();
         _speakCurrentQuestion();
       }
     });
@@ -375,6 +383,33 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         MaterialPageRoute(builder: (_) => const InterviewResultPage()),
       );
     });
+  }
+
+  /// Re-plays the current question via TTS without changing the UI phase.
+  void _replayQuestion() {
+    final ic = context.read<InterviewController>();
+    if (!mounted || ic.prompts.isEmpty) return;
+    final speech = ic.currentAcknowledgement.isNotEmpty
+        ? '${ic.currentAcknowledgement} ${ic.currentQuestion}'
+        : ic.currentQuestion;
+    if (_ttsAvailable && speech.trim().isNotEmpty) {
+      _tts.speak(speech);
+    }
+  }
+
+  /// Clears the answer draft and re-starts STT recording.
+  Future<void> _reRecord() async {
+    _answerCtrl.clear();
+    setState(() => _liveTranscript = '');
+    await _startRecording();
+  }
+
+  /// Submits the (possibly keyboard-edited) answer from the editor.
+  Future<void> _submitFromEditor() async {
+    _answerFocusNode.unfocus();
+    final answer = _answerCtrl.text.trim();
+    if (answer.isEmpty) return;
+    await _submitAnswer(answer);
   }
 
   // ── Session Controls ──────────────────────────────────────────────────────
@@ -505,9 +540,13 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                               else if (isLoading)
                                 _buildLoadingQuestionPlaceholder(colors),
 
-                              // Live Caption (Appears smoothly when recording)
+                              // Live transcript while recording
                               if (_phase == InterviewPhase.recording && _liveTranscript.isNotEmpty)
                                 _buildLiveCaptionCard(colors),
+
+                              // Editable answer card after recording stops
+                              if (_phase == InterviewPhase.answered)
+                                _buildAnswerEditorCard(colors),
                             ],
                           ),
                         ),
@@ -642,6 +681,11 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
           accentColor = colors.destructive;
           statusLabel = 'You • Recording answer…';
           icon = FeatherIcons.mic;
+          break;
+        case InterviewPhase.answered:
+          accentColor = colors.primary;
+          statusLabel = 'You • Review your answer';
+          icon = FeatherIcons.edit2;
           break;
         case InterviewPhase.thinking:
           accentColor = colors.violet;
@@ -922,6 +966,68 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     );
   }
 
+  // ── Editable Answer Card ──────────────────────────────────────────────────
+
+  Widget _buildAnswerEditorCard(AppColorScheme colors) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: colors.primary.withValues(alpha: 0.45),
+            width: 1.3,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: colors.primary.withValues(alpha: 0.07),
+              blurRadius: 14,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(FeatherIcons.messageCircle, size: 12, color: colors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Your answer — tap to edit',
+                    style: AppTypography.semiBold(11, color: colors.primary),
+                  ),
+                ),
+                Icon(FeatherIcons.edit2, size: 12, color: colors.mutedForeground),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _answerCtrl,
+              focusNode: _answerFocusNode,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              style: AppTypography.regular(13.5, color: colors.text, height: 1.5),
+              decoration: InputDecoration(
+                hintText: 'Your spoken answer appears here. Tap to edit…',
+                hintStyle: AppTypography.regular(13, color: colors.mutedForeground),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Voice Interaction & Minimal Controls ──────────────────────────────────
 
   Widget _buildVoiceControlCenter(bool isLoading, AppColorScheme colors) {
@@ -995,45 +1101,124 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       );
     }
 
-    // Listening or Recording Phase
-    final isRecording = _phase == InterviewPhase.recording;
-    final btnColor = isRecording ? colors.destructive : colors.mint;
-    final actionLabel = isRecording ? 'Tap to finish' : 'Tap to speak answer';
+    // Recording — stop button
+    if (_phase == InterviewPhase.recording) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: _finishRecordingAndSubmit,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors.destructive.withValues(alpha: 0.22),
+                border: Border.all(color: colors.destructive, width: 1.8),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.destructive.withValues(alpha: 0.45),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Icon(FeatherIcons.square, size: 22, color: colors.destructive),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Tap to stop recording', style: AppTypography.semiBold(11.5, color: colors.destructive)),
+        ],
+      );
+    }
 
+    // Answered — replay / re-record / submit
+    if (_phase == InterviewPhase.answered) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: _ControlPill(
+                icon: FeatherIcons.volume2,
+                label: 'Re-listen',
+                color: colors.mint,
+                onTap: _replayQuestion,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ControlPill(
+                icon: FeatherIcons.mic,
+                label: 'Re-record',
+                color: colors.mutedForeground,
+                onTap: _reRecord,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ControlPill(
+                icon: FeatherIcons.send,
+                label: 'Submit',
+                color: colors.primary,
+                onTap: _submitFromEditor,
+                isPrimary: true,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Listening — mic button + replay question pill
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
-          onTap: isRecording ? _finishRecordingAndSubmit : _startRecording,
+          onTap: _replayQuestion,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: colors.border.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FeatherIcons.volume2, size: 13, color: colors.mint),
+                const SizedBox(width: 6),
+                Text('Replay question', style: AppTypography.semiBold(11, color: colors.mint)),
+              ],
+            ),
+          ),
+        ),
+        GestureDetector(
+          onTap: _startRecording,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: 64,
             height: 64,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: btnColor.withValues(alpha: isRecording ? 0.22 : 0.12),
-              border: Border.all(color: btnColor, width: 1.8),
+              color: colors.mint.withValues(alpha: 0.12),
+              border: Border.all(color: colors.mint, width: 1.8),
               boxShadow: [
                 BoxShadow(
-                  color: btnColor.withValues(alpha: isRecording ? 0.45 : 0.2),
-                  blurRadius: isRecording ? 18 : 10,
-                  spreadRadius: isRecording ? 2 : 0,
+                  color: colors.mint.withValues(alpha: 0.2),
+                  blurRadius: 10,
                 ),
               ],
             ),
             alignment: Alignment.center,
-            child: Icon(
-              isRecording ? FeatherIcons.square : FeatherIcons.mic,
-              size: 22,
-              color: btnColor,
-            ),
+            child: Icon(FeatherIcons.mic, size: 22, color: colors.mint),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          actionLabel,
-          style: AppTypography.semiBold(11.5, color: btnColor),
-        ),
+        Text('Tap to speak your answer', style: AppTypography.semiBold(11.5, color: colors.mint)),
       ],
     );
   }
@@ -1249,6 +1434,52 @@ class _AnimatedProgressDotsState extends State<_AnimatedProgressDots>
           ),
         );
       }),
+    );
+  }
+}
+
+// ── Control Pill ──────────────────────────────────────────────────────────────
+
+class _ControlPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  final bool isPrimary;
+
+  const _ControlPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          color: isPrimary ? color : color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: isPrimary
+              ? null
+              : Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: isPrimary ? Colors.white : color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: AppTypography.semiBold(10, color: isPrimary ? Colors.white : color),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
