@@ -31,11 +31,15 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
 
     if (success) {
-      context.read<ProfileController>().loadProfile();
+      // Load profile from backend and wait so we can check if setup is needed.
+      final profileCtrl = context.read<ProfileController>();
+      await profileCtrl.loadProfile();
+      if (!mounted) return;
+
+      final needsSetup = !profileCtrl.hasProfileData;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) =>
-              auth.isProfileSetupComplete ? const MainNavPage() : const ProfileSetupPage(),
+          builder: (_) => needsSetup ? const ProfileSetupPage() : const MainNavPage(),
         ),
       );
     } else if (auth.errorMessage != null) {
@@ -210,15 +214,15 @@ class _LoginPageState extends State<LoginPage> {
                     onTap: () async {
                       final success = await auth.signInWithGoogle();
                       if (success && context.mounted) {
-                        if (!auth.isProfileSetupComplete) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
-                          );
-                        } else {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const MainNavPage()),
-                          );
-                        }
+                        final profileCtrl = context.read<ProfileController>();
+                        await profileCtrl.loadProfile();
+                        if (!context.mounted) return;
+                        final needsSetup = !profileCtrl.hasProfileData;
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) => needsSetup ? const ProfileSetupPage() : const MainNavPage(),
+                          ),
+                        );
                       }
                     },
                     borderRadius: BorderRadius.circular(15),
@@ -252,15 +256,15 @@ class _LoginPageState extends State<LoginPage> {
                     onTap: () async {
                       final success = await auth.signInWithApple();
                       if (success && context.mounted) {
-                        if (!auth.isProfileSetupComplete) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
-                          );
-                        } else {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const MainNavPage()),
-                          );
-                        }
+                        final profileCtrl = context.read<ProfileController>();
+                        await profileCtrl.loadProfile();
+                        if (!context.mounted) return;
+                        final needsSetup = !profileCtrl.hasProfileData;
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) => needsSetup ? const ProfileSetupPage() : const MainNavPage(),
+                          ),
+                        );
                       }
                     },
                     borderRadius: BorderRadius.circular(15),

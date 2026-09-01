@@ -41,6 +41,9 @@ class ProfileController extends ChangeNotifier {
   /// True once we have a profile with at least a role and skills set.
   bool get isProfileComplete => _profile?.isComplete ?? false;
 
+  /// True if the user has already provided profile details (role or skills).
+  bool get hasProfileData => _profile?.hasProfileData ?? false;
+
   // ── Load profile from backend ─────────────────────────────────────────────
 
   Future<void> loadProfile() async {

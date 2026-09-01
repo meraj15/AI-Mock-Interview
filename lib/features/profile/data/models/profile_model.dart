@@ -64,6 +64,11 @@ class ProfileModel {
   bool get isComplete =>
       targetRole != null && targetRole!.isNotEmpty && skills.isNotEmpty;
 
+  /// Returns true if the user has already provided profile details (role or skills).
+  bool get hasProfileData =>
+      (targetRole != null && targetRole!.trim().isNotEmpty) ||
+      skills.isNotEmpty;
+
   // ── Serialisation ─────────────────────────────────────────────────────────
 
   factory ProfileModel.fromJson(Map<String, dynamic> json) {
