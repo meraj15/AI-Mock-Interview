@@ -20,10 +20,8 @@ class QuickInterviewSetupPage extends StatefulWidget {
 class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
   int _questionCount = 10;
   int _timeLimitMinutes = 2;
-  String _difficulty = 'Medium';
 
-  static const _difficulties = ['Easy', 'Medium', 'Hard', 'Adaptive'];
-  static const _questionOptions = [2, 10, 15, 20];
+  static const _questionOptions = [5, 10, 15, 20];
   static const _timeLimitOptions = [0, 1, 2, 3, 5];
 
   String _timeLimitLabel(int m) => m == 0 ? 'None' : '${m}m';
@@ -35,30 +33,12 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
     ic.updateConfig(
       questions: _questionCount,
       timeLimitPerQuestion: _timeLimitMinutes * 60,
-      difficulty: _difficulty,
+      difficulty: 'Adaptive',
     );
     ic.startInterview(resume: rc.resume, profile: pc.profile);
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
     );
-  }
-
-  IconData _difficultyIcon(String d) {
-    switch (d) {
-      case 'Easy':   return FeatherIcons.sun;
-      case 'Hard':   return FeatherIcons.zap;
-      case 'Adaptive': return FeatherIcons.sliders;
-      default:       return FeatherIcons.minus;
-    }
-  }
-
-  Color _difficultyColor(String d, AppColorScheme c) {
-    switch (d) {
-      case 'Easy':     return c.success;
-      case 'Hard':     return c.coral;
-      case 'Adaptive': return c.violet;
-      default:         return c.yellow;
-    }
   }
 
   @override
@@ -189,40 +169,55 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
                     }).toList(),
                   ),
 
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
 
-                  // ── Difficulty ───────────────────────────────────
-                  _Label(text: 'Difficulty', colors: colors),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: _difficulties.map((d) {
-                      final sel = _difficulty == d;
-                      final last = d == _difficulties.last;
-                      final accent = _difficultyColor(d, colors);
-                      return Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(right: last ? 0 : 8),
-                          child: _DiffChip(
-                            label: d,
-                            icon: _difficultyIcon(d),
-                            accent: accent,
-                            selected: sel,
-                            colors: colors,
-                            onTap: () => setState(() => _difficulty = d),
+                  // ── Adaptive AI Banner ───────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: colors.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(FeatherIcons.cpu, size: 18, color: colors.primary),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Adaptive AI Interviewer',
+                                style: AppTypography.semiBold(12.5, color: colors.foreground),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Difficulty adapts dynamically based on your answers & experience.',
+                                style: AppTypography.regular(11, color: colors.mutedForeground, height: 1.35),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    }).toList(),
+                      ],
+                    ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // ── Summary card ─────────────────────────────────
                   _SummaryCard(
                     questionCount: _questionCount,
                     timeLabel: _timeLimitLabel(_timeLimitMinutes),
-                    difficulty: _difficulty,
-                    difficultyColor: _difficultyColor(_difficulty, colors),
                     colors: colors,
                   ),
 
@@ -339,80 +334,16 @@ class _CountChip extends StatelessWidget {
   }
 }
 
-// ── Difficulty chip ────────────────────────────────────────────────────────────
-
-class _DiffChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color accent;
-  final bool selected;
-  final AppColorScheme colors;
-  final VoidCallback onTap;
-
-  const _DiffChip({
-    required this.label,
-    required this.icon,
-    required this.accent,
-    required this.selected,
-    required this.colors,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        height: 68,
-        decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.12) : colors.card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? accent : colors.border,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: selected ? accent : colors.mutedForeground,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: AppTypography.semiBold(
-                11,
-                color: selected ? accent : colors.foreground,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ── Summary card ──────────────────────────────────────────────────────────────
 
 class _SummaryCard extends StatelessWidget {
   final int questionCount;
   final String timeLabel;
-  final String difficulty;
-  final Color difficultyColor;
   final AppColorScheme colors;
 
   const _SummaryCard({
     required this.questionCount,
     required this.timeLabel,
-    required this.difficulty,
-    required this.difficultyColor,
     required this.colors,
   });
 
@@ -457,9 +388,9 @@ class _SummaryCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _SummaryPill(
-                label: difficulty,
+                label: 'Adaptive AI',
                 icon: FeatherIcons.activity,
-                accentColor: difficultyColor,
+                accentColor: colors.mint,
                 colors: colors,
               ),
             ],

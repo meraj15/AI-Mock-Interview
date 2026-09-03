@@ -17,39 +17,48 @@ export interface ActiveConversationalSession {
   id: string;
   userId: string;
   role: string;
-  difficulty: string;
   skills: string[];
   experience?: string;
+
   topics: InterviewTopic[];
   currentTopicIndex: number;
   topicsCovered: string[];
   followUpsUsedForCurrentTopic: number;
+
   totalTurns: number;
   maxTurns: number;
+
   conversationSummary: string;
   interactions: TranscriptEntry[];
+
   status: 'in_progress' | 'completed';
   finalEvaluation?: FinalInterviewEvaluation;
+
   createdAt: Date;
-  startedAt: number; // timestamp in ms for duration calculation
+  startedAt: number;
 }
 
 export class InterviewService {
-  // In-memory active conversational sessions map (sessionId -> ActiveConversationalSession)
-  private activeSessions = new Map<string, ActiveConversationalSession>();
+  private activeSessions = new Map<
+    string,
+    ActiveConversationalSession
+  >();
 
   /**
-   * STAGE 1: Start a new conversational interview session.
-   * Generates ONLY the first question via Gemini (fast, ~3-6 s).
-   * Topics are generated asynchronously in the background so
-   * the response is returned immediately without blocking.
+   * STAGE 1
+   *
+   * Starts a conversational interview.
+   *
+   * Important:
+   * - There is NO user-selected difficulty.
+   * - Gemini generates only the first question synchronously.
+   * - Interview topics are generated in the background.
    */
   async startConversationalInterview(
     userId: string,
     params: {
       role: string;
       skills?: string[];
-      difficulty?: string;
       experience?: string;
       questionCount?: number;
     }
@@ -62,37 +71,68 @@ export class InterviewService {
     totalTopics: number;
     firstQuestion: string;
   }> {
-    const { role, skills = [], difficulty = 'Medium', experience, questionCount = 5 } = params;
-
-    // ── Fast call: first question only ────────────────────────────────────
-    const plan = await aiService.generateInterviewPlan({
+    const {
       role,
-      skills,
-      difficulty,
+      skills = [],
       experience,
-      questionCount,
-    });
+      questionCount = 5,
+    } = params;
 
-    // Placeholder topics used until background call completes.
+    if (!role?.trim()) {
+      throw Object.assign(
+        new Error('Role is required'),
+        { statusCode: 400 },
+      );
+    }
+
+    const normalizedSkills = skills
+      .filter(
+        (skill): skill is string =>
+          typeof skill === 'string' &&
+          skill.trim().length > 0,
+      )
+      .map((skill) => skill.trim());
+
+    const plan =
+      await aiService.generateInterviewPlan({
+        role: role.trim(),
+        skills: normalizedSkills,
+        experience,
+        questionCount,
+      });
+
     const placeholderTopics: InterviewTopic[] = [
-      { name: 'Introduction', objective: 'Understand the candidate\'s background' },
+      {
+        name: 'Introduction',
+        objective:
+          'Open the interview naturally and understand the candidate background.',
+      },
     ];
 
     const sessionId = randomUUID();
+
+    const maxTurns = Math.max(
+      6,
+      Math.min(12, questionCount * 2),
+    );
+
     const session: ActiveConversationalSession = {
       id: sessionId,
       userId,
-      role,
-      difficulty,
-      skills,
+      role: role.trim(),
+      skills: normalizedSkills,
       experience,
+
       topics: placeholderTopics,
       currentTopicIndex: 0,
       topicsCovered: [],
       followUpsUsedForCurrentTopic: 0,
+
       totalTurns: 1,
-      maxTurns: 10, // default; updated when background topics arrive
+      maxTurns,
+
       conversationSummary: '',
+
       interactions: [
         {
           question: plan.firstQuestion,
@@ -102,23 +142,33 @@ export class InterviewService {
           timestamp: new Date().toISOString(),
         },
       ],
+
       status: 'in_progress',
       createdAt: new Date(),
       startedAt: Date.now(),
     };
 
-    this.activeSessions.set(sessionId, session);
+    this.activeSessions.set(
+      sessionId,
+      session,
+    );
 
-    // ── Background: generate topics without blocking the response ──────────
-    this._populateTopicsAsync(sessionId, { role, skills, difficulty, experience });
+    // Do not block the first-question response.
+    this.populateTopicsAsync(sessionId, {
+      role: session.role,
+      skills: session.skills,
+      experience: session.experience,
+    });
 
-    logger.info(`[InterviewService] Started conversational interview ${sessionId} for user=${userId} role="${role}"`);
+    logger.info(
+      `[InterviewService] Started conversational interview ${sessionId} for user=${userId} role="${session.role}"`,
+    );
 
     return {
       sessionId,
-      role,
+      role: session.role,
       topics: session.topics,
-      currentTopic: session.topics[0]?.name || 'Introduction',
+      currentTopic: session.topics[0].name,
       currentTopicIndex: 0,
       totalTopics: session.topics.length,
       firstQuestion: plan.firstQuestion,
@@ -126,293 +176,649 @@ export class InterviewService {
   }
 
   /**
-   * Fire-and-forget: generates interview topics in the background and
-   * patches the active session once they arrive. Errors are swallowed
-   * so a topic-generation failure never crashes the interview.
+   * Generates the broad Flutter/Dart topic pool in the background.
+   *
+   * Candidate skills are passed as context only. The AI service is
+   * responsible for ensuring they do not restrict the interview.
    */
-  private _populateTopicsAsync(
+  private populateTopicsAsync(
     sessionId: string,
-    params: { role: string; skills?: string[]; difficulty?: string; experience?: string }
+    params: {
+      role: string;
+      skills?: string[];
+      experience?: string;
+    },
   ): void {
     aiService
       .generateTopics(params)
       .then((topics) => {
-        const session = this.activeSessions.get(sessionId);
-        if (!session || session.status === 'completed') return;
+        const session =
+          this.activeSessions.get(sessionId);
 
-        if (topics.length > 0) {
-          session.topics = topics;
-          session.maxTurns = Math.min(12, Math.max(6, topics.length * 2));
-          // Keep currentTopicIndex valid after update
-          if (session.currentTopicIndex >= topics.length) {
-            session.currentTopicIndex = topics.length - 1;
-          }
-          // Update current interaction topic label
-          if (session.interactions.length > 0 && session.interactions[0].topic === 'Introduction') {
-            session.interactions[0].topic = topics[0]?.name || 'Introduction';
-          }
-          logger.info(
-            `[InterviewService] Topics populated for session ${sessionId}: ${topics.map((t) => t.name).join(', ')}`,
-          );
+        if (
+          !session ||
+          session.status === 'completed'
+        ) {
+          return;
         }
+
+        if (topics.length === 0) {
+          logger.warn(
+            `[InterviewService] No topics generated for session ${sessionId}`,
+          );
+          return;
+        }
+
+        session.topics = topics;
+
+        session.maxTurns = Math.min(
+          12,
+          Math.max(6, topics.length * 2),
+        );
+
+        // The first interaction is an opening question,
+        // not a technical topic.
+        if (
+          session.interactions[0]?.topic ===
+          'Introduction'
+        ) {
+          session.interactions[0].topic =
+            'Introduction';
+        }
+
+        logger.info(
+          `[InterviewService] Topics populated for session ${sessionId}: ${topics
+            .map((topic) => topic.name)
+            .join(', ')}`,
+        );
       })
       .catch((err) => {
+        // Topic generation must never crash an active interview.
         logger.warn(
-          `[InterviewService] Background topic generation failed for session ${sessionId}: ${err?.message || err}`,
+          `[InterviewService] Background topic generation failed for session ${sessionId}: ${
+            err?.message || err
+          }`,
         );
       });
   }
 
   /**
-   * STAGE 2: Receive candidate's answer and produce the next conversational turn.
+   * STAGE 2
+   *
+   * Receives one candidate answer and asks Gemini what should happen next.
+   *
+   * The AI dynamically decides:
+   * - answer quality
+   * - follow-up vs new topic
+   * - next question
+   * - next topic
+   *
+   * There is no difficulty field.
    */
   async submitAnswer(
     sessionId: string,
     userId: string,
-    answer: string
+    answer: string,
   ): Promise<{
     acknowledgement: string;
-    action: 'follow_up' | 'new_topic' | 'end_interview';
+    action:
+      | 'follow_up'
+      | 'new_topic'
+      | 'end_interview';
+    answerQuality:
+      | 'weak'
+      | 'average'
+      | 'strong'
+      | 'excellent';
     nextQuestion: string;
     nextTopic: string;
     currentTopicIndex: number;
     totalTopics: number;
     isComplete: boolean;
   }> {
-    const session = this.activeSessions.get(sessionId);
+    const session =
+      this.activeSessions.get(sessionId);
 
     if (!session) {
-      throw Object.assign(new Error('Active interview session not found or expired'), { statusCode: 404 });
+      throw Object.assign(
+        new Error(
+          'Active interview session not found or expired',
+        ),
+        { statusCode: 404 },
+      );
     }
 
     if (session.userId !== userId) {
-      throw Object.assign(new Error('Forbidden: session does not belong to user'), { statusCode: 403 });
+      throw Object.assign(
+        new Error(
+          'Forbidden: session does not belong to user',
+        ),
+        { statusCode: 403 },
+      );
     }
 
     if (session.status === 'completed') {
       return {
         acknowledgement: '',
         action: 'end_interview',
-        nextQuestion: 'The interview is already completed.',
+        answerQuality: 'average',
+        nextQuestion:
+          'The interview is already completed.',
         nextTopic: 'Completed',
-        currentTopicIndex: session.currentTopicIndex,
+        currentTopicIndex:
+          session.currentTopicIndex,
         totalTopics: session.topics.length,
         isComplete: true,
       };
     }
 
-    // Save candidate's answer to the last interaction
-    const lastInteraction = session.interactions[session.interactions.length - 1];
+    const cleanedAnswer =
+      typeof answer === 'string'
+        ? answer.trim()
+        : '';
+
+    if (!cleanedAnswer) {
+      throw Object.assign(
+        new Error('Answer is required'),
+        { statusCode: 400 },
+      );
+    }
+
+    // Save candidate answer to the current/last interaction.
+    const lastInteraction =
+      session.interactions[
+        session.interactions.length - 1
+      ];
+
     if (lastInteraction) {
-      lastInteraction.answer = answer.trim();
+      lastInteraction.answer = cleanedAnswer;
     }
 
-    const currentTopicObj = session.topics[session.currentTopicIndex] || {
-      name: 'General',
-      objective: 'Evaluate technical competence',
-    };
-
-    const topicsRemaining = session.topics
-      .slice(session.currentTopicIndex + 1)
-      .map((t) => t.name);
-
-    // Check if max turns reached or no remaining topics
-    const isAtMaxTurns = session.totalTurns >= session.maxTurns;
-    const isAtLastTopicAndUsedFollowUp =
-      session.currentTopicIndex >= session.topics.length - 1 &&
-      session.followUpsUsedForCurrentTopic >= 1;
-
-    if (isAtMaxTurns || isAtLastTopicAndUsedFollowUp) {
-      session.status = 'completed';
-      const wrapUpMsg =
-        'Alright, that gives me a clear and thorough understanding of your experience and technical background. Thank you for your time!';
-
-      logger.info(`[InterviewService] Interview ${sessionId} completed naturally after ${session.totalTurns} turns.`);
-
-      return {
-        acknowledgement: 'Got it.',
-        action: 'end_interview',
-        nextQuestion: wrapUpMsg,
-        nextTopic: currentTopicObj.name,
-        currentTopicIndex: session.currentTopicIndex,
-        totalTopics: session.topics.length,
-        isComplete: true,
+    const currentTopic =
+      session.topics[
+        session.currentTopicIndex
+      ] || {
+        name: 'General',
+        objective:
+          'Evaluate general Flutter/Dart technical competence.',
       };
+
+    const topicsRemaining =
+      session.topics
+        .slice(
+          session.currentTopicIndex + 1,
+        )
+        .map((topic) => topic.name);
+
+    const isAtMaxTurns =
+      session.totalTurns >= session.maxTurns;
+
+    if (isAtMaxTurns) {
+      return this.completeInterview(
+        session,
+        currentTopic.name,
+        'Maximum interview turns reached.',
+      );
     }
 
-    // Call Gemini for next turn
-    const recentQuestions = session.interactions
-      .slice(-8)
-      .map((i) => i.question)
-      .filter(Boolean);
+    const recentQuestions =
+      session.interactions
+        .slice(-10)
+        .map((interaction) =>
+          interaction.question?.trim(),
+        )
+        .filter(
+          (question): question is string =>
+            Boolean(question),
+        );
 
-    const turn = await aiService.getNextConversationalTurn({
-      role: session.role,
-      experience: session.experience,
-      skills: session.skills,
-      difficulty: session.difficulty,
-      currentTopic: currentTopicObj.name,
-      topicObjective: currentTopicObj.objective,
-      previousQuestion: lastInteraction?.question || '',
-      candidateAnswer: answer,
-      conversationSummary: session.conversationSummary,
-      topicsCovered: session.topicsCovered,
-      topicsRemaining,
-      followUpsUsed: session.followUpsUsedForCurrentTopic,
-      recentQuestions,
-      turnNumber: session.totalTurns,
-      maxTurns: session.maxTurns,
-    });
+    const turn =
+      await aiService.getNextConversationalTurn({
+        role: session.role,
+        experience: session.experience,
+        skills: session.skills,
 
-    session.conversationSummary = turn.conversationSummary;
+        currentTopic: currentTopic.name,
+        topicObjective:
+          currentTopic.objective,
 
-    let finalAction: 'follow_up' | 'new_topic' | 'end_interview' = turn.action;
-    let nextQuestion = turn.nextQuestion;
-    let nextTopic = turn.nextTopic;
+        previousQuestion:
+          lastInteraction?.question || '',
 
-    // Enforce max 1 follow-up per topic rule on the backend
-    if (finalAction === 'follow_up') {
-      if (session.followUpsUsedForCurrentTopic >= 1) {
+        candidateAnswer: cleanedAnswer,
+
+        conversationSummary:
+          session.conversationSummary,
+
+        topicsCovered:
+          session.topicsCovered,
+
+        topicsRemaining,
+
+        followUpsUsed:
+          session.followUpsUsedForCurrentTopic,
+
+        recentQuestions,
+
+        turnNumber: session.totalTurns,
+        maxTurns: session.maxTurns,
+      });
+
+    session.conversationSummary =
+      turn.conversationSummary;
+
+    let finalAction:
+      | 'follow_up'
+      | 'new_topic'
+      | 'end_interview' =
+      turn.action;
+
+    let nextQuestion =
+      turn.nextQuestion.trim();
+
+    let nextTopic =
+      turn.nextTopic.trim();
+
+    // ----------------------------------------------------------
+    // Backend safety rule:
+    // Never allow more than 2 follow-ups for one topic.
+    // ----------------------------------------------------------
+
+    if (
+      finalAction === 'follow_up'
+    ) {
+      if (
+        session.followUpsUsedForCurrentTopic >=
+        2
+      ) {
         finalAction = 'new_topic';
       } else {
         session.followUpsUsedForCurrentTopic++;
       }
     }
 
-    if (finalAction === 'new_topic') {
-      session.topicsCovered.push(currentTopicObj.name);
-      session.currentTopicIndex++;
-      session.followUpsUsedForCurrentTopic = 0;
+    // ----------------------------------------------------------
+    // Move to a new topic only when AI selected new_topic.
+    // Synchronize the topic index with the topic AI selected.
+    // ----------------------------------------------------------
 
-      if (session.currentTopicIndex >= session.topics.length) {
-        session.status = 'completed';
-        finalAction = 'end_interview';
-        nextQuestion =
-          'Alright, that covers everything I wanted to discuss today. Thank you so much for walking me through your experience!';
-        nextTopic = 'Wrap Up';
-      } else {
-        nextTopic = session.topics[session.currentTopicIndex]?.name || nextTopic;
+    if (
+      finalAction === 'new_topic'
+    ) {
+      if (currentTopic.name) {
+        if (
+          !session.topicsCovered.includes(
+            currentTopic.name,
+          )
+        ) {
+          session.topicsCovered.push(
+            currentTopic.name,
+          );
+        }
       }
+
+      const matchedTopicIndex =
+        session.topics.findIndex(
+          (topic, index) =>
+            index >
+              session.currentTopicIndex &&
+            topic.name
+              .trim()
+              .toLowerCase() ===
+              nextTopic
+                .trim()
+                .toLowerCase(),
+        );
+
+      if (matchedTopicIndex >= 0) {
+        session.currentTopicIndex =
+          matchedTopicIndex;
+      } else {
+        const nextIndex =
+          session.currentTopicIndex + 1;
+
+        if (
+          nextIndex >=
+          session.topics.length
+        ) {
+          return this.completeInterview(
+            session,
+            currentTopic.name,
+            'All interview topics have been covered.',
+          );
+        }
+
+        session.currentTopicIndex =
+          nextIndex;
+
+        nextTopic =
+          session.topics[
+            nextIndex
+          ]?.name || nextTopic;
+      }
+
+      session.followUpsUsedForCurrentTopic = 0;
     }
 
-    if (finalAction !== 'end_interview') {
-      session.totalTurns++;
-      session.interactions.push({
-        question: nextQuestion,
-        answer: '',
-        topic: nextTopic,
-        type: finalAction === 'follow_up' ? 'follow_up' : 'primary',
-        timestamp: new Date().toISOString(),
-      });
+    // ----------------------------------------------------------
+    // Final safety check.
+    // ----------------------------------------------------------
+
+    if (!nextQuestion) {
+      throw new Error(
+        'AI did not return a next interview question',
+      );
     }
+
+    if (
+      session.totalTurns + 1 >
+      session.maxTurns
+    ) {
+      return this.completeInterview(
+        session,
+        currentTopic.name,
+        'Interview duration reached its limit.',
+      );
+    }
+
+    // Add the next interviewer question.
+    session.totalTurns++;
+
+    session.interactions.push({
+      question: nextQuestion,
+      answer: '',
+      topic: nextTopic,
+      type:
+        finalAction === 'follow_up'
+          ? 'follow_up'
+          : 'primary',
+      timestamp:
+        new Date().toISOString(),
+    });
+
+    logger.info(
+      `[InterviewService] Session ${sessionId}: turn=${session.totalTurns}, action=${finalAction}, quality=${turn.answerQuality}, topic="${nextTopic}"`,
+    );
 
     return {
-      acknowledgement: turn.acknowledgement,
+      acknowledgement:
+        turn.acknowledgement,
+
       action: finalAction,
+
+      answerQuality:
+        turn.answerQuality,
+
       nextQuestion,
+
       nextTopic,
-      currentTopicIndex: session.currentTopicIndex,
-      totalTopics: session.topics.length,
-      isComplete: session.status === 'completed' || finalAction === 'end_interview',
+
+      currentTopicIndex:
+        session.currentTopicIndex,
+
+      totalTopics:
+        session.topics.length,
+
+      isComplete: false,
     };
   }
 
   /**
-   * STAGE 3: Generate and retrieve final evaluation scorecard, persisting to DB.
+   * Completes the active interview without generating another question.
+   */
+  private completeInterview(
+    session: ActiveConversationalSession,
+    topic: string,
+    reason: string,
+  ): {
+    acknowledgement: string;
+    action: 'end_interview';
+    answerQuality:
+      | 'weak'
+      | 'average'
+      | 'strong'
+      | 'excellent';
+    nextQuestion: string;
+    nextTopic: string;
+    currentTopicIndex: number;
+    totalTopics: number;
+    isComplete: true;
+  } {
+    session.status = 'completed';
+
+    logger.info(
+      `[InterviewService] Interview ${session.id} completed: ${reason}`,
+    );
+
+    return {
+      acknowledgement: 'Thank you.',
+      action: 'end_interview',
+      answerQuality: 'average',
+      nextQuestion:
+        'That covers the interview. Thank you for your time!',
+      nextTopic: topic,
+      currentTopicIndex:
+        session.currentTopicIndex,
+      totalTopics: session.topics.length,
+      isComplete: true,
+    };
+  }
+
+  /**
+   * STAGE 3
+   *
+   * Generates the final evaluation and persists it.
+   *
+   * Difficulty is intentionally NOT passed to the AI.
    */
   async getFinalResult(
     sessionId: string,
-    userId: string
+    userId: string,
   ): Promise<FinalInterviewEvaluation> {
-    const session = this.activeSessions.get(sessionId);
+    const session =
+      this.activeSessions.get(sessionId);
 
     if (!session) {
-      throw Object.assign(new Error('Interview session not found or already archived'), { statusCode: 404 });
+      throw Object.assign(
+        new Error(
+          'Interview session not found or already archived',
+        ),
+        { statusCode: 404 },
+      );
     }
 
     if (session.userId !== userId) {
-      throw Object.assign(new Error('Forbidden: session does not belong to user'), { statusCode: 403 });
+      throw Object.assign(
+        new Error(
+          'Forbidden: session does not belong to user',
+        ),
+        { statusCode: 403 },
+      );
     }
 
     if (!session.finalEvaluation) {
-      // Generate final evaluation via Gemini
-      const evaluation = await aiService.generateFinalEvaluation({
-        role: session.role,
-        experience: session.experience,
-        difficulty: session.difficulty,
-        skills: session.skills,
-        transcript: session.interactions.filter((i) => i.answer.trim().length > 0),
-      });
+      const transcript =
+        session.interactions.filter(
+          (interaction) =>
+            interaction.answer.trim().length > 0,
+        );
 
-      session.finalEvaluation = evaluation;
+      if (transcript.length === 0) {
+        throw Object.assign(
+          new Error(
+            'No completed interview answers found',
+          ),
+          { statusCode: 400 },
+        );
+      }
+
+      const evaluation =
+        await aiService.generateFinalEvaluation({
+          role: session.role,
+          experience: session.experience,
+          skills: session.skills,
+          transcript,
+        });
+
+      session.finalEvaluation =
+        evaluation;
+
       session.status = 'completed';
 
-      // Persist to database
-      const durationSecs = Math.max(1, Math.round((Date.now() - session.startedAt) / 1000));
+      const durationSecs = Math.max(
+        1,
+        Math.round(
+          (Date.now() -
+            session.startedAt) /
+            1000,
+        ),
+      );
+
       const hiringBand =
-        evaluation.performanceLevel === 'Excellent'
+        evaluation.performanceLevel ===
+        'Excellent'
           ? 'Strong Hire'
-          : evaluation.performanceLevel === 'Good'
+          : evaluation.performanceLevel ===
+            'Good'
           ? 'Hire'
-          : evaluation.performanceLevel === 'Average'
+          : evaluation.performanceLevel ===
+            'Average'
           ? 'Leaning Hire'
           : 'Needs Practice';
 
       try {
+        /*
+         * The repository may still require a legacy `difficulty`
+         * database field. We keep the database value as "Adaptive"
+         * for backward compatibility, while difficulty is completely
+         * removed from the active interview/AI logic.
+         *
+         * If you remove `difficulty` from the database schema later,
+         * remove this field from the repository input as well.
+         */
         await interviewRepository.create({
           userId,
           role: session.role,
           type: 'technical',
-          difficulty: session.difficulty,
-          questionCount: session.interactions.length,
-          score: evaluation.overallScore,
+
+          questionCount:
+            transcript.length,
+
+          score:
+            evaluation.overallScore,
+
           hiringBand,
-          summary: evaluation.summary,
-          strengths: evaluation.strengths,
-          areasToImprove: evaluation.areasToImprove,
-          skillScores: evaluation.skillPerformance ?? {},
+
+          summary:
+            evaluation.summary,
+
+          strengths:
+            evaluation.strengths,
+
+          areasToImprove:
+            evaluation.areasToImprove,
+
+          skillScores:
+            evaluation.skillPerformance ??
+            {},
+
           durationSecs,
         });
-        logger.info(`[InterviewService] Saved interview ${sessionId} into database for user=${userId}`);
+
+        logger.info(
+          `[InterviewService] Saved interview ${sessionId} into database for user=${userId}`,
+        );
       } catch (dbErr) {
-        logger.error(`[InterviewService] Failed to save session to DB:`, dbErr);
+        logger.error(
+          `[InterviewService] Failed to save session to DB:`,
+          dbErr,
+        );
       }
     }
 
     return session.finalEvaluation;
   }
 
-  /** Save a manual completed interview session. */
+  /**
+   * Save a manually completed interview session.
+   */
   async saveSession(
     userId: string,
-    data: Omit<CreateInterviewSessionInput, 'userId'>
+    data: Omit<
+      CreateInterviewSessionInput,
+      'userId'
+    >,
   ): Promise<InterviewSession> {
-    const session = await interviewRepository.create({ ...data, userId });
-    logger.info(`Interview saved — user=${userId} score=${data.score} band=${data.hiringBand}`);
+    const session =
+      await interviewRepository.create({
+        ...data,
+        userId,
+      });
+
+    logger.info(
+      `Interview saved — user=${userId} score=${data.score} band=${data.hiringBand}`,
+    );
+
     return session;
   }
 
-  /** List sessions for a user (paginated). */
-  async listSessions(userId: string, limit = 20, offset = 0): Promise<InterviewSession[]> {
-    return interviewRepository.findByUserId(userId, limit, offset);
+  /**
+   * List sessions for a user.
+   */
+  async listSessions(
+    userId: string,
+    limit = 20,
+    offset = 0,
+  ): Promise<InterviewSession[]> {
+    return interviewRepository.findByUserId(
+      userId,
+      limit,
+      offset,
+    );
   }
 
-  /** Get a single session from DB, verifying ownership. */
-  async getSession(sessionId: string, userId: string): Promise<InterviewSession> {
-    const session = await interviewRepository.findById(sessionId);
+  /**
+   * Get a single session from DB.
+   */
+  async getSession(
+    sessionId: string,
+    userId: string,
+  ): Promise<InterviewSession> {
+    const session =
+      await interviewRepository.findById(
+        sessionId,
+      );
+
     if (!session) {
-      throw Object.assign(new Error('Interview session not found'), { statusCode: 404 });
+      throw Object.assign(
+        new Error(
+          'Interview session not found',
+        ),
+        { statusCode: 404 },
+      );
     }
+
     if (session.userId !== userId) {
-      throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
+      throw Object.assign(
+        new Error('Forbidden'),
+        { statusCode: 403 },
+      );
     }
+
     return session;
   }
 
-  /** Aggregated performance stats for the home screen cards. */
-  async getStats(userId: string): Promise<InterviewStats> {
-    return interviewRepository.getStats(userId);
+  /**
+   * Aggregated performance stats.
+   */
+  async getStats(
+    userId: string,
+  ): Promise<InterviewStats> {
+    return interviewRepository.getStats(
+      userId,
+    );
   }
 }
 
-export const interviewService = new InterviewService();
+export const interviewService =
+  new InterviewService();

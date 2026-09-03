@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import { config } from '../config';
 
@@ -11,13 +12,20 @@ export interface InterviewTopic {
 }
 
 export interface InterviewBlueprint {
-  topics: InterviewTopic[]; // populated async after start returns
+  topics: InterviewTopic[];
   firstQuestion: string;
 }
+
+export type AnswerQuality =
+  | 'weak'
+  | 'average'
+  | 'strong'
+  | 'excellent';
 
 export interface ConversationalTurn {
   acknowledgement: string;
   action: 'follow_up' | 'new_topic';
+  answerQuality: AnswerQuality;
   nextQuestion: string;
   nextTopic: string;
   conversationSummary: string;
@@ -32,6 +40,7 @@ export interface QuestionReview {
 
 export interface FinalInterviewEvaluation {
   overallScore: number;
+
   performanceLevel:
     | 'Excellent'
     | 'Good'
@@ -83,9 +92,7 @@ export class AIService {
   private getClient(): GoogleGenAI {
     if (!this.client) {
       if (!config.gemini.apiKey?.trim()) {
-        throw new Error(
-          'GEMINI_API_KEY is not configured',
-        );
+        throw new Error('GEMINI_API_KEY is not configured');
       }
 
       this.client = new GoogleGenAI({
@@ -177,14 +184,10 @@ export class AIService {
             contents: prompt,
 
             config: {
-              responseMimeType:
-                'application/json',
-
+              responseMimeType: 'application/json',
               responseSchema: schema,
 
-              // Slight creativity for natural/random interviews.
               temperature: 0.8,
-
               topP: 0.9,
             },
           });
@@ -194,7 +197,6 @@ export class AIService {
         );
 
         lastError = null;
-
         break;
       } catch (err: any) {
         console.error(
@@ -254,27 +256,52 @@ export class AIService {
   }
 
   // ==========================================================
-  // STAGE 1-A
+  // HELPERS
+  // ==========================================================
+
+  private cleanSkills(
+    skills?: string[],
+  ): string[] {
+    return Array.isArray(skills)
+      ? skills
+          .filter(
+            (skill) =>
+              typeof skill === 'string' &&
+              skill.trim().length > 0,
+          )
+          .map((skill) => skill.trim())
+      : [];
+  }
+
+  private getSkillList(
+    skills?: string[],
+  ): string {
+    const cleanedSkills =
+      this.cleanSkills(skills);
+
+    return cleanedSkills.length > 0
+      ? cleanedSkills.join(', ')
+      : 'No specific skills provided';
+  }
+
+  // ==========================================================
+  // STAGE 1
   //
-  // ONLY GENERATE THE FIRST QUESTION.
+  // Generate only the first question.
   //
-  // Intentionally small prompt — no topics array in schema.
-  // This keeps latency to ~3-6 s instead of ~15-30 s.
-  // Topics are generated separately via generateTopics().
+  // Difficulty is NOT provided by the user.
   // ==========================================================
 
   async generateInterviewPlan(params: {
     role: string;
     experience?: string;
     skills?: string[];
-    difficulty?: string;
     questionCount?: number;
   }): Promise<InterviewBlueprint> {
     const {
       role,
       experience,
       skills,
-      difficulty,
     } = params;
 
     if (
@@ -285,55 +312,62 @@ export class AIService {
       throw new Error('Role is required');
     }
 
-    const cleanedSkills = Array.isArray(skills)
-      ? skills
-          .filter(
-            (skill) =>
-              typeof skill === 'string' &&
-              skill.trim(),
-          )
-          .map((skill) => skill.trim())
-      : [];
-
     const skillList =
-      cleanedSkills.length > 0
-        ? cleanedSkills.join(', ')
-        : 'No specific skills provided';
+      this.getSkillList(skills);
 
     const experienceText =
       experience?.trim() ||
       'Experience not specified';
 
-    const difficultyText =
-      difficulty?.trim() || 'Medium';
-
-    // ── Minimal prompt: ONE question only ──────────────────────
     const prompt = `
-You are a real human interviewer starting a live technical job interview.
+You are a real human technical interviewer starting a live technical interview for a Flutter/Dart developer.
 
-CANDIDATE
+CANDIDATE PROFILE:
 Role: ${role.trim()}
 Experience: ${experienceText}
-Skills: ${skillList}
-Difficulty: ${difficultyText}
+Background Skills: ${skillList}
 
-Generate exactly ONE short opening question.
+IMPORTANT:
+The candidate's listed skills are provided ONLY as background context.
+Do NOT restrict the interview to these skills.
+The interview must independently evaluate the candidate's overall Flutter and Dart knowledge.
 
-Rules:
-- Maximum 15 words.
-- Natural when spoken aloud.
-- Sound like a real interviewer, not a textbook.
-- Prefer practical or experience-based questions.
-- Do NOT always use the same opening pattern.
+FIRST QUESTION:
 
-Examples:
-"Could you tell me about a recent project you worked on?"
-"What was the most challenging part of your last role?"
+Generate exactly ONE natural opening interview question.
 
-Return ONLY JSON.
+Do NOT always ask:
+"Tell me about yourself."
+
+Vary the opening question naturally between interviews.
+
+The opening question may explore:
+
+* A recent Flutter project
+* A challenging technical problem
+* Their experience building Flutter applications
+* How they approach a Flutter/Dart problem
+* A real-world development experience
+* How they structure, debug, or maintain a Flutter application
+* A Flutter or Dart concept they have worked with
+
+The opening question should be appropriate for the candidate's experience level.
+
+Do not ask the candidate to simply list their skills.
+
+Do not make the opening question dependent on the candidate's listed skills.
+
+The question must:
+
+* Be maximum 15 words.
+* Sound natural when spoken aloud.
+* Sound like a real interviewer.
+* Not sound like a textbook or exam.
+* Be open-ended enough to start a conversation.
+
+Return ONLY valid JSON.
 `;
 
-    // ── Schema: firstQuestion only — no topics array ───────────
     const schema = {
       type: Type.OBJECT,
 
@@ -349,7 +383,7 @@ Return ONLY JSON.
     };
 
     console.log(
-      '[AIService] Generating first question (lightweight)...',
+      '[AIService] Generating first question...',
     );
 
     const result =
@@ -369,8 +403,6 @@ Return ONLY JSON.
       );
     }
 
-    // Return with empty topics — they will be populated async
-    // by interview.service.ts calling generateTopics() separately.
     return {
       topics: [],
       firstQuestion,
@@ -380,46 +412,127 @@ Return ONLY JSON.
   // ==========================================================
   // STAGE 1-B
   //
-  // GENERATE INTERVIEW TOPICS (async, called after start returns).
+  // Generate broad interview topics.
   //
-  // Called as fire-and-forget from interview.service.ts so the
-  // /start response is not blocked by topic generation.
+  // Skills are context only.
   // ==========================================================
 
   async generateTopics(params: {
     role: string;
     experience?: string;
     skills?: string[];
-    difficulty?: string;
   }): Promise<InterviewTopic[]> {
-    const { role, experience, skills, difficulty } = params;
-
-    const cleanedSkills = Array.isArray(skills)
-      ? skills.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())
-      : [];
+    const {
+      role,
+      experience,
+      skills,
+    } = params;
 
     const skillList =
-      cleanedSkills.length > 0
-        ? cleanedSkills.join(', ')
-        : 'No specific skills provided';
+      this.getSkillList(skills);
 
     const prompt = `
-You are a technical interviewer planning a mock interview.
+You are a senior technical interviewer planning a realistic Flutter/Dart technical interview.
 
-CANDIDATE
+CANDIDATE:
 Role: ${role.trim()}
 Experience: ${experience?.trim() || 'Not specified'}
-Skills: ${skillList}
-Difficulty: ${difficulty?.trim() || 'Medium'}
+Background Skills: ${skillList}
 
-Identify 4-6 broad topic areas to evaluate this candidate.
+IMPORTANT:
 
-Each topic should:
-- Be a genuine evaluation area (not a specific question).
-- Have a clear objective for the interviewer.
-- Be relevant to the role and experience level.
+The candidate's listed skills are CONTEXT ONLY.
 
-Return ONLY JSON.
+Do NOT treat the skills list as a whitelist of topics.
+
+The interview should evaluate the candidate's overall ability as a Flutter/Dart developer and may ask questions from ANY relevant area of Flutter and Dart, even if the candidate did not explicitly list that topic as a skill.
+
+Create 6-10 broad evaluation areas for the interview.
+
+Possible areas include, but are not limited to:
+
+DART:
+
+* Language fundamentals
+* OOP
+* Null safety
+* Collections
+* Generics
+* Extensions
+* Mixins
+* Futures
+* async/await
+* Streams
+* Isolates
+* Error handling
+
+FLUTTER:
+
+* Widget tree
+* StatelessWidget
+* StatefulWidget
+* BuildContext
+* Widget lifecycle
+* Keys
+* Widget rebuilding
+* Rendering
+* State management
+* Navigation
+* Forms
+* App lifecycle
+* Platform integration
+
+APPLICATION DEVELOPMENT:
+
+* REST APIs
+* Networking
+* JSON serialization
+* Authentication
+* Local storage
+* Caching
+* Offline handling
+* Pagination
+* Firebase
+* Error handling
+
+ENGINEERING:
+
+* Clean Architecture
+* Repository pattern
+* Dependency injection
+* SOLID principles
+* Testing
+* Debugging
+* Performance optimization
+* Memory management
+* Security
+* Release/debugging problems
+
+REAL-WORLD PROBLEM SOLVING:
+
+* API failures
+* Slow applications
+* Unexpected crashes
+* Memory issues
+* Large datasets
+* Offline/online synchronization
+* Architecture decisions
+* Production debugging
+
+Do not try to cover every possible area.
+
+Select a balanced set of areas appropriate for the candidate's role and experience.
+
+The experience level should influence the expected depth of questions, but it should NOT restrict the available topics.
+
+Each topic must contain:
+
+* name
+* objective
+
+The objective should explain what the interviewer wants to evaluate.
+
+Return ONLY valid JSON.
 `;
 
     const schema = {
@@ -433,39 +546,64 @@ Return ONLY JSON.
             type: Type.OBJECT,
 
             properties: {
-              name: { type: Type.STRING },
-              objective: { type: Type.STRING },
+              name: {
+                type: Type.STRING,
+              },
+
+              objective: {
+                type: Type.STRING,
+              },
             },
 
-            required: ['name', 'objective'],
+            required: [
+              'name',
+              'objective',
+            ],
+
             additionalProperties: false,
           },
         },
       },
 
       required: ['topics'],
+
       additionalProperties: false,
     };
 
     console.log(
-      '[AIService] Generating interview topics (background)...',
+      '[AIService] Generating interview topics...',
     );
 
-    const result = await this.executeWithFallback(prompt, schema);
+    const result =
+      await this.executeWithFallback(
+        prompt,
+        schema,
+      );
 
-    const topics: InterviewTopic[] = Array.isArray(result.topics)
-      ? result.topics
-          .map((topic: any) => ({
-            name: String(topic?.name || 'General Technical Discussion').trim(),
-            objective: String(
-              topic?.objective || 'Evaluate candidate competence',
-            ).trim(),
-          }))
-          .filter((topic: InterviewTopic) => topic.name.length > 0)
-      : [];
+    const topics: InterviewTopic[] =
+      Array.isArray(result.topics)
+        ? result.topics
+            .map((topic: any) => ({
+              name: String(
+                topic?.name ||
+                  'General Technical Discussion',
+              ).trim(),
+
+              objective: String(
+                topic?.objective ||
+                  'Evaluate candidate competence',
+              ).trim(),
+            }))
+            .filter(
+              (topic: InterviewTopic) =>
+                topic.name.length > 0,
+            )
+        : [];
 
     console.log(
-      `[AIService] Topics generated: ${topics.map((t) => t.name).join(', ')}`,
+      `[AIService] Topics generated: ${topics
+        .map((topic) => topic.name)
+        .join(', ')}`,
     );
 
     return topics;
@@ -474,32 +612,25 @@ Return ONLY JSON.
   // ==========================================================
   // STAGE 2
   //
-  // THIS IS THE IMPORTANT PART.
-  //
   // Called AFTER EVERY ANSWER.
+  //
+  // This is the adaptive interviewer.
   // ==========================================================
 
   async getNextConversationalTurn(params: {
     role: string;
-
     experience?: string;
-
     skills?: string[];
 
-    difficulty?: string;
-
     currentTopic: string;
-
     topicObjective?: string;
 
     previousQuestion: string;
-
     candidateAnswer: string;
 
     conversationSummary: string;
 
     topicsCovered: string[];
-
     topicsRemaining: string[];
 
     followUpsUsed: number;
@@ -507,23 +638,28 @@ Return ONLY JSON.
     recentQuestions?: string[];
 
     turnNumber?: number;
-
     maxTurns?: number;
   }): Promise<ConversationalTurn> {
     const {
       role,
       experience,
       skills,
-      difficulty,
+
       currentTopic,
       topicObjective,
+
       previousQuestion,
       candidateAnswer,
+
       conversationSummary,
+
       topicsCovered,
       topicsRemaining,
+
       followUpsUsed,
+
       recentQuestions,
+
       turnNumber,
       maxTurns,
     } = params;
@@ -533,61 +669,65 @@ Return ONLY JSON.
       'The candidate gave little or no response.';
 
     const skillList =
-      skills && skills.length > 0
-        ? skills.join(', ')
-        : 'General role knowledge';
+      this.getSkillList(skills);
 
     const recentQuestionList =
       recentQuestions &&
       recentQuestions.length > 0
         ? recentQuestions
-            .slice(-8)
+            .slice(-10)
             .map(
-              (q, index) =>
-                `${index + 1}. ${q}`,
+              (question, index) =>
+                `${index + 1}. ${question}`,
             )
             .join('\n')
+        : 'None';
+
+    const coveredTopics =
+      topicsCovered &&
+      topicsCovered.length > 0
+        ? topicsCovered.join(', ')
         : 'None';
 
     const remainingTopics =
       topicsRemaining &&
       topicsRemaining.length > 0
         ? topicsRemaining.join(', ')
-        : 'No predefined topics remaining';
+        : 'None';
 
     const prompt = `
-You are a REAL HUMAN technical interviewer
-having a live spoken interview.
+You are a senior technical interviewer conducting a realistic, adaptive Flutter/Dart technical interview.
 
-You have just listened to the candidate's answer.
+Your goal is to behave like a REAL human interviewer, not a question generator or an exam.
 
-Your job is to decide what the interviewer should say NEXT.
-
-==================================================
-CANDIDATE
-==================================================
-
-Role:
-${role}
-
-Experience:
-${experience || 'Not specified'}
-
-Difficulty:
-${difficulty || 'Medium'}
-
-Skills:
-${skillList}
+You must listen to the candidate's actual answer and decide what would be the most valuable next question.
 
 ==================================================
-CURRENT CONVERSATION
+CANDIDATE PROFILE
+=================
+
+Role: ${role}
+Experience: ${experience || 'Not specified'}
+Background Skills: ${skillList}
+
+IMPORTANT:
+
+The candidate's listed skills are BACKGROUND INFORMATION ONLY.
+
+They MUST NOT restrict which questions you can ask.
+
+You are interviewing the candidate for their overall Flutter/Dart capability.
+
+You may ask about ANY relevant Flutter or Dart topic, even if it was not included in the candidate's skill list.
+
+The candidate's experience level should determine the expected depth and complexity of the question.
+
 ==================================================
+CURRENT INTERVIEW STATE
+=======================
 
-Current topic:
-${currentTopic}
-
-Topic objective:
-${topicObjective || 'Evaluate technical competence'}
+Current topic: ${currentTopic}
+Topic objective: ${topicObjective || 'Evaluate practical technical competence'}
 
 Previous question:
 "${previousQuestion}"
@@ -595,273 +735,292 @@ Previous question:
 Candidate answer:
 "${cleanedAnswer}"
 
-Compact conversation memory:
-"${conversationSummary || 'No previous memory.'}"
+Conversation memory:
+"${conversationSummary || 'Interview just started.'}"
 
 Topics already discussed:
-${topicsCovered.join(', ') || 'None'}
+${(topicsCovered || []).join(', ') || 'None'}
 
-Possible topics:
+Remaining topic pool:
 ${remainingTopics}
 
-Follow-ups already used on current topic:
+Follow-ups used on current topic:
 ${followUpsUsed}
 
-Interview turn:
-${turnNumber || 1}
-
-Maximum turns:
-${maxTurns || 10}
+Current turn:
+${turnNumber || 1} / ${maxTurns || 10}
 
 ==================================================
 RECENT QUESTIONS
-==================================================
+================
 
 ${recentQuestionList}
 
-==================================================
-MOST IMPORTANT RULE
-==================================================
+Do not repeat these questions.
 
-DO NOT behave like a fixed question list.
-
-The next question must be selected dynamically.
-
-Think like an experienced interviewer.
-
-First understand the candidate's answer.
-
-Then decide whether the candidate's answer creates a
-useful opportunity for a follow-up.
+Avoid asking substantially identical questions even if the wording is different.
 
 ==================================================
-OPTION 1 — FOLLOW UP
-==================================================
+ADAPTIVE INTERVIEW BEHAVIOR
+===========================
 
-Choose "follow_up" when:
+After every candidate answer, mentally evaluate:
 
-- The answer contains an interesting technical detail.
-- The candidate made an important claim.
-- The candidate's reasoning needs clarification.
-- The answer is incomplete.
-- The interviewer can naturally go one level deeper.
-- A practical trade-off should be explored.
+1. Accuracy
+2. Technical depth
+3. Practical understanding
+4. Reasoning
+5. Ability to explain the concept
+6. Relevance to the question
+7. Confidence demonstrated by the answer
 
-A follow-up should feel directly connected to
-what the candidate just said.
+Classify the answer internally as:
 
-Example:
+WEAK:
+The candidate is incorrect, vague, confused, or unable to explain the concept.
 
-Candidate:
-"I used Riverpod because it made state management easier."
+NEXT ACTION:
+Ask a simpler clarification question, ask for a concrete example, or move to another suitable topic if the candidate clearly does not know the subject.
 
-Good follow-up:
+AVERAGE:
+The candidate understands the basic concept but lacks depth or practical understanding.
 
-"What made Riverpod a better choice for that project?"
+NEXT ACTION:
+Ask a practical or scenario-based question that tests application of the concept.
 
-Bad:
+STRONG:
+The candidate gives an accurate and reasonably detailed answer.
 
-"What are the advantages of Riverpod?"
+NEXT ACTION:
+Increase the technical depth or ask a deeper practical question.
 
-==================================================
-OPTION 2 — NEW TOPIC
-==================================================
+EXCELLENT:
+The candidate demonstrates strong technical understanding, reasoning, and practical experience.
 
-Choose "new_topic" when:
-
-- The candidate answered clearly.
-- The current topic has already been explored.
-- There is no valuable follow-up.
-- The interviewer should change direction.
-- A fresh question would provide better evaluation.
-
-The new question can be:
-
-- technical
-- practical
-- debugging
-- problem solving
-- architecture
-- performance
-- experience
-- behavioral
-
-It does NOT need to directly match a listed skill.
+NEXT ACTION:
+You may ask a deeper question involving internals, trade-offs, architecture, performance, debugging, or edge cases — or move to another important topic if the current topic has been sufficiently evaluated.
 
 ==================================================
-RANDOMNESS
+IMPORTANT DIFFICULTY RULE
+=========================
+
+There is NO user-selected difficulty level.
+
+Do NOT use Easy, Medium, or Hard.
+
+Difficulty must be determined dynamically from:
+
+* Candidate experience
+* Previous answers
+* Demonstrated technical ability
+* Interview progress
+* Topic complexity
+
+The interview should naturally progress from foundational questions toward deeper questions when the candidate demonstrates strong knowledge.
+
+Do not make every question progressively harder.
+
+A candidate may be strong in one area and weak in another.
+
+Adapt independently for each topic.
+
 ==================================================
+QUESTION SELECTION
+==================
 
-The interview should NOT follow a predictable sequence.
+Before generating the next question, determine internally:
 
-Do NOT always do:
+1. Should I follow up on the current answer?
+2. Has the current topic been sufficiently tested?
+3. Should I move to another topic?
+4. What important Flutter/Dart area has not been evaluated yet?
+5. What question best measures the candidate's actual ability?
+6. Is the question appropriate for the candidate's experience?
+7. Has a similar question already been asked?
 
-Question → Follow-up → New topic → Follow-up.
+Prefer a follow-up when the candidate's answer contains something worth exploring.
 
-Sometimes:
+Move to a new topic when:
 
-Question → New topic.
-
-Sometimes:
-
-Question → Follow-up → Follow-up is NOT allowed.
-
-Sometimes:
-
-Question → New topic → New topic.
-
-The decision must depend on the candidate's answer.
+* The current topic has been sufficiently evaluated.
+* The candidate has already received enough follow-ups.
+* Another topic is more valuable for evaluating the candidate.
+* The candidate clearly lacks knowledge and continuing would not provide useful information.
 
 ==================================================
-FOLLOW-UP LIMIT
+FOLLOW-UP RULE
+==============
+
+Follow-ups are allowed when they provide meaningful additional evaluation.
+
+Do not ask follow-ups just for the sake of asking them.
+
+Normally use 0-2 follow-ups per topic.
+
+A follow-up can:
+
+* Clarify an unclear answer.
+* Ask for a real-world example.
+* Test deeper understanding.
+* Explore a trade-off.
+* Test debugging ability.
+* Test practical implementation.
+* Challenge an assumption made by the candidate.
+
 ==================================================
+FLUTTER/DART QUESTION DOMAIN
+============================
 
-Maximum ONE follow-up on the same topic.
+You are free to ask questions from the entire Flutter/Dart ecosystem.
 
-If:
+Examples include:
 
-followUpsUsed >= 1
+Dart:
 
-you MUST choose:
+* OOP
+* Null safety
+* Collections
+* Generics
+* Extensions
+* Mixins
+* Futures
+* async/await
+* Streams
+* Isolates
+* Error handling
+* Memory concepts
+
+Flutter:
+
+* Widget tree
+* StatelessWidget
+* StatefulWidget
+* BuildContext
+* Widget lifecycle
+* Keys
+* setState
+* Rebuilds
+* Rendering
+* State management
+* Navigation
+* Forms
+* App lifecycle
+* Platform integration
+
+Application development:
+
+* REST APIs
+* Networking
+* JSON serialization
+* Authentication
+* Local storage
+* Firebase
+* Caching
+* Pagination
+* Offline handling
+* Error handling
+
+Software engineering:
+
+* Clean Architecture
+* SOLID
+* Repository pattern
+* Dependency injection
+* Testing
+* Debugging
+* Performance
+* Memory leaks
+* Security
+* Release issues
+
+Real-world scenarios:
+
+* API timeout
+* Slow application
+* Excessive widget rebuilds
+* Memory problems
+* Production crash
+* Large lists
+* Offline synchronization
+* Authentication failures
+* Architecture decisions
+
+These are examples, NOT a fixed list.
+
+You may ask about any relevant Flutter/Dart concept.
+
+==================================================
+CONVERSATIONAL STYLE
+====================
+
+Sound like a real interviewer.
+
+Do:
+
+* Ask one question at a time.
+* Use short natural acknowledgements when appropriate.
+* Respond naturally to the candidate's previous answer.
+* Reference something the candidate actually said when useful.
+* Keep the conversation professional.
+
+Do NOT:
+
+* Give a lecture.
+* Explain the correct answer during the interview.
+* Ask multiple questions at once.
+* Turn questions into bullet points.
+* Repeat questions.
+* Mention internal scoring or difficulty.
+* Say "According to your skills..."
+* Restrict questions to the candidate's listed skills.
+
+The next question must be exactly ONE natural spoken sentence.
+
+Maximum 15 words.
+
+Prefer 7-12 words.
+
+==================================================
+ACTION
+======
+
+Use:
+
+"follow_up"
+
+when continuing the current topic provides useful additional evaluation.
+
+Use:
 
 "new_topic"
 
-==================================================
-QUESTION VARIETY
-==================================================
-
-Never repeat a recent question.
-
-Do NOT ask a slightly rewritten version of a previous question.
-
-Avoid repeated patterns.
-
-For example, do NOT ask:
-
-"What is Provider?"
-
-then:
-
-"What is Riverpod?"
-
-then:
-
-"What is Firebase?"
-
-That feels like an exam.
-
-Instead vary naturally:
-
-"Why did you choose that approach?"
-
-"How would you debug that?"
-
-"What would happen if the API failed?"
-
-"Tell me about a difficult issue you faced."
-
-"How would you improve that implementation?"
-
-==================================================
-QUESTION LENGTH
-==================================================
-
-The next question MUST be:
-
-- One sentence.
-- Short.
-- Spoken naturally.
-- Maximum 15 words.
-- Prefer 6-12 words.
-- No multi-part questions.
-- No essay-style questions.
-
-==================================================
-ACKNOWLEDGEMENT
-==================================================
-
-Optionally respond naturally before the question.
-
-Examples:
-
-"Got it."
-
-"Okay."
-
-"That makes sense."
-
-"Interesting."
-
-"Right."
-
-"I see."
-
-"Good."
-
-"Alright."
-
-"That's fair."
-
-Sometimes use an empty acknowledgement.
-
-IMPORTANT:
-
-Do NOT use the same acknowledgement repeatedly.
-
-Keep it under 4 words.
-
-==================================================
-CONVERSATION MEMORY
-==================================================
-
-Update the summary with only useful information learned
-from the candidate.
-
-Keep it short.
-
-Maximum 2 sentences.
-
-Do NOT copy the candidate's entire answer.
-
-==================================================
-TOPIC
-==================================================
-
-If choosing follow_up:
-
-nextTopic should normally remain:
-
-${currentTopic}
-
-If choosing new_topic:
-
-choose a genuinely different topic.
-
-Do NOT always select the first remaining topic.
-
-==================================================
-FINAL TURN
-==================================================
-
-If the interview is close to its maximum turn count,
-prefer a new topic that gives strong overall evaluation.
-
-Do not unnecessarily start a deep follow-up when there
-is not enough room for it.
+when moving to another topic is more valuable.
 
 ==================================================
 OUTPUT
-==================================================
+======
 
-Return ONLY JSON.
+Return ONLY valid JSON.
 
-{
-  "acknowledgement": "...",
-  "action": "follow_up" | "new_topic",
-  "nextQuestion": "...",
-  "nextTopic": "...",
-  "conversationSummary": "..."
-}
+acknowledgement:
+A natural interviewer reaction, maximum 4 words, or empty string.
+
+action:
+"follow_up" or "new_topic"
+
+answerQuality:
+"weak", "average", "strong", or "excellent"
+
+nextQuestion:
+Exactly one natural interview question.
+
+nextTopic:
+The topic being evaluated by the next question.
+
+conversationSummary:
+A concise 1-2 sentence summary of important information demonstrated by the candidate.
+
+Do not include explanations outside the JSON.
 `;
 
     const schema = {
@@ -884,18 +1043,29 @@ Return ONLY JSON.
           ],
         },
 
+        answerQuality: {
+          type: Type.STRING,
+
+          enum: [
+            'weak',
+            'average',
+            'strong',
+            'excellent',
+          ],
+        },
+
         nextQuestion: {
           type: Type.STRING,
 
           description:
-            'Short natural spoken interview question, maximum 15 words.',
+            'One natural spoken interview question, maximum 15 words.',
         },
 
         nextTopic: {
           type: Type.STRING,
 
           description:
-            'Topic for the next question.',
+            'Topic evaluated by the next question.',
         },
 
         conversationSummary: {
@@ -909,6 +1079,7 @@ Return ONLY JSON.
       required: [
         'acknowledgement',
         'action',
+        'answerQuality',
         'nextQuestion',
         'nextTopic',
         'conversationSummary',
@@ -923,15 +1094,23 @@ Return ONLY JSON.
         schema,
       );
 
-    let action =
+    // ----------------------------------------------------------
+    // Normalize result
+    // ----------------------------------------------------------
+
+    let action:
+      | 'follow_up'
+      | 'new_topic' =
       result.action === 'follow_up'
         ? 'follow_up'
         : 'new_topic';
 
-    // Hard safety rule.
-    if (followUpsUsed >= 1) {
-      action = 'new_topic';
-    }
+    let answerQuality: AnswerQuality =
+      ['weak', 'average', 'strong', 'excellent'].includes(
+        result.answerQuality,
+      )
+        ? result.answerQuality
+        : 'average';
 
     let nextQuestion =
       String(
@@ -968,6 +1147,11 @@ Return ONLY JSON.
           .join(' ');
     }
 
+    // Never allow more than 2 follow-ups.
+    if (followUpsUsed >= 2) {
+      action = 'new_topic';
+    }
+
     if (!nextQuestion) {
       throw new Error(
         'Gemini failed to generate next interview question',
@@ -981,9 +1165,9 @@ Return ONLY JSON.
     return {
       acknowledgement,
 
-      action: action as
-        | 'follow_up'
-        | 'new_topic',
+      action,
+
+      answerQuality,
 
       nextQuestion,
 
@@ -999,24 +1183,18 @@ Return ONLY JSON.
   //
   // FINAL EVALUATION
   //
-  // ONLY CALL ONCE AFTER INTERVIEW ENDS.
+  // Called once after interview ends.
   // ==========================================================
 
   async generateFinalEvaluation(params: {
     role: string;
-
     experience?: string;
-
-    difficulty?: string;
-
     skills?: string[];
-
     transcript: TranscriptEntry[];
   }): Promise<FinalInterviewEvaluation> {
     const {
       role,
       experience,
-      difficulty,
       skills,
       transcript,
     } = params;
@@ -1031,9 +1209,7 @@ Return ONLY JSON.
     }
 
     const skillList =
-      skills && skills.length > 0
-        ? skills.join(', ')
-        : role;
+      this.getSkillList(skills);
 
     const transcriptFormatted =
       transcript
@@ -1051,8 +1227,7 @@ Candidate: ${
         .join('\n\n');
 
     const prompt = `
-You are a senior hiring manager evaluating
-a completed technical mock interview.
+You are a senior hiring manager evaluating a completed technical mock interview for a Flutter/Dart developer.
 
 ROLE:
 ${role}
@@ -1060,101 +1235,124 @@ ${role}
 EXPERIENCE:
 ${experience || 'Not specified'}
 
-DIFFICULTY:
-${difficulty || 'Medium'}
-
-SKILLS CONTEXT:
+BACKGROUND SKILLS:
 ${skillList}
+
+IMPORTANT:
+
+The candidate's listed skills are background information only.
+
+Evaluate the candidate based ONLY on what they actually demonstrated during the interview.
+
+Do not assume the candidate knows something simply because it appears in their skills list.
+
+Do not penalize the candidate because a particular topic was not asked.
+
+Evaluate whether the candidate's demonstrated ability is appropriate for their stated experience level.
 
 ==================================================
 FULL INTERVIEW
-==================================================
+==============
 
 ${transcriptFormatted}
 
 ==================================================
-EVALUATION
-==================================================
+EVALUATION CRITERIA
+===================
 
-Evaluate ONLY what the candidate actually demonstrated.
+Evaluate:
 
-Do not assume knowledge that was not demonstrated.
+* Dart knowledge
+* Flutter knowledge
+* Practical development ability
+* Problem solving
+* Debugging
+* Architecture and design thinking
+* Performance understanding
+* Code quality and engineering judgment
+* Communication and clarity
+* Ability to explain technical decisions
+* Role readiness
+* Depth of understanding relative to experience
 
-Consider:
-
-- Technical knowledge
-- Practical understanding
-- Problem solving
-- Debugging ability
-- Architecture and design thinking
-- Communication
-- Role readiness
-- Quality of reasoning
-- Ability to explain decisions
-
-Do NOT punish a candidate simply because a topic
-was not asked.
+Base the evaluation ONLY on demonstrated evidence from the interview.
 
 ==================================================
 OVERALL SCORE
-==================================================
+=============
 
-0-100.
+Score from 0-100.
 
-Excellent: 85-100
-Good: 70-84
-Average: 55-69
-Needs Improvement: below 55
+The score should reflect the candidate's demonstrated technical ability relative to their experience level.
+
+85-100:
+Excellent
+
+70-84:
+Good
+
+55-69:
+Average
+
+Below 55:
+Needs Improvement
 
 ==================================================
 SUMMARY
-==================================================
+=======
 
-Write a professional 2-3 sentence summary.
+Write a professional 2-3 sentence summary of the candidate's performance.
 
 ==================================================
 STRENGTHS
-==================================================
+=========
 
-Provide 3-5 concrete strengths demonstrated
-during the interview.
+Provide 3-5 concrete strengths demonstrated during the interview.
+
+Do not write generic strengths.
 
 ==================================================
 AREAS TO IMPROVE
-==================================================
+================
 
-Provide 3-5 actionable improvements.
+Provide 3-5 specific and actionable improvements.
 
 ==================================================
 SKILL PERFORMANCE
-==================================================
+=================
 
-Score these dimensions from 0-100:
+Score each dimension from 0-100:
 
 Technical Knowledge
 Problem Solving
 Architecture & Design
 Communication & Clarity
-Role Mastery
+Flutter/Dart Role Mastery
+
+Scores must be based on demonstrated evidence.
 
 ==================================================
 RECOMMENDATIONS
-==================================================
+===============
 
-Provide 3-4 practical study topics or exercises.
+Provide 3-4 practical learning topics or exercises that would help the candidate improve.
+
+Recommendations should be based on weaknesses demonstrated during the interview.
 
 ==================================================
 QUESTION REVIEWS
-==================================================
+================
 
 For every interviewer question:
 
-- include the question
-- include candidate answer
-- score from 0-100
-- provide one concise feedback sentence
+* Include the question.
+* Include the candidate's answer.
+* Give a score from 0-100.
+* Provide one concise feedback sentence.
 
-Return ONLY JSON.
+Feedback must explain the quality of the candidate's actual answer.
+
+Return ONLY valid JSON.
 `;
 
     const schema = {
@@ -1216,7 +1414,7 @@ Return ONLY JSON.
               type: Type.INTEGER,
             },
 
-            'Role Mastery': {
+            'Flutter/Dart Role Mastery': {
               type: Type.INTEGER,
             },
           },
@@ -1226,7 +1424,7 @@ Return ONLY JSON.
             'Problem Solving',
             'Architecture & Design',
             'Communication & Clarity',
-            'Role Mastery',
+            'Flutter/Dart Role Mastery',
           ],
 
           additionalProperties: false,
@@ -1300,6 +1498,10 @@ Return ONLY JSON.
         schema,
       );
 
+    // ----------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------
+
     const clamp = (
       value: any,
     ): number => {
@@ -1313,6 +1515,10 @@ Return ONLY JSON.
         ),
       );
     };
+
+    // ----------------------------------------------------------
+    // Skill performance
+    // ----------------------------------------------------------
 
     const rawSkillPerformance =
       result.skillPerformance || {};
@@ -1330,6 +1536,18 @@ Return ONLY JSON.
       skillPerformance[key] =
         clamp(value);
     }
+
+    if (
+      skillPerformance['Flutter/Dart Role Mastery'] !== undefined &&
+      skillPerformance['Role Mastery'] === undefined
+    ) {
+      skillPerformance['Role Mastery'] =
+        skillPerformance['Flutter/Dart Role Mastery'];
+    }
+
+    // ----------------------------------------------------------
+    // Question reviews
+    // ----------------------------------------------------------
 
     const questionReviews:
       QuestionReview[] =
@@ -1359,6 +1577,10 @@ Return ONLY JSON.
             }),
           )
         : [];
+
+    // ----------------------------------------------------------
+    // Final result
+    // ----------------------------------------------------------
 
     return {
       overallScore:
@@ -1409,6 +1631,10 @@ Return ONLY JSON.
     };
   }
 }
+
+// ============================================================
+// SINGLETON
+// ============================================================
 
 export const aiService =
   new AIService();
