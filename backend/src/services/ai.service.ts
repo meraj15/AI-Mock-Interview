@@ -327,43 +327,25 @@ Role: ${role.trim()}
 Experience: ${experienceText}
 Background Skills: ${skillList}
 
-IMPORTANT:
-The candidate's listed skills are provided ONLY as background context.
-Do NOT restrict the interview to these skills.
-The interview must independently evaluate the candidate's overall Flutter and Dart knowledge.
+FIRST QUESTION - CANDIDATE INTRODUCTION:
 
-FIRST QUESTION:
+In every real interview, the first question MUST ALWAYS be an introduction question to break the ice and let the candidate introduce themselves.
 
-Generate exactly ONE natural opening interview question.
+Generate exactly ONE natural introduction question welcoming the candidate and asking them to introduce themselves and give a brief overview of their background and journey as a Flutter/Dart developer.
 
-Do NOT always ask:
-"Tell me about yourself."
+Examples of natural opening introduction questions:
+* "Could you introduce yourself and briefly walk me through your background as a developer?"
+* "To start off, please introduce yourself and tell me a bit about your journey."
+* "Welcome! Could you give a quick introduction about yourself and your work with Flutter?"
+* "Let's kick things off with a brief introduction of yourself and what you've been building."
+* "To begin, could you introduce yourself and share a bit about your developer journey?"
 
-Vary the opening question naturally between interviews.
-
-The opening question may explore:
-
-* A recent Flutter project
-* A challenging technical problem
-* Their experience building Flutter applications
-* How they approach a Flutter/Dart problem
-* A real-world development experience
-* How they structure, debug, or maintain a Flutter application
-* A Flutter or Dart concept they have worked with
-
-The opening question should be appropriate for the candidate's experience level.
-
-Do not ask the candidate to simply list their skills.
-
-Do not make the opening question dependent on the candidate's listed skills.
-
-The question must:
-
-* Be maximum 15 words.
-* Sound natural when spoken aloud.
-* Sound like a real interviewer.
-* Not sound like a textbook or exam.
-* Be open-ended enough to start a conversation.
+CRITICAL REQUIREMENTS:
+* The first question MUST ALWAYS be an introduction question asking the candidate to introduce themselves.
+* Do NOT jump straight into technical trivia, coding problems, or deep technical questions on this first question.
+* It must sound warm, conversational, and natural when spoken aloud by a real human interviewer.
+* Keep it concise (maximum 18 words).
+* Vary the wording naturally between sessions so it feels genuine and personal.
 
 Return ONLY valid JSON.
 `;
