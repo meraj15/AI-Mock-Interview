@@ -26,9 +26,18 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Load stats when the home tab is first shown.
+    // Load stats and sync profile data when the home tab is first shown.
     // Use addPostFrameCallback so the context is fully available.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthController>();
+      final profileCtrl = context.read<ProfileController>();
+      if (auth.user != null) {
+        profileCtrl.applyAuthUserData(
+          name: auth.user!.name,
+          email: auth.user!.email,
+        );
+      }
+      profileCtrl.loadProfile();
       context.read<DashboardController>().load();
     });
   }

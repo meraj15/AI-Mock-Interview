@@ -5,7 +5,6 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
 import '../../../auth/presentation/pages/onboarding_page.dart';
-import '../../../auth/presentation/pages/profile_setup_page.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 
@@ -62,11 +61,21 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
     } else if (!authCtrl.isAuthenticated) {
       target = const LoginPage();
     } else {
-      // Load user profile and check if setup is needed.
+      // Sync user profile data from backend
       final profileCtrl = context.read<ProfileController>();
-      await profileCtrl.loadProfile();
+      if (authCtrl.user != null) {
+        profileCtrl.applyAuthUserData(
+          name: authCtrl.user!.name,
+          email: authCtrl.user!.email,
+        );
+      }
+      try {
+        await profileCtrl.loadProfile().timeout(const Duration(seconds: 4));
+      } catch (_) {
+        // Continue even if network timed out or offline
+      }
       if (!mounted) return;
-      target = profileCtrl.hasProfileData ? const MainNavPage() : const ProfileSetupPage();
+      target = const MainNavPage();
     }
 
     Navigator.of(context).pushReplacement(

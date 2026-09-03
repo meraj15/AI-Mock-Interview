@@ -249,6 +249,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
     }
 
     return AppScaffold(
+      scrollable: false,
       body: RefreshIndicator(
         color: colors.primary,
         backgroundColor: colors.card,
@@ -256,6 +257,9 @@ class _InterviewsPageState extends State<InterviewsPage> {
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom + 100,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,6 +332,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
                         borderRadius: BorderRadius.circular(18),
                         child: Ink(
                           padding: const EdgeInsets.all(14),
+                          
                           decoration: BoxDecoration(
                             color: colors.card,
                             borderRadius: BorderRadius.circular(18),
@@ -402,7 +407,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
                   );
                 }),
               ],
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
             ],
           ),
         ),

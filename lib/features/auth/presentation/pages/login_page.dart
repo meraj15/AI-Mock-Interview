@@ -11,7 +11,6 @@ import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../controllers/auth_controller.dart';
 import 'forgot_password_page.dart';
-import 'profile_setup_page.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -31,15 +30,21 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
 
     if (success) {
-      // Load profile from backend and wait so we can check if setup is needed.
       final profileCtrl = context.read<ProfileController>();
-      await profileCtrl.loadProfile();
+      if (auth.user != null) {
+        profileCtrl.applyAuthUserData(
+          name: auth.user!.name,
+          email: auth.user!.email,
+        );
+      }
+      try {
+        await profileCtrl.loadProfile();
+      } catch (_) {}
       if (!mounted) return;
 
-      final needsSetup = !profileCtrl.hasProfileData;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => needsSetup ? const ProfileSetupPage() : const MainNavPage(),
+          builder: (_) => const MainNavPage(),
         ),
       );
     } else if (auth.errorMessage != null) {
@@ -215,12 +220,19 @@ class _LoginPageState extends State<LoginPage> {
                       final success = await auth.signInWithGoogle();
                       if (success && context.mounted) {
                         final profileCtrl = context.read<ProfileController>();
-                        await profileCtrl.loadProfile();
+                        if (auth.user != null) {
+                          profileCtrl.applyAuthUserData(
+                            name: auth.user!.name,
+                            email: auth.user!.email,
+                          );
+                        }
+                        try {
+                          await profileCtrl.loadProfile();
+                        } catch (_) {}
                         if (!context.mounted) return;
-                        final needsSetup = !profileCtrl.hasProfileData;
                         Navigator.of(context).pushReplacement(
                           MaterialPageRoute(
-                            builder: (_) => needsSetup ? const ProfileSetupPage() : const MainNavPage(),
+                            builder: (_) => const MainNavPage(),
                           ),
                         );
                       }
@@ -257,12 +269,19 @@ class _LoginPageState extends State<LoginPage> {
                       final success = await auth.signInWithApple();
                       if (success && context.mounted) {
                         final profileCtrl = context.read<ProfileController>();
-                        await profileCtrl.loadProfile();
+                        if (auth.user != null) {
+                          profileCtrl.applyAuthUserData(
+                            name: auth.user!.name,
+                            email: auth.user!.email,
+                          );
+                        }
+                        try {
+                          await profileCtrl.loadProfile();
+                        } catch (_) {}
                         if (!context.mounted) return;
-                        final needsSetup = !profileCtrl.hasProfileData;
                         Navigator.of(context).pushReplacement(
                           MaterialPageRoute(
-                            builder: (_) => needsSetup ? const ProfileSetupPage() : const MainNavPage(),
+                            builder: (_) => const MainNavPage(),
                           ),
                         );
                       }

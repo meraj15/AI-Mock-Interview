@@ -10,7 +10,6 @@ import '../../../../core/widgets/confirmation_dialog.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../controllers/resume_controller.dart';
-import 'edit_parsed_resume_page.dart';
 import 'resume_preview_page.dart';
 import 'resume_upload_page.dart';
 

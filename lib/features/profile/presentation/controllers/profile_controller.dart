@@ -54,7 +54,10 @@ class ProfileController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _profile = await _dataSource.getProfile();
+      final fetched = await _dataSource.getProfile();
+      if (fetched != null) {
+        _profile = fetched;
+      }
       _status = ProfileStatus.loaded;
     } catch (e) {
       _errorMessage = _extractMessage(e);
@@ -151,13 +154,19 @@ class ProfileController extends ChangeNotifier {
     required String name,
     required String email,
   }) {
-    // Only apply if we don't yet have a loaded profile
+    final effectiveName = name.trim().isNotEmpty
+        ? name.trim()
+        : (email.contains('@') ? email.split('@').first : 'User');
+
     if (_profile == null) {
       _profile = ProfileModel(
         id: '',
         userId: '',
-        fullName: name.isNotEmpty ? name : null,
+        fullName: effectiveName,
       );
+      notifyListeners();
+    } else if (_profile!.fullName == null || _profile!.fullName!.trim().isEmpty) {
+      _profile = _profile!.copyWith(fullName: effectiveName);
       notifyListeners();
     }
   }
