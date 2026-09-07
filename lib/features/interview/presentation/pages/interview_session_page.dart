@@ -40,9 +40,37 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   final stt.SpeechToText _stt = stt.SpeechToText();
   bool _sttAvailable = false;
+  String _accumulatedTranscript = '';
+  String _currentUtterance = '';
   String _liveTranscript = '';
+  bool _isExplicitlyStopping = false;
   final TextEditingController _answerCtrl = TextEditingController();
   final FocusNode _answerFocusNode = FocusNode();
+
+  // ── Scroll Controllers for Dynamic UI Adjustments ─────────────────────────
+  final ScrollController _contentScrollCtrl = ScrollController();
+  final ScrollController _liveTranscriptScrollCtrl = ScrollController();
+  final ScrollController _answerEditorScrollCtrl = ScrollController();
+
+  void _autoScrollTranscript() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_liveTranscriptScrollCtrl.hasClients) {
+        _liveTranscriptScrollCtrl.animateTo(
+          _liveTranscriptScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+        );
+      }
+      if (_contentScrollCtrl.hasClients) {
+        _contentScrollCtrl.animateTo(
+          _contentScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
 
   // ── Word-by-Word Streaming Question State ─────────────────────────────────
   Timer? _streamingTimer;
@@ -125,6 +153,9 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     _loadingFadeCtrl.dispose();
     _answerCtrl.dispose();
     _answerFocusNode.dispose();
+    _contentScrollCtrl.dispose();
+    _liveTranscriptScrollCtrl.dispose();
+    _answerEditorScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -191,15 +222,36 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   Future<void> _initStt() async {
     final ok = await _stt.initialize(
-      onError: (e) {
-        debugPrint('[STT Error]: ${e.errorMsg}');
-        if (mounted && _phase == InterviewPhase.recording) {
-          _setPhase(InterviewPhase.listening);
+      onError: (e) async {
+        debugPrint('[STT Error]: ${e.errorMsg} (permanent: ${e.permanent})');
+        // Transient pause timeouts (e.g. error_speech_timeout or error_no_match)
+        // should never abort active recording. Seamlessly resume listening.
+        if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
+          if (_currentUtterance.isNotEmpty) {
+            _accumulatedTranscript = _liveTranscript;
+            _currentUtterance = '';
+          }
+          await Future.delayed(const Duration(milliseconds: 250));
+          if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
+            await _listenInternal();
+          }
         }
       },
-      onStatus: (status) {
-        if (status == 'notListening' && _phase == InterviewPhase.recording) {
-          // Idle status
+      onStatus: (status) async {
+        debugPrint('[STT Status]: $status');
+        // When engine stops listening after utterance boundary or pause,
+        // seamlessly resume listening so the candidate can continue speaking.
+        if (status == 'notListening' &&
+            _phase == InterviewPhase.recording &&
+            !_isExplicitlyStopping) {
+          if (_currentUtterance.isNotEmpty) {
+            _accumulatedTranscript = _liveTranscript;
+            _currentUtterance = '';
+          }
+          await Future.delayed(const Duration(milliseconds: 200));
+          if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
+            await _listenInternal();
+          }
         }
       },
     );
@@ -326,28 +378,65 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   Future<void> _startRecording() async {
     if (!_sttAvailable || _phase == InterviewPhase.recording) return;
 
+    _isExplicitlyStopping = false;
+    _accumulatedTranscript = '';
+    _currentUtterance = '';
     setState(() {
       _liveTranscript = '';
     });
     _setPhase(InterviewPhase.recording);
 
-    await _stt.listen(
-      onResult: (result) {
-        if (!mounted) return;
-        setState(() {
-          _liveTranscript = result.recognizedWords;
-        });
-      },
-      listenOptions: stt.SpeechListenOptions(
-        listenMode: stt.ListenMode.dictation,
-        cancelOnError: false,
-        partialResults: true,
-      ),
-    );
+    await _listenInternal();
+  }
+
+  Future<void> _listenInternal() async {
+    if (!_sttAvailable || _isExplicitlyStopping || _phase != InterviewPhase.recording) {
+      return;
+    }
+
+    try {
+      await _stt.listen(
+        onResult: (result) {
+          if (!mounted || _phase != InterviewPhase.recording) return;
+
+          final words = result.recognizedWords.trim();
+          if (words.isEmpty) return;
+
+          setState(() {
+            _currentUtterance = words;
+            _liveTranscript = _accumulatedTranscript.isEmpty
+                ? _currentUtterance
+                : '$_accumulatedTranscript $_currentUtterance';
+          });
+
+          _autoScrollTranscript();
+
+          // When engine finalizes an utterance chunk, commit to accumulated transcript
+          if (result.finalResult) {
+            _accumulatedTranscript = _liveTranscript;
+            _currentUtterance = '';
+          }
+        },
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          cancelOnError: false,
+          partialResults: true,
+          listenFor: const Duration(minutes: 10),
+          pauseFor: const Duration(seconds: 15),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[STT listen exception]: $e');
+    }
   }
 
   Future<void> _finishRecordingAndSubmit() async {
+    _isExplicitlyStopping = true;
     await _stt.stop();
+    if (_currentUtterance.isNotEmpty) {
+      _accumulatedTranscript = _liveTranscript;
+      _currentUtterance = '';
+    }
     final answer = _liveTranscript.trim();
     if (answer.isNotEmpty) {
       // Move to answered phase: show editable transcript card
@@ -374,6 +463,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
+        _accumulatedTranscript = '';
+        _currentUtterance = '';
         setState(() {
           _liveTranscript = '';
         });
@@ -411,6 +502,9 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   /// Clears the answer draft and re-starts STT recording.
   Future<void> _reRecord() async {
+    _isExplicitlyStopping = false;
+    _accumulatedTranscript = '';
+    _currentUtterance = '';
     _answerCtrl.clear();
     setState(() => _liveTranscript = '');
     await _startRecording();
@@ -543,6 +637,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                     Expanded(
                       child: Center(
                         child: SingleChildScrollView(
+                          controller: _contentScrollCtrl,
                           physics: const BouncingScrollPhysics(),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -552,8 +647,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                               else if (isLoading)
                                 _buildLoadingQuestionPlaceholder(colors),
 
-                              // Live transcript while recording
-                              if (_phase == InterviewPhase.recording && _liveTranscript.isNotEmpty)
+                              // Live transcript dynamically expanding while recording
+                              if (_phase == InterviewPhase.recording)
                                 _buildLiveCaptionCard(colors),
 
                               // Editable answer card after recording stops
@@ -915,44 +1010,96 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   // ── Temporary Live Caption Widget ─────────────────────────────────────────
 
   Widget _buildLiveCaptionCard(AppColorScheme colors) {
+    final hasWords = _liveTranscript.trim().isNotEmpty;
+    final wordCount = hasWords
+        ? _liveTranscript.trim().split(RegExp(r'\s+')).length
+        : 0;
+
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 14),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(maxHeight: 90),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: const BoxConstraints(minHeight: 76, maxHeight: 240),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: colors.destructive.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors.destructive.withValues(alpha: 0.3)),
+          color: colors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: colors.destructive.withValues(alpha: 0.35),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: colors.destructive.withValues(alpha: 0.08),
+              blurRadius: 16,
+              spreadRadius: 1,
+            ),
+          ],
         ),
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 4),
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: colors.destructive,
-                  shape: BoxShape.circle,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header: Pulsing dot + LIVE TRANSCRIPT + Word counter
+            Row(
+              children: [
+                FadeTransition(
+                  opacity: _pulseAnimCtrl,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: colors.destructive,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _liveTranscript,
-                  style: AppTypography.regular(
-                    12.5,
-                    color: colors.text,
-                    height: 1.35,
+                const SizedBox(width: 8),
+                Text(
+                  'LIVE TRANSCRIPT',
+                  style: AppTypography.bold(10.5, color: colors.destructive, letterSpacing: 0.6),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: colors.destructive.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    hasWords ? '$wordCount words' : 'Listening…',
+                    style: AppTypography.medium(10, color: colors.destructive),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Scrollable text content dynamically adjusting to user speech length
+            Flexible(
+              child: Scrollbar(
+                controller: _liveTranscriptScrollCtrl,
+                thumbVisibility: hasWords,
+                child: SingleChildScrollView(
+                  controller: _liveTranscriptScrollCtrl,
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Text(
+                      hasWords
+                          ? _liveTranscript
+                          : 'Listening to your answer… speak naturally.',
+                      style: AppTypography.regular(
+                        13.5,
+                        color: hasWords ? colors.text : colors.mutedForeground,
+                        height: 1.48,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -961,10 +1108,15 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   // ── Editable Answer Card ──────────────────────────────────────────────────
 
   Widget _buildAnswerEditorCard(AppColorScheme colors) {
+    final wordCount = _answerCtrl.text.trim().isEmpty
+        ? 0
+        : _answerCtrl.text.trim().split(RegExp(r'\s+')).length;
+
     return Padding(
       padding: const EdgeInsets.only(top: 14),
       child: Container(
         width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 90, maxHeight: 240),
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         decoration: BoxDecoration(
           color: colors.card,
@@ -995,23 +1147,48 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                     style: AppTypography.semiBold(11, color: colors.primary),
                   ),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$wordCount words',
+                    style: AppTypography.medium(10, color: colors.primary),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 Icon(FeatherIcons.edit2, size: 12, color: colors.mutedForeground),
               ],
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _answerCtrl,
-              focusNode: _answerFocusNode,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              style: AppTypography.regular(13.5, color: colors.text, height: 1.5),
-              decoration: InputDecoration(
-                hintText: 'Your spoken answer appears here. Tap to edit…',
-                hintStyle: AppTypography.regular(13, color: colors.mutedForeground),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
+            Flexible(
+              child: Scrollbar(
+                controller: _answerEditorScrollCtrl,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _answerEditorScrollCtrl,
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: TextField(
+                      controller: _answerCtrl,
+                      focusNode: _answerFocusNode,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
+                      style: AppTypography.regular(13.5, color: colors.text, height: 1.5),
+                      decoration: InputDecoration(
+                        hintText: 'Your spoken answer appears here. Tap to edit…',
+                        hintStyle: AppTypography.regular(13, color: colors.mutedForeground),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
