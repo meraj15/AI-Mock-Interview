@@ -104,7 +104,11 @@ class InterviewController extends ChangeNotifier {
   }
 
   /// STAGE 1: Start Conversational Interview
-  Future<void> startInterview({ResumeEntity? resume, ProfileModel? profile}) async {
+  Future<void> startInterview({
+    ResumeEntity? resume,
+    ProfileModel? profile,
+    String? targetRole,
+  }) async {
     _interviewActive = true;
     _sessionStatus = SessionStatus.loading;
     _errorMessage = null;
@@ -118,35 +122,39 @@ class InterviewController extends ChangeNotifier {
     _topics = [];
     _sessionHistory.clear();
 
-    // 1. Seed role + skills + experience from unified ProfileModel if provided
+    // 1. Determine target role with priority: explicit targetRole -> profile -> resume -> existing config
+    String effectiveRole = _config.role;
+    if (targetRole != null && targetRole.trim().isNotEmpty) {
+      effectiveRole = targetRole.trim();
+    } else if (profile != null && profile.targetRole != null && profile.targetRole!.trim().isNotEmpty) {
+      effectiveRole = profile.targetRole!.trim();
+    } else if (resume != null) {
+      if (resume.workExperiences.isNotEmpty && resume.workExperiences.first.role.trim().isNotEmpty) {
+        effectiveRole = resume.workExperiences.first.role.trim();
+      } else if (resume.name.contains('–')) {
+        effectiveRole = resume.name.split('–').last.trim();
+      } else if (resume.skills.isNotEmpty) {
+        effectiveRole = _inferRoleFromSkills(resume.skills);
+      }
+    }
+
+    // 2. Determine skills and experience
+    List<String> effectiveSkills = _config.skills;
+    String effectiveExp = _config.experience;
+
     if (profile != null) {
-      final pRole = profile.targetRole?.trim();
-      final pSkills = profile.skills;
-      final pExp = profile.experienceLabel.trim();
-
-      _config = _config.copyWith(
-        role: (pRole != null && pRole.isNotEmpty) ? pRole : _config.role,
-        experience: pExp.isNotEmpty ? pExp : _config.experience,
-        skills: pSkills.isNotEmpty ? pSkills : _config.skills,
-      );
+      if (profile.skills.isNotEmpty) effectiveSkills = profile.skills;
+      if (profile.experienceLabel.trim().isNotEmpty) effectiveExp = profile.experienceLabel.trim();
+    } else if (resume != null) {
+      if (resume.skills.isNotEmpty) effectiveSkills = resume.skills;
+      if (resume.experience.isNotEmpty) effectiveExp = resume.experience;
     }
 
-    // 2. Seed role + skills from resume if provided
-    if (resume != null) {
-      final profileRole = resume.name.contains('–')
-          ? resume.name.split('–').last.trim()
-          : resume.skills.isNotEmpty
-              ? _inferRoleFromSkills(resume.skills)
-              : _config.role;
-      _config = _config.copyWith(
-        role: _config.role.isNotEmpty &&
-                _config.role != InterviewConfigEntity.initial().role
-            ? _config.role
-            : profileRole,
-        experience: resume.experience.isNotEmpty ? resume.experience : _config.experience,
-        skills: resume.skills.isNotEmpty ? resume.skills : _config.skills,
-      );
-    }
+    _config = _config.copyWith(
+      role: effectiveRole.isNotEmpty ? effectiveRole : 'Software Developer',
+      skills: effectiveSkills,
+      experience: effectiveExp,
+    );
 
     notifyListeners();
 
@@ -277,14 +285,17 @@ class InterviewController extends ChangeNotifier {
   /// Simple heuristic: pick a role label from known skill keywords.
   String _inferRoleFromSkills(List<String> skills) {
     final s = skills.map((e) => e.toLowerCase()).toList();
+    if (s.any((e) => e.contains('support') || e.contains('zendesk') || e.contains('troubleshoot') || e.contains('ticket') || e.contains('jira'))) return 'Support Engineer';
     if (s.any((e) => e.contains('flutter') || e.contains('dart'))) return 'Flutter Developer';
     if (s.any((e) => e.contains('react') || e.contains('next'))) return 'Frontend Engineer';
     if (s.any((e) => e.contains('node') || e.contains('express') || e.contains('nestjs'))) return 'Backend Engineer';
     if (s.any((e) => e.contains('python') || e.contains('django') || e.contains('fastapi'))) return 'Python Developer';
+    if (s.any((e) => e.contains('devops') || e.contains('docker') || e.contains('kubernetes') || e.contains('aws') || e.contains('ci/cd'))) return 'DevOps Engineer';
+    if (s.any((e) => e.contains('qa') || e.contains('selenium') || e.contains('test') || e.contains('cypress'))) return 'QA Engineer';
     if (s.any((e) => e.contains('android') || e.contains('kotlin'))) return 'Android Developer';
     if (s.any((e) => e.contains('ios') || e.contains('swift'))) return 'iOS Developer';
-    if (s.any((e) => e.contains('data') || e.contains('ml') || e.contains('tensorflow'))) return 'Data / ML Engineer';
-    return _config.role;
+    if (s.any((e) => e.contains('data') || e.contains('ml') || e.contains('tensorflow') || e.contains('pandas'))) return 'Data / ML Engineer';
+    return _config.role.isNotEmpty ? _config.role : 'Software Developer';
   }
 
   void finishInterview() {

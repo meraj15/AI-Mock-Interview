@@ -73,10 +73,8 @@ export interface TranscriptEntry {
 // ============================================================
 
 const FALLBACK_MODELS = [
-  
   'gemini-3.7-flash',
   'gemini-3.6-flash',
-  'gemini-3.8-flash',
   'gemini-flash-latest',
 ];
 
@@ -213,9 +211,9 @@ export class AIService {
           hasNext
         ) {
           console.log(
-            '[AIService] Trying fallback model...',
+            '[AIService] Temporary error encountered. Waiting 1s before fallback model...',
           );
-
+          await new Promise((r) => setTimeout(r, 1000));
           continue;
         }
 
@@ -443,105 +441,28 @@ Return ONLY valid JSON.
       this.getSkillList(skills);
 
     const prompt = `
-You are a senior technical interviewer planning a realistic Flutter/Dart technical interview.
+You are a senior hiring manager and technical interviewer planning a realistic, comprehensive interview for a ${role.trim()}.
 
-CANDIDATE:
-Role: ${role.trim()}
-Experience: ${experience?.trim() || 'Not specified'}
-Background Skills: ${skillList}
+CANDIDATE TARGET ROLE: ${role.trim()}
+EXPERIENCE LEVEL: ${experience?.trim() || 'Not specified'}
+BACKGROUND SKILLS & TOOLS: ${skillList}
 
-IMPORTANT:
+TASK:
+Create 5 to 7 broad evaluation topic areas tailored specifically to the real-world responsibilities, core tools, problem-solving, and day-to-day work of a ${role.trim()}.
 
-The candidate's listed skills are CONTEXT ONLY.
-
-Do NOT treat the skills list as a whitelist of topics.
-
-The interview should evaluate the candidate's overall ability as a Flutter/Dart developer and may ask questions from ANY relevant area of Flutter and Dart, even if the candidate did not explicitly list that topic as a skill.
-
-Create 6-10 broad evaluation areas for the interview.
-
-Possible areas include, but are not limited to:
-
-DART:
-
-* Language fundamentals
-* OOP
-* Null safety
-* Collections
-* Generics
-* Extensions
-* Mixins
-* Futures
-* async/await
-* Streams
-* Isolates
-* Error handling
-
-FLUTTER:
-
-* Widget tree
-* StatelessWidget
-* StatefulWidget
-* BuildContext
-* Widget lifecycle
-* Keys
-* Widget rebuilding
-* Rendering
-* State management
-* Navigation
-* Forms
-* App lifecycle
-* Platform integration
-
-APPLICATION DEVELOPMENT:
-
-* REST APIs
-* Networking
-* JSON serialization
-* Authentication
-* Local storage
-* Caching
-* Offline handling
-* Pagination
-* Firebase
-* Error handling
-
-ENGINEERING:
-
-* Clean Architecture
-* Repository pattern
-* Dependency injection
-* SOLID principles
-* Testing
-* Debugging
-* Performance optimization
-* Memory management
-* Security
-* Release/debugging problems
-
-REAL-WORLD PROBLEM SOLVING:
-
-* API failures
-* Slow applications
-* Unexpected crashes
-* Memory issues
-* Large datasets
-* Offline/online synchronization
-* Architecture decisions
-* Production debugging
-
-Do not try to cover every possible area.
-
-Select a balanced set of areas appropriate for the candidate's role and experience.
-
-The experience level should influence the expected depth of questions, but it should NOT restrict the available topics.
-
-Each topic must contain:
-
-* name
-* objective
-
-The objective should explain what the interviewer wants to evaluate.
+CRITICAL ROLE-SPECIFIC GUIDELINES:
+1. Ground every topic directly in the actual domain and duties of "${role.trim()}":
+   - If a Support Engineer / Technical Support role: ticket diagnosis, root cause analysis, customer communication & de-escalation, system log analysis, SQL / database verification, SLA incident workflows, bug triage with engineering.
+   - If a Software Engineer / Developer role: system design, architecture, practical coding in candidate's stack (${skillList}), API integration, asynchronous operations, state handling, performance, debugging.
+   - If a DevOps / Cloud / SRE role: CI/CD pipelines, Docker/Kubernetes, infrastructure as code, cloud monitoring, disaster recovery, security.
+   - If a QA / Automation role: test planning, automation frameworks, bug lifecycle, edge cases, regression, API testing.
+   - If a Data / ML role: data pipelines, SQL, data modeling, feature engineering, data quality, model evaluation.
+   - For ANY other role: produce topics that authentically evaluate the candidate's real-world competence in that specific profession.
+2. The candidate's background skills (${skillList}) provide context for their specific tools and tech stack, but do NOT restrict topics to only those keywords.
+3. DO NOT assume Flutter or mobile development unless the role explicitly specifies Flutter or Mobile!
+4. Each topic must contain:
+   - "name": Concise topic title (e.g., "Incident Triage & Root Cause Analysis", "System Log Investigation", "SQL & Data Verification")
+   - "objective": Clear 1-sentence description of what competencies are being evaluated.
 
 Return ONLY valid JSON.
 `;
@@ -582,7 +503,7 @@ Return ONLY valid JSON.
     };
 
     console.log(
-      '[AIService] Generating interview topics...',
+      `[AIService] Generating dynamic interview topics for role "${role.trim()}"...`,
     );
 
     const result =
@@ -597,12 +518,12 @@ Return ONLY valid JSON.
             .map((topic: any) => ({
               name: String(
                 topic?.name ||
-                  'General Technical Discussion',
+                  'General Discussion',
               ).trim(),
 
               objective: String(
                 topic?.objective ||
-                  'Evaluate candidate competence',
+                  `Evaluate competence for ${role.trim()}`,
               ).trim(),
             }))
             .filter(
@@ -612,7 +533,7 @@ Return ONLY valid JSON.
         : [];
 
     console.log(
-      `[AIService] Topics generated: ${topics
+      `[AIService] Topics generated for "${role.trim()}": ${topics
         .map((topic) => topic.name)
         .join(', ')}`,
     );
@@ -718,12 +639,12 @@ Return ONLY valid JSON.
 ==================================================
 CURRENT INTERVIEW STAGE: [FINAL_CLOSING_FAREWELL]
 ==================================================
-* The candidate has just answered the final technical question.
+* The candidate has just answered the final interview question.
 * The interview has officially CONCLUDED.
-* Do NOT ask another technical question or coding problem!
+* Do NOT ask another technical question or problem!
 * Action MUST be: "end_interview"
 * nextTopic: "Interview Conclusion"
-* nextQuestion: Deliver a warm, authentic, collegial closing farewell remark thanking the candidate for their time and thoughtful answers, and wishing them luck.
+* nextQuestion: Deliver a warm, authentic, collegial closing farewell remark thanking the candidate for their time and thoughtful answers, and wishing them luck in their journey as a ${role}.
   Example nextQuestion: "That brings us to the end of our interview today! Thank you so much for walking through your experience with me. We'll compile your performance review right now. Best of luck!"
 * acknowledgement: A warm spoken reaction (e.g. "Thank you for walking me through that." or "Understood, thank you.").
 `;
@@ -732,10 +653,10 @@ CURRENT INTERVIEW STAGE: [FINAL_CLOSING_FAREWELL]
 ==================================================
 CURRENT INTERVIEW STAGE: [PENULTIMATE_WRAPUP_QUESTION]
 ==================================================
-* We have time for ONE last technical question before wrapping up today.
+* We have time for ONE last question before wrapping up today.
 * Signpost the finish naturally to the candidate in your question:
-  Example: "We have time for one last question before we wrap up today: what's a challenging bug or performance issue you recently diagnosed and resolved?"
-  Example: "For our final technical question today, what's one architectural decision you'd make differently on a past project?"
+  Example: "We have time for one last question before we wrap up today: what's a challenging problem or incident you recently resolved as a ${role}?"
+  Example: "For our final question today, what's one process or technical decision you'd approach differently on a past project?"
 * Exactly ONE question mark. Maximum 18 words.
 `;
     } else if (isIntroTransition) {
@@ -745,17 +666,16 @@ CURRENT INTERVIEW STAGE: [TRANSITION_FROM_INTRO_TO_TECHNICAL]
 ==================================================
 * The candidate has just provided their background introduction.
 * A real human interviewer ACTIVELY LISTENS to their introduction!
-* Identify ONE specific programming language or framework the candidate mentioned or listed in their profile (${skillList || role}).
-* CRITICAL RULE - SKILLS ARE LANGUAGES OR FRAMEWORKS, NOT CONCEPTS:
-  By "skill", we strictly mean the candidate's PROGRAMMING LANGUAGES OR FRAMEWORKS (such as Dart, Flutter, React, TypeScript, etc.).
-  DO NOT ask questions about abstract theoretical concepts (such as Clean Architecture definitions, SOLID principles, or OOP textbook theory).
-* Ask ONE direct, practical technical question grounded specifically in how they use that programming language or framework:
-  Example if Flutter/Dart: "You mentioned working with Flutter and Dart. How did you handle state management across your screens?"
-  Example if Flutter/Dart: "Since you build with Flutter, how do you handle asynchronous streams and API errors in Dart?"
-  Example if Flutter: "In your Flutter apps, what approach did you use for caching network responses offline?"
-  Example: "In Dart, how do you optimize widget rebuilds when rendering dynamic scrollable lists?"
-* If their intro was very brief or did not name a specific tool:
-  Example: "Great to have you! To kick off the technical side, how do you manage state and navigation in ${role.includes('Flutter') ? 'Flutter' : role}?"
+* Identify ONE specific tool, technology, programming language, system, or scenario the candidate mentioned in their intro or listed in their profile for their role as a ${role} (${skillList || role}).
+* CRITICAL ROLE-SPECIFIC RULE:
+  Ground the technical question strictly in the candidate's actual role "${role}" and their tools:
+  - If a Support Engineer / Operations role: ask about how they diagnosed a tricky customer issue, investigated server/application logs, or used SQL/tickets to resolve an escalation.
+    Example: "You mentioned diagnosing customer issues using SQL. How did you track down that database discrepancy?"
+    Example: "Since you handle customer escalations, how do you determine root cause when server logs show intermittent errors?"
+  - If a Developer / Software Engineer role: ask about how they implemented a feature, managed state, or handled async API errors using their specific language or framework.
+    Example: "You mentioned building that service with Python. How did you handle background task processing there?"
+  - If a DevOps / Cloud role: ask about CI/CD pipelines, container orchestration, or cloud infrastructure troubleshooting.
+  - DO NOT ask about Flutter or Dart unless the candidate's role is specifically Flutter or Dart!
 * Human acknowledgement: short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never displayed in UI card.
 * Strictly ONE question mark. Maximum 18 words.
 `;
@@ -764,23 +684,21 @@ CURRENT INTERVIEW STAGE: [TRANSITION_FROM_INTRO_TO_TECHNICAL]
 ==================================================
 CURRENT INTERVIEW STAGE: [CORE_TECHNICAL_EXPLORATION]
 ==================================================
-* Evaluate practical competence in the candidate's programming languages and frameworks (${skillList || role}).
-* CRITICAL RULE - SKILLS ARE LANGUAGES OR FRAMEWORKS, NOT CONCEPTS:
-  Skills mean strictly their PROGRAMMING LANGUAGES AND FRAMEWORKS (e.g. Dart, Flutter).
-  DO NOT ask questions about abstract theoretical concepts (like SOLID principles, OOP definitions, or design pattern theory).
-* Every question MUST be a practical question grounded in their actual language or framework:
-  - Framework APIs & features (e.g. Flutter state management, widget lifecycles, navigation, rendering)
-  - Language features (e.g. Dart null safety, async/await, isolates, streams, records, collections)
-  - Real-world engineering: API error handling, offline caching, memory leaks, and UI performance in their language/framework.
-* If candidate's previous answer was strong: ask ONE deeper follow-up on performance, trade-offs, or edge cases in that language/framework.
-* If candidate's previous answer was weak: gently acknowledge and smoothly pivot to another practical feature in their language/framework.
+* Evaluate practical competence in the candidate's actual role (${role}) and their tools/skills (${skillList}).
+* Every question MUST be a practical question grounded in their actual role domain:
+  - Real-world scenarios, troubleshooting, incident management, edge cases, system performance, or engineering judgment relevant to a ${role}.
+  - If candidate is a Support Engineer: focus on ticket triage, log parsing, isolating bugs between client/backend, SQL queries, SLA prioritization, and communicating complex technical fixes.
+  - If candidate is a Developer: focus on framework APIs, code architecture, error handling, optimization, and debugging in their tech stack.
+  - If candidate's previous answer was strong: ask ONE deeper follow-up on edge cases, root cause, or trade-offs.
+  - If candidate's previous answer was weak: gently acknowledge and smoothly pivot to another practical area of ${role}.
+  - DO NOT ask about Flutter or Dart unless the role is Flutter!
 * Human acknowledgement: short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never displayed in UI card.
 * Strictly ONE question mark. Maximum 18 words.
 `;
     }
 
     const prompt = `
-You are a senior technical interviewer conducting a live, adaptive technical interview for a ${role}.
+You are a senior technical interviewer conducting a live, adaptive interview for a ${role}.
 
 Your goal is to behave like a REAL human interviewer, not an automated quiz bot or an exam.
 
@@ -791,13 +709,13 @@ CANDIDATE PROFILE
 =================
 Role: ${role}
 Experience: ${experience || 'Not specified'}
-Languages & Frameworks: ${skillList}
+Skills & Tools: ${skillList}
 
 ==================================================
 CURRENT INTERVIEW STATE
 =======================
 Current topic: ${currentTopic}
-Topic objective: ${topicObjective || 'Evaluate practical technical competence'}
+Topic objective: ${topicObjective || `Evaluate practical competence for ${role}`}
 
 Previous question:
 "${previousQuestion}"
@@ -835,8 +753,8 @@ CRITICAL HUMAN INTERVIEW RULES
 1. STRICTLY ONE QUESTION: Exactly ONE question mark ('?'). NEVER ask two questions in one sentence (no "and how...", "and why...", "and what...").
 2. CONCISE & PUNCHY: Spoken questions must be between 8 and 18 words. Never ask a long paragraph or bullet points.
 3. SPOKEN ACKNOWLEDGEMENT ONLY: Provide a short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). This is spoken via TTS only and MUST NOT be part of nextQuestion.
-4. SKILLS ARE LANGUAGES & FRAMEWORKS, NOT CONCEPTS: Ask practical questions about actual programming languages and frameworks (e.g. Dart, Flutter). Never ask abstract dictionary definitions, OOP theory, or textbook concept quizzes.
-5. NATURAL CONVERSATIONAL TONE: Sound like a friendly senior technical colleague speaking over video call.
+4. GROUNDED IN CANDIDATE'S ROLE & TOOLS: Ask practical questions about the actual tools, systems, and responsibilities of a ${role} (using their tools: ${skillList}). Never assume Flutter or mobile development unless the role explicitly states Flutter.
+5. NATURAL CONVERSATIONAL TONE: Sound like a friendly senior colleague speaking over video call.
 
 ==================================================
 OUTPUT FORMAT
@@ -853,13 +771,13 @@ answerQuality:
 "weak", "average", "strong", or "excellent"
 
 nextQuestion:
-The pure technical question ONLY (or warm closing remark if end_interview). Do NOT include any acknowledgement, reaction, or conversational filler in nextQuestion. Maximum 18 words. Exactly one question mark.
+The pure interview question only (or warm closing remark if end_interview). Do NOT include any acknowledgement, reaction, or conversational filler in nextQuestion. Grounded strictly in the candidate's role and tools. Maximum 18 words. Exactly one question mark.
 
 nextTopic:
-The language or framework topic being evaluated (e.g. "Flutter State Management", "Dart Async Programming", or "Interview Conclusion").
+The topic or skill area being evaluated (e.g. "Incident Diagnosis", "SQL Verification", or "Interview Conclusion").
 
 conversationSummary:
-A concise 1-2 sentence summary of technical ability demonstrated so far.
+A concise 1-2 sentence summary of ability demonstrated so far.
 `;
 
     const schema = {
@@ -894,13 +812,13 @@ A concise 1-2 sentence summary of technical ability demonstrated so far.
         nextQuestion: {
           type: Type.STRING,
           description:
-            'The pure technical question ONLY (or closing remark if end_interview). Do NOT include the acknowledgement or conversational filler here. Grounded in the candidate\'s programming languages or frameworks. Maximum 18 words. Exactly one question mark.',
+            'The pure interview question ONLY (or closing remark if end_interview). Do NOT include the acknowledgement or conversational filler here. Grounded in the candidate\'s role and tools. Maximum 18 words. Exactly one question mark.',
         },
 
         nextTopic: {
           type: Type.STRING,
           description:
-            'The technical area or language/framework feature being evaluated (e.g. "Flutter State Management", "Dart Async Programming", or "Interview Conclusion").',
+            'The topic or skill area being evaluated (or "Interview Conclusion").',
         },
 
         conversationSummary: {
@@ -949,20 +867,13 @@ A concise 1-2 sentence summary of technical ability demonstrated so far.
         ? result.answerQuality
         : 'average';
 
-    const primaryTool =
-      skills && skills.length > 0
-        ? skills[0]
-        : role.includes('Flutter')
-        ? 'Flutter'
-        : role;
-
     const fallbackQuestion = isFinalClosingTurn
       ? 'That brings us to the end of our interview today! Thank you so much for walking through your experience with me.'
       : isPenultimateTurn
-      ? `For our final question today, what's a challenging bug you recently diagnosed and resolved in ${primaryTool}?`
+      ? `For our final question today, what's a challenging problem or complex issue you recently resolved as a ${role}?`
       : isIntroTransition
-      ? `To start on technicals, how do you manage state and async operations in ${primaryTool}?`
-      : `In ${primaryTool}, how do you structure your code to avoid unnecessary UI rebuilds?`;
+      ? `To start into your technical work, what's a primary tool or system you rely on most as a ${role}?`
+      : `In your day-to-day work as a ${role}, how do you approach diagnosing and resolving unexpected issues?`;
 
     let nextQuestion = this.enforceSingleQuestion(
       String(result.nextQuestion || '').trim(),
@@ -1071,7 +982,7 @@ Candidate: ${
         .join('\n\n');
 
     const prompt = `
-You are a senior hiring manager evaluating a completed technical mock interview for a Flutter/Dart developer.
+You are a senior hiring manager evaluating a completed mock interview for a ${role}.
 
 ROLE:
 ${role}
@@ -1079,19 +990,14 @@ ${role}
 EXPERIENCE:
 ${experience || 'Not specified'}
 
-BACKGROUND SKILLS:
+BACKGROUND SKILLS & TOOLS:
 ${skillList}
 
 IMPORTANT:
-
 The candidate's listed skills are background information only.
-
 Evaluate the candidate based ONLY on what they actually demonstrated during the interview.
-
 Do not assume the candidate knows something simply because it appears in their skills list.
-
 Do not penalize the candidate because a particular topic was not asked.
-
 Evaluate whether the candidate's demonstrated ability is appropriate for their stated experience level.
 
 ==================================================
@@ -1106,18 +1012,16 @@ EVALUATION CRITERIA
 
 Evaluate:
 
-* Dart knowledge
-* Flutter knowledge
-* Practical development ability
-* Problem solving
-* Debugging
-* Architecture and design thinking
-* Performance understanding
-* Code quality and engineering judgment
+* Domain & technical proficiency for a ${role}
+* Problem solving and diagnostic methodology
+* Practical execution and technical judgment
+* Practical development or operational ability
+* Debugging, troubleshooting, or incident analysis
+* System or process understanding
+* Performance and quality judgment
 * Communication and clarity
-* Ability to explain technical decisions
-* Role readiness
-* Depth of understanding relative to experience
+* Ability to explain decisions and trade-offs
+* Role readiness and depth of understanding relative to experience
 
 Base the evaluation ONLY on demonstrated evidence from the interview.
 
@@ -1126,20 +1030,12 @@ OVERALL SCORE
 =============
 
 Score from 0-100.
+The score should reflect the candidate's demonstrated ability relative to their experience level.
 
-The score should reflect the candidate's demonstrated technical ability relative to their experience level.
-
-85-100:
-Excellent
-
-70-84:
-Good
-
-55-69:
-Average
-
-Below 55:
-Needs Improvement
+85-100: Excellent
+70-84: Good
+55-69: Average
+Below 55: Needs Improvement
 
 ==================================================
 SUMMARY
@@ -1152,7 +1048,6 @@ STRENGTHS
 =========
 
 Provide 3-5 concrete strengths demonstrated during the interview.
-
 Do not write generic strengths.
 
 ==================================================
@@ -1171,7 +1066,7 @@ Technical Knowledge
 Problem Solving
 Architecture & Design
 Communication & Clarity
-Flutter/Dart Role Mastery
+Role Mastery
 
 Scores must be based on demonstrated evidence.
 
@@ -1179,16 +1074,13 @@ Scores must be based on demonstrated evidence.
 RECOMMENDATIONS
 ===============
 
-Provide 3-4 practical learning topics or exercises that would help the candidate improve.
-
-Recommendations should be based on weaknesses demonstrated during the interview.
+Provide 3-4 practical learning topics or exercises that would help the candidate improve as a ${role}.
 
 ==================================================
 QUESTION REVIEWS
 ================
 
 For every interviewer question:
-
 * Include the question.
 * Include the candidate's answer.
 * Give a score from 0-100.
@@ -1258,7 +1150,7 @@ Return ONLY valid JSON.
               type: Type.INTEGER,
             },
 
-            'Flutter/Dart Role Mastery': {
+            'Role Mastery': {
               type: Type.INTEGER,
             },
           },
@@ -1268,7 +1160,7 @@ Return ONLY valid JSON.
             'Problem Solving',
             'Architecture & Design',
             'Communication & Clarity',
-            'Flutter/Dart Role Mastery',
+            'Role Mastery',
           ],
 
           additionalProperties: false,

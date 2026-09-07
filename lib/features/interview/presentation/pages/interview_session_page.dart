@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
@@ -219,7 +220,17 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     }
 
     if (ic.sessionStatus == SessionStatus.idle) {
-      await ic.startInterview(resume: rc.resume, profile: pc.profile);
+      final auth = context.read<AuthController>();
+      final userRole = pc.profile?.targetRole?.trim().isNotEmpty == true
+          ? pc.profile!.targetRole!.trim()
+          : (auth.user?.targetRole.trim().isNotEmpty == true
+              ? auth.user!.targetRole.trim()
+              : null);
+      await ic.startInterview(
+        resume: rc.resume,
+        profile: pc.profile,
+        targetRole: userRole,
+      );
       if (!mounted) return;
       if (ic.sessionStatus == SessionStatus.active && ic.prompts.isNotEmpty) {
         _stopLoadingStatusCycle();
@@ -1322,7 +1333,20 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
                       ),
                       onPressed: () {
                         final rc = context.read<ResumeController>();
-                        ic.startInterview(resume: rc.resume).then((_) {
+                        final pc = context.read<ProfileController>();
+                        final auth = context.read<AuthController>();
+                        final userRole = pc.profile?.targetRole?.trim().isNotEmpty == true
+                            ? pc.profile!.targetRole!.trim()
+                            : (auth.user?.targetRole.trim().isNotEmpty == true
+                                ? auth.user!.targetRole.trim()
+                                : null);
+                        ic
+                            .startInterview(
+                              resume: rc.resume,
+                              profile: pc.profile,
+                              targetRole: userRole,
+                            )
+                            .then((_) {
                           if (mounted && ic.sessionStatus == SessionStatus.active) {
                             _speakCurrentQuestion();
                           }

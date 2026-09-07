@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/interview_controller.dart';
@@ -30,12 +31,25 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
     final ic = context.read<InterviewController>();
     final rc = context.read<ResumeController>();
     final pc = context.read<ProfileController>();
+    final auth = context.read<AuthController>();
+
+    final userRole = pc.profile?.targetRole?.trim().isNotEmpty == true
+        ? pc.profile!.targetRole!.trim()
+        : (auth.user?.targetRole.trim().isNotEmpty == true
+            ? auth.user!.targetRole.trim()
+            : null);
+
     ic.updateConfig(
+      role: userRole,
       questions: _questionCount,
       timeLimitPerQuestion: _timeLimitMinutes * 60,
       difficulty: 'Adaptive',
     );
-    ic.startInterview(resume: rc.resume, profile: pc.profile);
+    ic.startInterview(
+      resume: rc.resume,
+      profile: pc.profile,
+      targetRole: userRole,
+    );
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
     );
@@ -215,11 +229,23 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
                   const SizedBox(height: 20),
 
                   // ── Summary card ─────────────────────────────────
-                  _SummaryCard(
-                    questionCount: _questionCount,
-                    timeLabel: _timeLimitLabel(_timeLimitMinutes),
-                    colors: colors,
-                  ),
+                  Builder(builder: (context) {
+                    final pc = context.watch<ProfileController>();
+                    final auth = context.watch<AuthController>();
+                    final ic = context.watch<InterviewController>();
+                    final effectiveRole = pc.profile?.targetRole?.trim().isNotEmpty == true
+                        ? pc.profile!.targetRole!.trim()
+                        : (auth.user?.targetRole.trim().isNotEmpty == true
+                            ? auth.user!.targetRole.trim()
+                            : ic.config.role);
+
+                    return _SummaryCard(
+                      targetRole: effectiveRole,
+                      questionCount: _questionCount,
+                      timeLabel: _timeLimitLabel(_timeLimitMinutes),
+                      colors: colors,
+                    );
+                  }),
 
                   const SizedBox(height: 24),
                 ],
@@ -337,11 +363,13 @@ class _CountChip extends StatelessWidget {
 // ── Summary card ──────────────────────────────────────────────────────────────
 
 class _SummaryCard extends StatelessWidget {
+  final String targetRole;
   final int questionCount;
   final String timeLabel;
   final AppColorScheme colors;
 
   const _SummaryCard({
+    required this.targetRole,
     required this.questionCount,
     required this.timeLabel,
     required this.colors,
@@ -359,15 +387,40 @@ class _SummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(FeatherIcons.layers, size: 13, color: colors.mint),
-              const SizedBox(width: 7),
-              Text(
-                'SESSION SUMMARY',
-                style: AppTypography.bold(
-                  10,
-                  color: colors.mint,
-                  letterSpacing: 1.1,
+              Row(
+                children: [
+                  Icon(FeatherIcons.layers, size: 13, color: colors.mint),
+                  const SizedBox(width: 7),
+                  Text(
+                    'SESSION SUMMARY',
+                    style: AppTypography.bold(
+                      10,
+                      color: colors.mint,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+              // Role pill
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(FeatherIcons.briefcase, size: 10, color: colors.mint),
+                    const SizedBox(width: 4),
+                    Text(
+                      targetRole,
+                      style: AppTypography.semiBold(10, color: Colors.white),
+                    ),
+                  ],
                 ),
               ),
             ],

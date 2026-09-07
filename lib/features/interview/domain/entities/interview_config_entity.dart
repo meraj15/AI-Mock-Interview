@@ -66,7 +66,7 @@ class InterviewConfigEntity {
   }
 
   static InterviewConfigEntity initial() => const InterviewConfigEntity(
-        role: 'Flutter Developer',
+        role: 'Software Developer',
         company: 'General interview',
         experience: '1–2 years',
         difficulty: 'Adaptive',

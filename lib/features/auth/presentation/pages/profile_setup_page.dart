@@ -167,8 +167,15 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
       final skills = resumeEntity.skills;
       final educationText = resumeEntity.education;
 
+      final resumeRole = resumeEntity.workExperiences.isNotEmpty &&
+              resumeEntity.workExperiences.first.role.trim().isNotEmpty
+          ? resumeEntity.workExperiences.first.role.trim()
+          : (resumeEntity.name.contains('–')
+              ? resumeEntity.name.split('–').last.trim()
+              : null);
+
       await context.read<ProfileController>().mergeResumeProfile(
-            targetRole: resumeEntity.experience,
+            targetRole: (resumeRole != null && resumeRole.isNotEmpty) ? resumeRole : null,
             skills: skills.isNotEmpty ? skills : null,
             education: educationText.isNotEmpty
                 ? [EducationItem(degree: educationText)]

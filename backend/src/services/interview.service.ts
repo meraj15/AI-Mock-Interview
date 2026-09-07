@@ -340,7 +340,7 @@ export class InterviewService {
       ] || {
         name: 'General',
         objective:
-          'Evaluate general Flutter/Dart technical competence.',
+          `Evaluate practical competence for ${session.role}.`,
       };
 
     const topicsRemaining =

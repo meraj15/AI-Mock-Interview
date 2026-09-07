@@ -18,7 +18,7 @@ class UserEntity {
     required this.id,
     required this.name,
     required this.email,
-    this.targetRole = 'Flutter Developer',
+    this.targetRole = 'Software Developer',
     this.experienceYears = '1.2 years',
     this.avatarUrl,
     this.streakDays = 4,

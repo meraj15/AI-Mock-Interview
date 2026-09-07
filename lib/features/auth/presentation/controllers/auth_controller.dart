@@ -122,7 +122,7 @@ class AuthController extends ChangeNotifier {
       id: 'usr_google_1',
       name: 'Meraj Khan (Google)',
       email: 'meraj.khan@gmail.com',
-      targetRole: 'Flutter Developer',
+      targetRole: 'Software Developer',
       experienceYears: '2.0 years',
     );
     _status = AuthStatus.authenticated;
@@ -142,7 +142,7 @@ class AuthController extends ChangeNotifier {
       id: 'usr_apple_1',
       name: 'Meraj Khan',
       email: 'meraj.khan@icloud.com',
-      targetRole: 'Flutter Developer',
+      targetRole: 'Software Developer',
       experienceYears: '2.0 years',
     );
     _status = AuthStatus.authenticated;
