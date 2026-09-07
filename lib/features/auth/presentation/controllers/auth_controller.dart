@@ -45,6 +45,9 @@ class AuthController extends ChangeNotifier {
 
   void markProfileSetupComplete() {
     _isProfileSetupComplete = true;
+    if (_user != null) {
+      _user = _user!.copyWith(isProfileComplete: true);
+    }
     notifyListeners();
   }
 

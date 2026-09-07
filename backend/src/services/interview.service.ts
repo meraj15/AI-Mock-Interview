@@ -112,8 +112,8 @@ export class InterviewService {
     const sessionId = randomUUID();
 
     const maxTurns = Math.max(
-      6,
-      Math.min(12, questionCount * 2),
+      4,
+      questionCount,
     );
 
     const session: ActiveConversationalSession = {
@@ -350,10 +350,10 @@ export class InterviewService {
         )
         .map((topic) => topic.name);
 
-    const isAtMaxTurns =
-      session.totalTurns >= session.maxTurns;
+    const isPastMaxTurns =
+      session.totalTurns > session.maxTurns;
 
-    if (isAtMaxTurns) {
+    if (isPastMaxTurns) {
       return this.completeInterview(
         session,
         currentTopic.name,
@@ -511,14 +511,32 @@ export class InterviewService {
     }
 
     if (
-      session.totalTurns + 1 >
-      session.maxTurns
+      finalAction === 'end_interview' ||
+      session.totalTurns >= session.maxTurns
     ) {
-      return this.completeInterview(
-        session,
-        currentTopic.name,
-        'Interview duration reached its limit.',
+      session.status = 'completed';
+      session.interactions.push({
+        question: nextQuestion,
+        answer: '',
+        topic: 'Interview Conclusion',
+        type: 'primary',
+        timestamp: new Date().toISOString(),
+      });
+
+      logger.info(
+        `[InterviewService] Interview ${session.id} completed naturally after ${session.totalTurns} turns`,
       );
+
+      return {
+        acknowledgement: turn.acknowledgement || 'Thank you.',
+        action: 'end_interview',
+        answerQuality: turn.answerQuality,
+        nextQuestion,
+        nextTopic: 'Completed',
+        currentTopicIndex: session.currentTopicIndex,
+        totalTopics: session.topics.length,
+        isComplete: true,
+      };
     }
 
     // Add the next interviewer question.

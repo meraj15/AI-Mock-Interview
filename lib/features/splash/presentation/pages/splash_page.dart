@@ -5,6 +5,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../auth/presentation/pages/login_page.dart';
 import '../../../auth/presentation/pages/onboarding_page.dart';
+import '../../../auth/presentation/pages/profile_setup_page.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 
@@ -75,7 +76,9 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
         // Continue even if network timed out or offline
       }
       if (!mounted) return;
-      target = const MainNavPage();
+      final hasCompleted = (authCtrl.user?.isProfileComplete ?? false) ||
+          (profileCtrl.profile?.isComplete ?? false);
+      target = hasCompleted ? const MainNavPage() : const ProfileSetupPage();
     }
 
     Navigator.of(context).pushReplacement(

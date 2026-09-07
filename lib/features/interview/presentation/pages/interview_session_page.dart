@@ -239,7 +239,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final questionText = ic.currentQuestion.trim();
     _questionWords = questionText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     _displayedWordCount = 0;
-    _isAcknowledgementFinished = ic.currentAcknowledgement.isEmpty;
+    _isAcknowledgementFinished = true;
 
     _startTextStreaming();
 
@@ -254,24 +254,25 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       _ttsSafetyTimer = Timer(Duration(milliseconds: safetyMs), () {
         if (mounted && _phase == InterviewPhase.speaking) {
           _completeTextStreaming();
-          _setPhase(InterviewPhase.listening);
+          _setPhase(ic.isComplete ? InterviewPhase.done : InterviewPhase.listening);
         }
       });
     } else {
       Future.delayed(Duration(milliseconds: 400 + (_questionWords.length * 200)), () {
         if (mounted && _phase == InterviewPhase.speaking) {
           _completeTextStreaming();
-          _setPhase(InterviewPhase.listening);
+          _setPhase(ic.isComplete ? InterviewPhase.done : InterviewPhase.listening);
         }
       });
     }
   }
 
   void _skipTts() {
+    final ic = context.read<InterviewController>();
     _ttsSafetyTimer?.cancel();
     _tts.stop();
     _completeTextStreaming();
-    _setPhase(InterviewPhase.listening);
+    _setPhase(ic.isComplete ? InterviewPhase.done : InterviewPhase.listening);
   }
 
   // ── Word-by-Word Streaming Engine ─────────────────────────────────────────
@@ -657,11 +658,16 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   // ── Sleek Dynamic AI Voice Status Capsule ─────────────────────────────────
 
   Widget _buildDynamicAIVoiceBar(AppColorScheme colors, bool isLoading) {
+    final ic = context.watch<InterviewController>();
     Color accentColor;
     String statusLabel;
     IconData icon;
 
-    if (isLoading) {
+    if (ic.isComplete || _phase == InterviewPhase.done) {
+      accentColor = colors.mint;
+      statusLabel = 'Interview Concluded • Great job!';
+      icon = FeatherIcons.award;
+    } else if (isLoading) {
       accentColor = colors.primary;
       statusLabel = 'AI Interviewer • Preparing question…';
       icon = FeatherIcons.loader;
@@ -695,8 +701,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         case InterviewPhase.done:
         case InterviewPhase.loading:
           accentColor = colors.mint;
-          statusLabel = 'AI Interviewer';
-          icon = FeatherIcons.check;
+          statusLabel = 'Interview Concluded • Great job!';
+          icon = FeatherIcons.award;
           break;
       }
     }
@@ -742,7 +748,6 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   // ── HERO: Word-by-Word Streaming Question Card ────────────────────────────
 
   Widget _buildStreamingQuestionCard(InterviewController ic, AppColorScheme colors) {
-    final acknowledgement = ic.currentAcknowledgement.trim();
     final isStreamingActive = _phase == InterviewPhase.speaking &&
         _displayedWordCount < _questionWords.length;
 
@@ -775,30 +780,6 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Acknowledgement Banner (if available)
-          if (acknowledgement.isNotEmpty && _isAcknowledgementFinished) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(FeatherIcons.check, size: 13, color: colors.mint),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '"$acknowledgement"',
-                    style: AppTypography.medium(
-                      12.5,
-                      color: colors.mint,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Divider(color: colors.border.withValues(alpha: 0.4), height: 1),
-            const SizedBox(height: 14),
-          ],
-
           // Question Text (Streaming word-by-word with pulsing caret)
           RichText(
             text: TextSpan(
@@ -1031,6 +1012,35 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   // ── Voice Interaction & Minimal Controls ──────────────────────────────────
 
   Widget _buildVoiceControlCenter(bool isLoading, AppColorScheme colors) {
+    final ic = context.watch<InterviewController>();
+
+    // If interview is complete, show prominent View Evaluation button
+    if (ic.isComplete) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colors.mint,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 4,
+            ),
+            icon: const Icon(FeatherIcons.award, size: 20, color: Colors.black),
+            label: Text(
+              'View Performance Evaluation',
+              style: AppTypography.bold(14.5, color: Colors.black),
+            ),
+            onPressed: () => _navigateToResult(ic),
+          ),
+        ),
+      );
+    }
+
     if (isLoading) {
       return const SizedBox(height: 72);
     }

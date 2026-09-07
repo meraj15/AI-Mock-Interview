@@ -259,7 +259,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
             parent: BouncingScrollPhysics(),
           ),
           padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom + 100,
+            bottom: MediaQuery.paddingOf(context).bottom + 40,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -21,11 +21,18 @@ export class AuthService {
   constructor(private readonly repo: AuthRepository = authRepository) {}
 
   private sanitizeUser(user: User, profile?: UserProfile | null): UserResponse {
+    const hasRole = Boolean(profile?.targetRole && profile.targetRole.trim().length > 0);
+    const hasSkills = Boolean(profile?.skills && Array.isArray(profile.skills) && profile.skills.length > 0);
+    const isProfileComplete = hasRole && hasSkills;
+
     return {
       id: user.id,
       email: user.email,
       fullName: profile?.fullName ?? null,
       name: profile?.fullName ?? null,
+      targetRole: profile?.targetRole ?? null,
+      skills: profile?.skills ?? [],
+      isProfileComplete,
       isVerified: user.isVerified,
       isActive: user.isActive,
       createdAt: user.createdAt,

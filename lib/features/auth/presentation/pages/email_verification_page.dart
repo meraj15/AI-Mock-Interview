@@ -9,6 +9,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../controllers/auth_controller.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
+import 'profile_setup_page.dart';
 import 'reset_password_page.dart';
 
 enum VerificationMode { emailVerify, passwordReset }
@@ -111,8 +112,16 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
         await profileCtrl.loadProfile();
       } catch (_) {}
       if (!mounted) return;
+
+      final hasCompleted = (authCtrl.user?.isProfileComplete ?? false) ||
+          (profileCtrl.profile?.isComplete ?? false);
+
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainNavPage()),
+        MaterialPageRoute(
+          builder: (_) => hasCompleted
+              ? const MainNavPage()
+              : const ProfileSetupPage(),
+        ),
         (route) => false,
       );
     }

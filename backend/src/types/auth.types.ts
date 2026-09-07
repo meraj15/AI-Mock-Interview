@@ -5,6 +5,9 @@ export interface UserResponse {
   email: string;
   fullName?: string | null;
   name?: string | null;
+  targetRole?: string | null;
+  skills?: string[];
+  isProfileComplete: boolean;
   isVerified: boolean;
   isActive: boolean;
   createdAt: Date;

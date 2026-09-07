@@ -24,7 +24,7 @@ export type AnswerQuality =
 
 export interface ConversationalTurn {
   acknowledgement: string;
-  action: 'follow_up' | 'new_topic';
+  action: 'follow_up' | 'new_topic' | 'end_interview';
   answerQuality: AnswerQuality;
   nextQuestion: string;
   nextTopic: string;
@@ -73,9 +73,11 @@ export interface TranscriptEntry {
 // ============================================================
 
 const FALLBACK_MODELS = [
+  
   'gemini-3.7-flash',
-  'gemini-3.5-flash-lite',
   'gemini-3.6-flash',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
 ];
 
 // ============================================================
@@ -284,12 +286,43 @@ export class AIService {
       : 'No specific skills provided';
   }
 
+  private enforceSingleQuestion(rawQuestion: string, fallback: string): string {
+    let q = (rawQuestion || '').trim().replace(/^["']|["']$/g, '');
+    if (!q) return fallback;
+
+    // Strip out conversational reactions / acknowledgements if the model accidentally prepended them to nextQuestion
+    q = q.replace(
+      /^(Understood[.,!]?|Got it,?( that makes sense)?[.,!]?|Makes (total )?sense[.,!]?|Fair (point|enough)[.,!]?|Right on[.,!]?|Thank you[.,!]?|Thanks for (sharing|that)[.,!]?|Certainly!?|Sure!?|Alright,?|Okay,?|Now,?|Moving on,?|Next question:?)\s*/i,
+      '',
+    );
+
+    // If there are multiple question marks, extract the first complete question
+    if (q.includes('?')) {
+      const parts = q.split('?');
+      if (parts.length > 2) {
+        q = parts[0].trim() + '?';
+      }
+    }
+
+    // Ensure it ends with a question mark if it's an inquiry
+    if (!q.endsWith('?') && !q.endsWith('!')) {
+      if (q.match(/^(can|could|how|what|why|where|when|which|tell|walk|explain)/i)) {
+        q = q.replace(/[.,;:]+$/, '') + '?';
+      }
+    }
+
+    // Clean up compound questions joined with "and how / and why / and what"
+    q = q.replace(/,\s*and\s+(how|why|what|can|could|where)\b.*\?/i, '?');
+
+    return q;
+  }
+
   // ==========================================================
   // STAGE 1
   //
   // Generate only the first question.
   //
-  // Difficulty is NOT provided by the user.
+  // Role-based warm introduction question.
   // ==========================================================
 
   async generateInterviewPlan(params: {
@@ -320,32 +353,29 @@ export class AIService {
       'Experience not specified';
 
     const prompt = `
-You are a real human technical interviewer starting a live technical interview for a Flutter/Dart developer.
+You are a senior technical interviewer welcoming a candidate to a live, realistic technical interview.
 
-CANDIDATE PROFILE:
-Role: ${role.trim()}
-Experience: ${experienceText}
-Background Skills: ${skillList}
+CANDIDATE TARGET ROLE: ${role.trim()}
+EXPERIENCE LEVEL: ${experienceText}
+PROGRAMMING LANGUAGES & FRAMEWORKS: ${skillList}
 
-FIRST QUESTION - CANDIDATE INTRODUCTION:
+STAGE 1 / TURN 1 OPENING QUESTION:
+In every real human interview, the opening turn MUST ALWAYS be a warm, role-tailored introduction question welcoming the candidate and asking for their background based on their target role.
 
-In every real interview, the first question MUST ALWAYS be an introduction question to break the ice and let the candidate introduce themselves.
+Generate exactly ONE natural opening question:
+1. Welcome the candidate warmly.
+2. Ask them to introduce themselves and give an overview of their background specifically as a ${role.trim()}.
 
-Generate exactly ONE natural introduction question welcoming the candidate and asking them to introduce themselves and give a brief overview of their background and journey as a Flutter/Dart developer.
-
-Examples of natural opening introduction questions:
-* "Could you introduce yourself and briefly walk me through your background as a developer?"
-* "To start off, please introduce yourself and tell me a bit about your journey."
-* "Welcome! Could you give a quick introduction about yourself and your work with Flutter?"
-* "Let's kick things off with a brief introduction of yourself and what you've been building."
-* "To begin, could you introduce yourself and share a bit about your developer journey?"
+Examples:
+* "Welcome! To start us off today, could you introduce yourself and walk me through your background as a ${role.trim()}?"
+* "Hi, welcome! Could you please introduce yourself and share an overview of your background as a ${role.trim()}?"
+* "Welcome to the interview! To begin, could you introduce yourself and your journey in ${role.trim()}?"
 
 CRITICAL REQUIREMENTS:
-* The first question MUST ALWAYS be an introduction question asking the candidate to introduce themselves.
-* Do NOT jump straight into technical trivia, coding problems, or deep technical questions on this first question.
-* It must sound warm, conversational, and natural when spoken aloud by a real human interviewer.
-* Keep it concise (maximum 18 words).
-* Vary the wording naturally between sessions so it feels genuine and personal.
+* Warm and collegial greeting.
+* Ask for their background specifically tailored to their role "${role.trim()}".
+* Do NOT ask technical questions, coding problems, or trivia in this opening turn.
+* Strictly ONE question mark. Maximum 18 words.
 
 Return ONLY valid JSON.
 `;
@@ -356,6 +386,10 @@ Return ONLY valid JSON.
       properties: {
         firstQuestion: {
           type: Type.STRING,
+          description:
+            'A warm opening question welcoming the candidate and asking for their background as a ' +
+            role.trim() +
+            '. Maximum 18 words. Exactly one question mark.',
         },
       },
 
@@ -365,7 +399,7 @@ Return ONLY valid JSON.
     };
 
     console.log(
-      '[AIService] Generating first question...',
+      `[AIService] Generating first question for role "${role.trim()}"...`,
     );
 
     const result =
@@ -374,16 +408,11 @@ Return ONLY valid JSON.
         schema,
       );
 
-    const firstQuestion =
-      String(
-        result.firstQuestion || '',
-      ).trim();
-
-    if (!firstQuestion) {
-      throw new Error(
-        'Gemini failed to generate the first question',
-      );
-    }
+    const defaultFirstQ = `Welcome! Could you please introduce yourself and share an overview of your background as a ${role.trim()}?`;
+    const firstQuestion = this.enforceSingleQuestion(
+      String(result.firstQuestion || '').trim(),
+      defaultFirstQ,
+    );
 
     return {
       topics: [],
@@ -677,37 +706,96 @@ Return ONLY valid JSON.
         ? topicsRemaining.join(', ')
         : 'None';
 
+    const currentTurn = turnNumber || 1;
+    const totalMaxTurns = maxTurns || 8;
+    const isIntroTransition = currentTurn === 1;
+    const isPenultimateTurn = currentTurn === totalMaxTurns - 1;
+    const isFinalClosingTurn = currentTurn >= totalMaxTurns;
+
+    let stageInstructions = '';
+    if (isFinalClosingTurn) {
+      stageInstructions = `
+==================================================
+CURRENT INTERVIEW STAGE: [FINAL_CLOSING_FAREWELL]
+==================================================
+* The candidate has just answered the final technical question.
+* The interview has officially CONCLUDED.
+* Do NOT ask another technical question or coding problem!
+* Action MUST be: "end_interview"
+* nextTopic: "Interview Conclusion"
+* nextQuestion: Deliver a warm, authentic, collegial closing farewell remark thanking the candidate for their time and thoughtful answers, and wishing them luck.
+  Example nextQuestion: "That brings us to the end of our interview today! Thank you so much for walking through your experience with me. We'll compile your performance review right now. Best of luck!"
+* acknowledgement: A warm spoken reaction (e.g. "Thank you for walking me through that." or "Understood, thank you.").
+`;
+    } else if (isPenultimateTurn) {
+      stageInstructions = `
+==================================================
+CURRENT INTERVIEW STAGE: [PENULTIMATE_WRAPUP_QUESTION]
+==================================================
+* We have time for ONE last technical question before wrapping up today.
+* Signpost the finish naturally to the candidate in your question:
+  Example: "We have time for one last question before we wrap up today: what's a challenging bug or performance issue you recently diagnosed and resolved?"
+  Example: "For our final technical question today, what's one architectural decision you'd make differently on a past project?"
+* Exactly ONE question mark. Maximum 18 words.
+`;
+    } else if (isIntroTransition) {
+      stageInstructions = `
+==================================================
+CURRENT INTERVIEW STAGE: [TRANSITION_FROM_INTRO_TO_TECHNICAL]
+==================================================
+* The candidate has just provided their background introduction.
+* A real human interviewer ACTIVELY LISTENS to their introduction!
+* Identify ONE specific programming language or framework the candidate mentioned or listed in their profile (${skillList || role}).
+* CRITICAL RULE - SKILLS ARE LANGUAGES OR FRAMEWORKS, NOT CONCEPTS:
+  By "skill", we strictly mean the candidate's PROGRAMMING LANGUAGES OR FRAMEWORKS (such as Dart, Flutter, React, TypeScript, etc.).
+  DO NOT ask questions about abstract theoretical concepts (such as Clean Architecture definitions, SOLID principles, or OOP textbook theory).
+* Ask ONE direct, practical technical question grounded specifically in how they use that programming language or framework:
+  Example if Flutter/Dart: "You mentioned working with Flutter and Dart. How did you handle state management across your screens?"
+  Example if Flutter/Dart: "Since you build with Flutter, how do you handle asynchronous streams and API errors in Dart?"
+  Example if Flutter: "In your Flutter apps, what approach did you use for caching network responses offline?"
+  Example: "In Dart, how do you optimize widget rebuilds when rendering dynamic scrollable lists?"
+* If their intro was very brief or did not name a specific tool:
+  Example: "Great to have you! To kick off the technical side, how do you manage state and navigation in ${role.includes('Flutter') ? 'Flutter' : role}?"
+* Human acknowledgement: short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never displayed in UI card.
+* Strictly ONE question mark. Maximum 18 words.
+`;
+    } else {
+      stageInstructions = `
+==================================================
+CURRENT INTERVIEW STAGE: [CORE_TECHNICAL_EXPLORATION]
+==================================================
+* Evaluate practical competence in the candidate's programming languages and frameworks (${skillList || role}).
+* CRITICAL RULE - SKILLS ARE LANGUAGES OR FRAMEWORKS, NOT CONCEPTS:
+  Skills mean strictly their PROGRAMMING LANGUAGES AND FRAMEWORKS (e.g. Dart, Flutter).
+  DO NOT ask questions about abstract theoretical concepts (like SOLID principles, OOP definitions, or design pattern theory).
+* Every question MUST be a practical question grounded in their actual language or framework:
+  - Framework APIs & features (e.g. Flutter state management, widget lifecycles, navigation, rendering)
+  - Language features (e.g. Dart null safety, async/await, isolates, streams, records, collections)
+  - Real-world engineering: API error handling, offline caching, memory leaks, and UI performance in their language/framework.
+* If candidate's previous answer was strong: ask ONE deeper follow-up on performance, trade-offs, or edge cases in that language/framework.
+* If candidate's previous answer was weak: gently acknowledge and smoothly pivot to another practical feature in their language/framework.
+* Human acknowledgement: short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never displayed in UI card.
+* Strictly ONE question mark. Maximum 18 words.
+`;
+    }
+
     const prompt = `
-You are a senior technical interviewer conducting a realistic, adaptive Flutter/Dart technical interview.
+You are a senior technical interviewer conducting a live, adaptive technical interview for a ${role}.
 
-Your goal is to behave like a REAL human interviewer, not a question generator or an exam.
+Your goal is to behave like a REAL human interviewer, not an automated quiz bot or an exam.
 
-You must listen to the candidate's actual answer and decide what would be the most valuable next question.
+Listen carefully to the candidate's actual answer and decide what would be the most valuable next question.
 
 ==================================================
 CANDIDATE PROFILE
 =================
-
 Role: ${role}
 Experience: ${experience || 'Not specified'}
-Background Skills: ${skillList}
-
-IMPORTANT:
-
-The candidate's listed skills are BACKGROUND INFORMATION ONLY.
-
-They MUST NOT restrict which questions you can ask.
-
-You are interviewing the candidate for their overall Flutter/Dart capability.
-
-You may ask about ANY relevant Flutter or Dart topic, even if it was not included in the candidate's skill list.
-
-The candidate's experience level should determine the expected depth and complexity of the question.
+Languages & Frameworks: ${skillList}
 
 ==================================================
 CURRENT INTERVIEW STATE
 =======================
-
 Current topic: ${currentTopic}
 Topic objective: ${topicObjective || 'Evaluate practical technical competence'}
 
@@ -730,279 +818,48 @@ Follow-ups used on current topic:
 ${followUpsUsed}
 
 Current turn:
-${turnNumber || 1} / ${maxTurns || 10}
+${currentTurn} / ${totalMaxTurns}
+
+${stageInstructions}
 
 ==================================================
-RECENT QUESTIONS
-================
-
+RECENT QUESTIONS ALREADY ASKED
+==============================
 ${recentQuestionList}
 
-Do not repeat these questions.
-
-Avoid asking substantially identical questions even if the wording is different.
+Do not repeat these questions. Avoid asking substantially identical questions.
 
 ==================================================
-ADAPTIVE INTERVIEW BEHAVIOR
-===========================
-
-After every candidate answer, mentally evaluate:
-
-1. Accuracy
-2. Technical depth
-3. Practical understanding
-4. Reasoning
-5. Ability to explain the concept
-6. Relevance to the question
-7. Confidence demonstrated by the answer
-
-Classify the answer internally as:
-
-WEAK:
-The candidate is incorrect, vague, confused, or unable to explain the concept.
-
-NEXT ACTION:
-Ask a simpler clarification question, ask for a concrete example, or move to another suitable topic if the candidate clearly does not know the subject.
-
-AVERAGE:
-The candidate understands the basic concept but lacks depth or practical understanding.
-
-NEXT ACTION:
-Ask a practical or scenario-based question that tests application of the concept.
-
-STRONG:
-The candidate gives an accurate and reasonably detailed answer.
-
-NEXT ACTION:
-Increase the technical depth or ask a deeper practical question.
-
-EXCELLENT:
-The candidate demonstrates strong technical understanding, reasoning, and practical experience.
-
-NEXT ACTION:
-You may ask a deeper question involving internals, trade-offs, architecture, performance, debugging, or edge cases — or move to another important topic if the current topic has been sufficiently evaluated.
+CRITICAL HUMAN INTERVIEW RULES
+==============================
+1. STRICTLY ONE QUESTION: Exactly ONE question mark ('?'). NEVER ask two questions in one sentence (no "and how...", "and why...", "and what...").
+2. CONCISE & PUNCHY: Spoken questions must be between 8 and 18 words. Never ask a long paragraph or bullet points.
+3. SPOKEN ACKNOWLEDGEMENT ONLY: Provide a short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). This is spoken via TTS only and MUST NOT be part of nextQuestion.
+4. SKILLS ARE LANGUAGES & FRAMEWORKS, NOT CONCEPTS: Ask practical questions about actual programming languages and frameworks (e.g. Dart, Flutter). Never ask abstract dictionary definitions, OOP theory, or textbook concept quizzes.
+5. NATURAL CONVERSATIONAL TONE: Sound like a friendly senior technical colleague speaking over video call.
 
 ==================================================
-IMPORTANT DIFFICULTY RULE
-=========================
-
-There is NO user-selected difficulty level.
-
-Do NOT use Easy, Medium, or Hard.
-
-Difficulty must be determined dynamically from:
-
-* Candidate experience
-* Previous answers
-* Demonstrated technical ability
-* Interview progress
-* Topic complexity
-
-The interview should naturally progress from foundational questions toward deeper questions when the candidate demonstrates strong knowledge.
-
-Do not make every question progressively harder.
-
-A candidate may be strong in one area and weak in another.
-
-Adapt independently for each topic.
-
-==================================================
-QUESTION SELECTION
-==================
-
-Before generating the next question, determine internally:
-
-1. Should I follow up on the current answer?
-2. Has the current topic been sufficiently tested?
-3. Should I move to another topic?
-4. What important Flutter/Dart area has not been evaluated yet?
-5. What question best measures the candidate's actual ability?
-6. Is the question appropriate for the candidate's experience?
-7. Has a similar question already been asked?
-
-Prefer a follow-up when the candidate's answer contains something worth exploring.
-
-Move to a new topic when:
-
-* The current topic has been sufficiently evaluated.
-* The candidate has already received enough follow-ups.
-* Another topic is more valuable for evaluating the candidate.
-* The candidate clearly lacks knowledge and continuing would not provide useful information.
-
-==================================================
-FOLLOW-UP RULE
-==============
-
-Follow-ups are allowed when they provide meaningful additional evaluation.
-
-Do not ask follow-ups just for the sake of asking them.
-
-Normally use 0-2 follow-ups per topic.
-
-A follow-up can:
-
-* Clarify an unclear answer.
-* Ask for a real-world example.
-* Test deeper understanding.
-* Explore a trade-off.
-* Test debugging ability.
-* Test practical implementation.
-* Challenge an assumption made by the candidate.
-
-==================================================
-FLUTTER/DART QUESTION DOMAIN
-============================
-
-You are free to ask questions from the entire Flutter/Dart ecosystem.
-
-Examples include:
-
-Dart:
-
-* OOP
-* Null safety
-* Collections
-* Generics
-* Extensions
-* Mixins
-* Futures
-* async/await
-* Streams
-* Isolates
-* Error handling
-* Memory concepts
-
-Flutter:
-
-* Widget tree
-* StatelessWidget
-* StatefulWidget
-* BuildContext
-* Widget lifecycle
-* Keys
-* setState
-* Rebuilds
-* Rendering
-* State management
-* Navigation
-* Forms
-* App lifecycle
-* Platform integration
-
-Application development:
-
-* REST APIs
-* Networking
-* JSON serialization
-* Authentication
-* Local storage
-* Firebase
-* Caching
-* Pagination
-* Offline handling
-* Error handling
-
-Software engineering:
-
-* Clean Architecture
-* SOLID
-* Repository pattern
-* Dependency injection
-* Testing
-* Debugging
-* Performance
-* Memory leaks
-* Security
-* Release issues
-
-Real-world scenarios:
-
-* API timeout
-* Slow application
-* Excessive widget rebuilds
-* Memory problems
-* Production crash
-* Large lists
-* Offline synchronization
-* Authentication failures
-* Architecture decisions
-
-These are examples, NOT a fixed list.
-
-You may ask about any relevant Flutter/Dart concept.
-
-==================================================
-CONVERSATIONAL STYLE
-====================
-
-Sound like a real interviewer.
-
-Do:
-
-* Ask one question at a time.
-* Use short natural acknowledgements when appropriate.
-* Respond naturally to the candidate's previous answer.
-* Reference something the candidate actually said when useful.
-* Keep the conversation professional.
-
-Do NOT:
-
-* Give a lecture.
-* Explain the correct answer during the interview.
-* Ask multiple questions at once.
-* Turn questions into bullet points.
-* Repeat questions.
-* Mention internal scoring or difficulty.
-* Say "According to your skills..."
-* Restrict questions to the candidate's listed skills.
-
-The next question must be exactly ONE natural spoken sentence.
-
-Maximum 15 words.
-
-Prefer 7-12 words.
-
-==================================================
-ACTION
-======
-
-Use:
-
-"follow_up"
-
-when continuing the current topic provides useful additional evaluation.
-
-Use:
-
-"new_topic"
-
-when moving to another topic is more valuable.
-
-==================================================
-OUTPUT
-======
-
+OUTPUT FORMAT
+=============
 Return ONLY valid JSON.
 
 acknowledgement:
-A natural interviewer reaction, maximum 4 words, or empty string.
+Short, realistic conversational reaction to what the candidate just said (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point.", "Thank you."). Spoken via TTS only; do NOT include the question here.
 
 action:
-"follow_up" or "new_topic"
+"follow_up", "new_topic", or "end_interview"
 
 answerQuality:
 "weak", "average", "strong", or "excellent"
 
 nextQuestion:
-Exactly one natural interview question.
+The pure technical question ONLY (or warm closing remark if end_interview). Do NOT include any acknowledgement, reaction, or conversational filler in nextQuestion. Maximum 18 words. Exactly one question mark.
 
 nextTopic:
-The topic being evaluated by the next question.
+The language or framework topic being evaluated (e.g. "Flutter State Management", "Dart Async Programming", or "Interview Conclusion").
 
 conversationSummary:
-A concise 1-2 sentence summary of important information demonstrated by the candidate.
-
-Do not include explanations outside the JSON.
+A concise 1-2 sentence summary of technical ability demonstrated so far.
 `;
 
     const schema = {
@@ -1011,23 +868,21 @@ Do not include explanations outside the JSON.
       properties: {
         acknowledgement: {
           type: Type.STRING,
-
           description:
-            'Very short natural interviewer reaction or empty string.',
+            'Short natural interviewer reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never shown in UI.',
         },
 
         action: {
           type: Type.STRING,
-
           enum: [
             'follow_up',
             'new_topic',
+            'end_interview',
           ],
         },
 
         answerQuality: {
           type: Type.STRING,
-
           enum: [
             'weak',
             'average',
@@ -1038,21 +893,18 @@ Do not include explanations outside the JSON.
 
         nextQuestion: {
           type: Type.STRING,
-
           description:
-            'One natural spoken interview question, maximum 15 words.',
+            'The pure technical question ONLY (or closing remark if end_interview). Do NOT include the acknowledgement or conversational filler here. Grounded in the candidate\'s programming languages or frameworks. Maximum 18 words. Exactly one question mark.',
         },
 
         nextTopic: {
           type: Type.STRING,
-
           description:
-            'Topic evaluated by the next question.',
+            'The technical area or language/framework feature being evaluated (e.g. "Flutter State Management", "Dart Async Programming", or "Interview Conclusion").',
         },
 
         conversationSummary: {
           type: Type.STRING,
-
           description:
             'Short 1-2 sentence memory of useful candidate information.',
         },
@@ -1082,8 +934,11 @@ Do not include explanations outside the JSON.
 
     let action:
       | 'follow_up'
-      | 'new_topic' =
-      result.action === 'follow_up'
+      | 'new_topic'
+      | 'end_interview' =
+      result.action === 'end_interview' || isFinalClosingTurn
+        ? 'end_interview'
+        : result.action === 'follow_up'
         ? 'follow_up'
         : 'new_topic';
 
@@ -1094,15 +949,30 @@ Do not include explanations outside the JSON.
         ? result.answerQuality
         : 'average';
 
-    let nextQuestion =
-      String(
-        result.nextQuestion || '',
-      ).trim();
+    const primaryTool =
+      skills && skills.length > 0
+        ? skills[0]
+        : role.includes('Flutter')
+        ? 'Flutter'
+        : role;
+
+    const fallbackQuestion = isFinalClosingTurn
+      ? 'That brings us to the end of our interview today! Thank you so much for walking through your experience with me.'
+      : isPenultimateTurn
+      ? `For our final question today, what's a challenging bug you recently diagnosed and resolved in ${primaryTool}?`
+      : isIntroTransition
+      ? `To start on technicals, how do you manage state and async operations in ${primaryTool}?`
+      : `In ${primaryTool}, how do you structure your code to avoid unnecessary UI rebuilds?`;
+
+    let nextQuestion = this.enforceSingleQuestion(
+      String(result.nextQuestion || '').trim(),
+      fallbackQuestion,
+    );
 
     let nextTopic =
       String(
         result.nextTopic ||
-          currentTopic,
+          (isFinalClosingTurn ? 'Interview Conclusion' : currentTopic),
       ).trim();
 
     let acknowledgement =
@@ -1130,33 +1000,25 @@ Do not include explanations outside the JSON.
     }
 
     // Never allow more than 2 follow-ups.
-    if (followUpsUsed >= 2) {
+    if (followUpsUsed >= 2 && action === 'follow_up') {
       action = 'new_topic';
     }
 
     if (!nextQuestion) {
-      throw new Error(
-        'Gemini failed to generate next interview question',
-      );
+      nextQuestion = fallbackQuestion;
     }
 
     if (!nextTopic) {
-      nextTopic = currentTopic;
+      nextTopic = isFinalClosingTurn ? 'Interview Conclusion' : currentTopic;
     }
 
     return {
       acknowledgement,
-
       action,
-
       answerQuality,
-
       nextQuestion,
-
       nextTopic,
-
-      conversationSummary:
-        summary,
+      conversationSummary: summary,
     };
   }
 

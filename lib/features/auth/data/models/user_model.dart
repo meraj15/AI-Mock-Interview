@@ -14,6 +14,7 @@ class UserModel extends UserEntity {
     super.averageScore,
     super.bestScore,
     super.isEmailVerified,
+    super.isProfileComplete,
     super.bio,
   });
 
@@ -30,8 +31,8 @@ class UserModel extends UserEntity {
       id: json['id'] as String? ?? 'usr_1',
       name: name,
       email: email,
-      targetRole: json['targetRole'] as String? ?? 'Flutter Developer',
-      experienceYears: json['experienceYears'] as String? ?? '1.2 years',
+      targetRole: json['targetRole'] as String? ?? 'Software Developer',
+      experienceYears: json['experienceYears'] as String? ?? '2 years',
       avatarUrl: json['avatarUrl'] as String?,
       streakDays: json['streakDays'] as int? ?? 4,
       weeklyGoalTarget: json['weeklyGoalTarget'] as int? ?? 3,
@@ -39,6 +40,7 @@ class UserModel extends UserEntity {
       averageScore: json['averageScore'] as int? ?? 78,
       bestScore: json['bestScore'] as int? ?? 91,
       isEmailVerified: json['isVerified'] as bool? ?? (json['isEmailVerified'] as bool? ?? true),
+      isProfileComplete: json['isProfileComplete'] as bool? ?? false,
       bio: json['bio'] as String? ??
           'Mobile software engineer passionate about clean architecture and high-performance cross-platform applications.',
     );
@@ -59,6 +61,7 @@ class UserModel extends UserEntity {
       'averageScore': averageScore,
       'bestScore': bestScore,
       'isEmailVerified': isEmailVerified,
+      'isProfileComplete': isProfileComplete,
       'bio': bio,
     };
   }
@@ -77,6 +80,7 @@ class UserModel extends UserEntity {
       averageScore: entity.averageScore,
       bestScore: entity.bestScore,
       isEmailVerified: entity.isEmailVerified,
+      isProfileComplete: entity.isProfileComplete,
       bio: entity.bio,
     );
   }

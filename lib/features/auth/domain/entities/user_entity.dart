@@ -11,6 +11,7 @@ class UserEntity {
   final int averageScore;
   final int bestScore;
   final bool isEmailVerified;
+  final bool isProfileComplete;
   final String bio;
 
   const UserEntity({
@@ -26,6 +27,7 @@ class UserEntity {
     this.averageScore = 78,
     this.bestScore = 91,
     this.isEmailVerified = true,
+    this.isProfileComplete = false,
     this.bio = 'Mobile software engineer passionate about clean architecture and high-performance cross-platform applications.',
   });
 
@@ -42,6 +44,7 @@ class UserEntity {
     int? averageScore,
     int? bestScore,
     bool? isEmailVerified,
+    bool? isProfileComplete,
     String? bio,
   }) {
     return UserEntity(
@@ -57,6 +60,7 @@ class UserEntity {
       averageScore: averageScore ?? this.averageScore,
       bestScore: bestScore ?? this.bestScore,
       isEmailVerified: isEmailVerified ?? this.isEmailVerified,
+      isProfileComplete: isProfileComplete ?? this.isProfileComplete,
       bio: bio ?? this.bio,
     );
   }

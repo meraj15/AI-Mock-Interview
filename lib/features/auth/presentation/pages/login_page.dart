@@ -11,6 +11,7 @@ import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../controllers/auth_controller.dart';
 import 'forgot_password_page.dart';
+import 'profile_setup_page.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -42,9 +43,14 @@ class _LoginPageState extends State<LoginPage> {
       } catch (_) {}
       if (!mounted) return;
 
+      final hasCompleted = (auth.user?.isProfileComplete ?? false) ||
+          (profileCtrl.profile?.isComplete ?? false);
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => const MainNavPage(),
+          builder: (_) => hasCompleted
+              ? const MainNavPage()
+              : const ProfileSetupPage(),
         ),
       );
     } else if (auth.errorMessage != null) {

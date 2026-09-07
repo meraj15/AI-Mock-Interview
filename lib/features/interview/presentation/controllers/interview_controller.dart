@@ -226,11 +226,10 @@ class InterviewController extends ChangeNotifier {
       _isComplete = turn.isComplete;
 
       if (turn.isComplete || turn.action == 'end_interview') {
-        _sessionStatus = SessionStatus.evaluating;
-        _interviewActive = false;
-        notifyListeners();
-        await _fetchFinalEvaluation();
-        return;
+        _isComplete = true;
+        _sessionStatus = SessionStatus.active;
+        // Start pre-fetching final evaluation in background
+        _fetchFinalEvaluation();
       } else {
         _sessionStatus = _isFollowUp ? SessionStatus.followUp : SessionStatus.active;
       }
