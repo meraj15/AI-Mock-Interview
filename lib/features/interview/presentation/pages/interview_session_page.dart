@@ -37,9 +37,10 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   final stt.SpeechToText _stt = stt.SpeechToText();
   bool _sttAvailable = false;
   String _accumulatedTranscript = '';
-  String _currentUtterance = '';
+  String _currentSessionWords = '';
   String _liveTranscript = '';
   bool _isExplicitlyStopping = false;
+  bool _isRestartingStt = false;
   final TextEditingController _answerCtrl = TextEditingController();
   final FocusNode _answerFocusNode = FocusNode();
 
@@ -217,38 +218,52 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final ok = await _stt.initialize(
       onError: (e) async {
         debugPrint('[STT Error]: ${e.errorMsg} (permanent: ${e.permanent})');
-        // Transient pause timeouts (e.g. error_speech_timeout or error_no_match)
-        // should never abort active recording. Seamlessly resume listening.
         if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
-          if (_currentUtterance.isNotEmpty) {
-            _accumulatedTranscript = _liveTranscript;
-            _currentUtterance = '';
-          }
-          await Future.delayed(const Duration(milliseconds: 250));
-          if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
-            await _listenInternal();
-          }
+          await _restartListeningSafely();
         }
       },
       onStatus: (status) async {
         debugPrint('[STT Status]: $status');
-        // When engine stops listening after utterance boundary or pause,
-        // seamlessly resume listening so the candidate can continue speaking.
         if (status == 'notListening' &&
             _phase == InterviewPhase.recording &&
             !_isExplicitlyStopping) {
-          if (_currentUtterance.isNotEmpty) {
-            _accumulatedTranscript = _liveTranscript;
-            _currentUtterance = '';
-          }
-          await Future.delayed(const Duration(milliseconds: 200));
-          if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
-            await _listenInternal();
-          }
+          await _restartListeningSafely();
         }
       },
     );
     if (mounted) setState(() => _sttAvailable = ok);
+  }
+
+  Future<void> _restartListeningSafely() async {
+    if (_isRestartingStt || !_sttAvailable || _isExplicitlyStopping || _phase != InterviewPhase.recording) {
+      return;
+    }
+    _isRestartingStt = true;
+
+    try {
+      _commitCurrentSessionWords();
+      if (mounted) {
+        setState(() {
+          _liveTranscript = _accumulatedTranscript;
+        });
+      }
+
+      if (_stt.isListening) {
+        try {
+          await _stt.stop();
+        } catch (_) {}
+      }
+
+      await Future.delayed(const Duration(milliseconds: 250));
+
+      if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
+        await _listenInternal();
+      }
+    } catch (e) {
+      debugPrint('[STT restart error]: $e');
+    } finally {
+      _isRestartingStt = false;
+    }
   }
 
   // ── Session Orchestration ─────────────────────────────────────────────────
@@ -395,7 +410,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
     _isExplicitlyStopping = false;
     _accumulatedTranscript = '';
-    _currentUtterance = '';
+    _currentSessionWords = '';
     setState(() {
       _liveTranscript = '';
     });
@@ -413,24 +428,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       await _stt.listen(
         onResult: (result) {
           if (!mounted || _phase != InterviewPhase.recording) return;
-
-          final words = result.recognizedWords.trim();
-          if (words.isEmpty) return;
-
-          setState(() {
-            _currentUtterance = words;
-            _liveTranscript = _accumulatedTranscript.isEmpty
-                ? _currentUtterance
-                : '$_accumulatedTranscript $_currentUtterance';
-          });
-
-          _autoScrollTranscript();
-
-          // When engine finalizes an utterance chunk, commit to accumulated transcript
-          if (result.finalResult) {
-            _accumulatedTranscript = _liveTranscript;
-            _currentUtterance = '';
-          }
+          _onSpeechResult(result.recognizedWords);
         },
         listenOptions: stt.SpeechListenOptions(
           listenMode: stt.ListenMode.dictation,
@@ -445,18 +443,76 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     }
   }
 
+  void _commitCurrentSessionWords() {
+    final trimmed = _currentSessionWords.trim();
+    if (trimmed.isEmpty) return;
+
+    if (_accumulatedTranscript.isEmpty) {
+      _accumulatedTranscript = trimmed;
+    } else {
+      final accLower = _accumulatedTranscript.toLowerCase();
+      final inLower = trimmed.toLowerCase();
+
+      if (inLower.startsWith(accLower)) {
+        _accumulatedTranscript = trimmed;
+      } else {
+        _accumulatedTranscript = '$_accumulatedTranscript $trimmed'.trim();
+      }
+    }
+    _currentSessionWords = '';
+  }
+
+  void _onSpeechResult(String incoming) {
+    incoming = incoming.trim();
+    if (incoming.isEmpty) return;
+
+    _currentSessionWords = incoming;
+
+    String fullText;
+    if (_accumulatedTranscript.isEmpty) {
+      fullText = _currentSessionWords;
+    } else {
+      final accLower = _accumulatedTranscript.toLowerCase();
+      final inLower = _currentSessionWords.toLowerCase();
+
+      if (inLower.startsWith(accLower)) {
+        // Native recognizer kept the cumulative words, avoid double-prepending
+        fullText = _currentSessionWords;
+      } else {
+        // Native recognizer started a fresh session buffer, append to accumulated
+        fullText = '$_accumulatedTranscript $_currentSessionWords';
+      }
+    }
+
+    setState(() {
+      _liveTranscript = fullText.trim();
+    });
+
+    _autoScrollTranscript();
+  }
+
   Future<void> _finishRecordingAndSubmit() async {
     _isExplicitlyStopping = true;
-    await _stt.stop();
-    if (_currentUtterance.isNotEmpty) {
-      _accumulatedTranscript = _liveTranscript;
-      _currentUtterance = '';
-    }
-    final answer = _liveTranscript.trim();
+    try {
+      await _stt.stop();
+    } catch (_) {}
+
+    _commitCurrentSessionWords();
+
+    setState(() {
+      _liveTranscript = _accumulatedTranscript.trim();
+    });
+
+    final answer = _accumulatedTranscript.trim();
     if (answer.isNotEmpty) {
       // Move to answered phase: show editable transcript card
       _answerCtrl.text = answer;
       _setPhase(InterviewPhase.answered);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_answerEditorScrollCtrl.hasClients) {
+          _answerEditorScrollCtrl.jumpTo(0);
+        }
+      });
     } else {
       _setPhase(InterviewPhase.listening);
     }
@@ -479,7 +535,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         _accumulatedTranscript = '';
-        _currentUtterance = '';
+        _currentSessionWords = '';
         setState(() {
           _liveTranscript = '';
         });
@@ -518,7 +574,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   Future<void> _reRecord() async {
     _isExplicitlyStopping = false;
     _accumulatedTranscript = '';
-    _currentUtterance = '';
+    _currentSessionWords = '';
     _answerCtrl.clear();
     setState(() => _liveTranscript = '');
     await _startRecording();

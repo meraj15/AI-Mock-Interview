@@ -30,7 +30,7 @@ class LiveCaptionCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 14),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 76, maxHeight: 240),
+        constraints: const BoxConstraints(minHeight: 76, maxHeight: 320),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: colors.card,
@@ -143,7 +143,7 @@ class AnswerEditorCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 14),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 90, maxHeight: 240),
+        constraints: const BoxConstraints(minHeight: 90, maxHeight: 320),
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         decoration: BoxDecoration(
           color: colors.card,
