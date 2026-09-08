@@ -20,12 +20,12 @@ class QuickInterviewSetupPage extends StatefulWidget {
 
 class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
   int _questionCount = 10;
-  int _timeLimitMinutes = 2;
+  int _timeLimitSeconds = 30;
 
   static const _questionOptions = [2, 10, 15, 20];
-  static const _timeLimitOptions = [0, 1, 2, 3, 5];
+  static const _timeLimitOptions = [0, 15, 30, 45];
 
-  String _timeLimitLabel(int m) => m == 0 ? 'None' : '${m}m';
+  String _timeLimitLabel(int s) => s == 0 ? 'None' : '${s}s';
 
   void _startInterview() {
     final ic = context.read<InterviewController>();
@@ -42,7 +42,7 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
     ic.updateConfig(
       role: userRole,
       questions: _questionCount,
-      timeLimitPerQuestion: _timeLimitMinutes * 60,
+      timeLimitPerQuestion: _timeLimitSeconds,
       difficulty: 'Adaptive',
     );
     ic.startInterview(
@@ -167,7 +167,7 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
                   const SizedBox(height: 10),
                   Row(
                     children: _timeLimitOptions.map((t) {
-                      final sel = _timeLimitMinutes == t;
+                      final sel = _timeLimitSeconds == t;
                       final last = t == _timeLimitOptions.last;
                       return Expanded(
                         child: Padding(
@@ -176,7 +176,7 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
                             label: _timeLimitLabel(t),
                             selected: sel,
                             colors: colors,
-                            onTap: () => setState(() => _timeLimitMinutes = t),
+                            onTap: () => setState(() => _timeLimitSeconds = t),
                           ),
                         ),
                       );
@@ -242,7 +242,7 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
                     return _SummaryCard(
                       targetRole: effectiveRole,
                       questionCount: _questionCount,
-                      timeLabel: _timeLimitLabel(_timeLimitMinutes),
+                      timeLabel: _timeLimitLabel(_timeLimitSeconds),
                       colors: colors,
                     );
                   }),
