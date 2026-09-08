@@ -63,9 +63,14 @@ const conversationalTurnSchema = z.object({
     .optional()
     .default([]),
 
+  areasExplored: z
+    .array(z.string())
+    .optional()
+    .default([]),
+
   currentTopic: z
     .string()
-    .min(1, 'currentTopic is required'),
+    .optional(),
 
   topicObjective: z
     .string()
@@ -253,48 +258,27 @@ export class AIController {
           req.body,
         );
 
+      const areasExplored = validated.areasExplored?.length
+        ? validated.areasExplored
+        : validated.topicsCovered?.length
+        ? validated.topicsCovered
+        : validated.currentTopic
+        ? [validated.currentTopic]
+        : [];
+
       const turn =
         await aiService.getNextConversationalTurn({
           role: validated.role,
-
-          experience:
-            validated.experience,
-
-          skills:
-            validated.skills,
-
-          currentTopic:
-            validated.currentTopic,
-
-          topicObjective:
-            validated.topicObjective,
-
-          previousQuestion:
-            validated.previousQuestion,
-
-          candidateAnswer:
-            validated.candidateAnswer,
-
-          conversationSummary:
-            validated.conversationSummary,
-
-          topicsCovered:
-            validated.topicsCovered,
-
-          topicsRemaining:
-            validated.topicsRemaining,
-
-          followUpsUsed:
-            validated.followUpsUsed,
-
-          recentQuestions:
-            validated.recentQuestions,
-
-          turnNumber:
-            validated.turnNumber,
-
-          maxTurns:
-            validated.maxTurns,
+          experience: validated.experience,
+          skills: validated.skills,
+          previousQuestion: validated.previousQuestion,
+          candidateAnswer: validated.candidateAnswer,
+          conversationSummary: validated.conversationSummary,
+          areasExplored,
+          followUpsUsed: validated.followUpsUsed,
+          recentQuestions: validated.recentQuestions,
+          turnNumber: validated.turnNumber,
+          maxTurns: validated.maxTurns,
         });
 
       res.status(200).json({

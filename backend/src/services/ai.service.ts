@@ -16,16 +16,9 @@ export interface InterviewBlueprint {
   firstQuestion: string;
 }
 
-export type AnswerQuality =
-  | 'weak'
-  | 'average'
-  | 'strong'
-  | 'excellent';
-
 export interface ConversationalTurn {
   acknowledgement: string;
   action: 'follow_up' | 'new_topic' | 'end_interview';
-  answerQuality: AnswerQuality;
   nextQuestion: string;
   nextTopic: string;
   conversationSummary: string;
@@ -162,6 +155,7 @@ export class AIService {
 
     let response: any = null;
     let lastError: any = null;
+    let usedModel = FALLBACK_MODELS[0];
 
     for (
       let index = 0;
@@ -169,89 +163,81 @@ export class AIService {
       index++
     ) {
       const model = FALLBACK_MODELS[index];
-
-      const hasNext =
-        index < FALLBACK_MODELS.length - 1;
+      const hasNext = index < FALLBACK_MODELS.length - 1;
 
       try {
-        console.log(
-          `[AIService] Calling model: ${model}`,
-        );
+        console.log(`[AIService] Calling model: ${model}`);
 
-        response =
-          await client.models.generateContent({
-            model,
-            contents: prompt,
+        response = await client.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+            temperature: 0.8,
+            topP: 0.9,
+          },
+        });
 
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: schema,
-
-              temperature: 0.8,
-              topP: 0.9,
-            },
-          });
-
-        console.log(
-          `[AIService] Model ${model} succeeded`,
-        );
-
+        usedModel = model;
         lastError = null;
         break;
       } catch (err: any) {
-        console.error(
-          `[AIService] Model ${model} failed:`,
-          err?.message || err,
-        );
-
+        console.error(`[AIService] Model ${model} failed:`, err?.message || err);
         lastError = err;
 
-        if (
-          this.isTemporaryError(err) &&
-          hasNext
-        ) {
-          console.log(
-            '[AIService] Temporary error encountered. Waiting 1s before fallback model...',
-          );
-          await new Promise((r) => setTimeout(r, 1000));
+        if (this.isTemporaryError(err) && hasNext) {
+          console.log('[AIService] Temporary error — waiting 200ms before fallback...');
+          await new Promise((r) => setTimeout(r, 200));
           continue;
         }
 
-        throw new Error(
-          `Gemini API Error: ${
-            err?.message ||
-            JSON.stringify(err)
-          }`,
-        );
+        throw new Error(`Gemini API Error: ${err?.message || JSON.stringify(err)}`);
       }
     }
 
     if (!response) {
       throw new Error(
-        `All Gemini models failed. Last error: ${
-          lastError?.message ||
-          JSON.stringify(lastError)
-        }`,
+        `All Gemini models failed. Last error: ${lastError?.message || JSON.stringify(lastError)}`,
       );
     }
 
     const text = response.text?.trim();
-
-    if (!text) {
-      throw new Error(
-        'Gemini returned an empty response',
-      );
-    }
+    if (!text) throw new Error('Gemini returned an empty response');
 
     try {
       return JSON.parse(text);
     } catch {
-      throw new Error(
-        `Gemini returned invalid JSON: ${text.slice(
-          0,
-          500,
-        )}`,
+      throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 500)}`);
+    }
+  }
+
+  // ==========================================================
+  // TIMEOUT WRAPPER
+  //
+  // Wraps a Gemini call in a hard deadline.
+  // NOTE: Promise.race() does not cancel the underlying HTTP
+  // request — it only lets your code move forward. True
+  // cancellation requires AbortSignal support in @google/genai.
+  // Check package version before switching to AbortController.
+  // ==========================================================
+
+  private async executeWithTimeout<T>(
+    fn: () => Promise<T>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`[AIService] ${label} timed out after ${timeoutMs}ms`)),
+        timeoutMs,
       );
+    });
+    try {
+      return await Promise.race([fn(), timeoutPromise]);
+    } finally {
+      clearTimeout(timer!);
     }
   }
 
@@ -329,224 +315,77 @@ export class AIService {
     skills?: string[];
     questionCount?: number;
   }): Promise<InterviewBlueprint> {
-    const {
-      role,
-      experience,
-      skills,
-    } = params;
+    const { role, experience, skills } = params;
 
-    if (
-      !role ||
-      typeof role !== 'string' ||
-      !role.trim()
-    ) {
+    if (!role || typeof role !== 'string' || !role.trim()) {
       throw new Error('Role is required');
     }
 
-    const skillList =
-      this.getSkillList(skills);
+    const skillList = this.getSkillList(skills);
+    const experienceText = experience?.trim() || 'Not specified';
 
-    const experienceText =
-      experience?.trim() ||
-      'Experience not specified';
+    const prompt = `You are a senior interviewer opening a live, realistic interview.
 
-    const prompt = `
-You are a senior technical interviewer welcoming a candidate to a live, realistic technical interview.
+GLOBAL RULE: This is a general-purpose AI interview platform. Conduct a realistic interview for the candidate's target role. Never assume a specific technology or domain unless explicitly stated in the role or profile.
 
-CANDIDATE TARGET ROLE: ${role.trim()}
-EXPERIENCE LEVEL: ${experienceText}
-PROGRAMMING LANGUAGES & FRAMEWORKS: ${skillList}
+ROLE: ${role.trim()}
+EXPERIENCE: ${experienceText}
+BACKGROUND SKILLS (context only — do not restrict to these): ${skillList}
 
-STAGE 1 / TURN 1 OPENING QUESTION:
-In every real human interview, the opening turn MUST ALWAYS be a warm, role-tailored introduction question welcoming the candidate and asking for their background based on their target role.
-
-Generate exactly ONE natural opening question:
-1. Welcome the candidate warmly.
-2. Ask them to introduce themselves and give an overview of their background specifically as a ${role.trim()}.
+Generate exactly ONE warm opening question:
+- Welcome the candidate and ask them to introduce their background as a ${role.trim()}.
+- Do NOT ask a technical question in this opening turn.
+- Maximum 18 words. Exactly one question mark.
 
 Examples:
-* "Welcome! To start us off today, could you introduce yourself and walk me through your background as a ${role.trim()}?"
-* "Hi, welcome! Could you please introduce yourself and share an overview of your background as a ${role.trim()}?"
-* "Welcome to the interview! To begin, could you introduce yourself and your journey in ${role.trim()}?"
+"Welcome! Could you introduce yourself and walk me through your background as a ${role.trim()}?"
+"Hi, welcome! Please introduce yourself and share your journey as a ${role.trim()}."
 
-CRITICAL REQUIREMENTS:
-* Warm and collegial greeting.
-* Ask for their background specifically tailored to their role "${role.trim()}".
-* Do NOT ask technical questions, coding problems, or trivia in this opening turn.
-* Strictly ONE question mark. Maximum 18 words.
-
-Return ONLY valid JSON.
-`;
+Return ONLY valid JSON.`;
 
     const schema = {
       type: Type.OBJECT,
-
       properties: {
         firstQuestion: {
           type: Type.STRING,
-          description:
-            'A warm opening question welcoming the candidate and asking for their background as a ' +
-            role.trim() +
-            '. Maximum 18 words. Exactly one question mark.',
+          description: 'Warm opening question. Max 18 words. Exactly one question mark.',
         },
       },
-
       required: ['firstQuestion'],
-
       additionalProperties: false,
     };
 
-    console.log(
-      `[AIService] Generating first question for role "${role.trim()}"...`,
+    console.log(`[AIService] generateInterviewPlan | role="${role.trim()}"`);
+    const t0 = Date.now();
+
+    const result = await this.executeWithTimeout(
+      () => this.executeWithFallback(prompt, schema),
+      20_000,
+      'generateInterviewPlan',
     );
 
-    const result =
-      await this.executeWithFallback(
-        prompt,
-        schema,
-      );
+    console.log(`[AIService] generateInterviewPlan | latency=${Date.now() - t0}ms`);
 
-    const defaultFirstQ = `Welcome! Could you please introduce yourself and share an overview of your background as a ${role.trim()}?`;
+    const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
     const firstQuestion = this.enforceSingleQuestion(
       String(result.firstQuestion || '').trim(),
       defaultFirstQ,
     );
 
-    return {
-      topics: [],
-      firstQuestion,
-    };
+    return { topics: [], firstQuestion };
   }
 
-  // ==========================================================
-  // STAGE 1-B
-  //
-  // Generate broad interview topics.
-  //
-  // Skills are context only.
-  // ==========================================================
-
-  async generateTopics(params: {
-    role: string;
-    experience?: string;
-    skills?: string[];
-  }): Promise<InterviewTopic[]> {
-    const {
-      role,
-      experience,
-      skills,
-    } = params;
-
-    const skillList =
-      this.getSkillList(skills);
-
-    const prompt = `
-You are a senior hiring manager and technical interviewer planning a realistic, comprehensive interview for a ${role.trim()}.
-
-CANDIDATE TARGET ROLE: ${role.trim()}
-EXPERIENCE LEVEL: ${experience?.trim() || 'Not specified'}
-BACKGROUND SKILLS & TOOLS: ${skillList}
-
-TASK:
-Create 5 to 7 broad evaluation topic areas tailored specifically to the real-world responsibilities, core tools, problem-solving, and day-to-day work of a ${role.trim()}.
-
-CRITICAL ROLE-SPECIFIC GUIDELINES:
-1. Ground every topic directly in the actual domain and duties of "${role.trim()}":
-   - If a Support Engineer / Technical Support role: ticket diagnosis, root cause analysis, customer communication & de-escalation, system log analysis, SQL / database verification, SLA incident workflows, bug triage with engineering.
-   - If a Software Engineer / Developer role: system design, architecture, practical coding in candidate's stack (${skillList}), API integration, asynchronous operations, state handling, performance, debugging.
-   - If a DevOps / Cloud / SRE role: CI/CD pipelines, Docker/Kubernetes, infrastructure as code, cloud monitoring, disaster recovery, security.
-   - If a QA / Automation role: test planning, automation frameworks, bug lifecycle, edge cases, regression, API testing.
-   - If a Data / ML role: data pipelines, SQL, data modeling, feature engineering, data quality, model evaluation.
-   - For ANY other role: produce topics that authentically evaluate the candidate's real-world competence in that specific profession.
-2. The candidate's background skills (${skillList}) provide context for their specific tools and tech stack, but do NOT restrict topics to only those keywords.
-3. DO NOT assume Flutter or mobile development unless the role explicitly specifies Flutter or Mobile!
-4. Each topic must contain:
-   - "name": Concise topic title (e.g., "Incident Triage & Root Cause Analysis", "System Log Investigation", "SQL & Data Verification")
-   - "objective": Clear 1-sentence description of what competencies are being evaluated.
-
-Return ONLY valid JSON.
-`;
-
-    const schema = {
-      type: Type.OBJECT,
-
-      properties: {
-        topics: {
-          type: Type.ARRAY,
-
-          items: {
-            type: Type.OBJECT,
-
-            properties: {
-              name: {
-                type: Type.STRING,
-              },
-
-              objective: {
-                type: Type.STRING,
-              },
-            },
-
-            required: [
-              'name',
-              'objective',
-            ],
-
-            additionalProperties: false,
-          },
-        },
-      },
-
-      required: ['topics'],
-
-      additionalProperties: false,
-    };
-
-    console.log(
-      `[AIService] Generating dynamic interview topics for role "${role.trim()}"...`,
-    );
-
-    const result =
-      await this.executeWithFallback(
-        prompt,
-        schema,
-      );
-
-    const topics: InterviewTopic[] =
-      Array.isArray(result.topics)
-        ? result.topics
-            .map((topic: any) => ({
-              name: String(
-                topic?.name ||
-                  'General Discussion',
-              ).trim(),
-
-              objective: String(
-                topic?.objective ||
-                  `Evaluate competence for ${role.trim()}`,
-              ).trim(),
-            }))
-            .filter(
-              (topic: InterviewTopic) =>
-                topic.name.length > 0,
-            )
-        : [];
-
-    console.log(
-      `[AIService] Topics generated for "${role.trim()}": ${topics
-        .map((topic) => topic.name)
-        .join(', ')}`,
-    );
-
-    return topics;
-  }
+  // generateTopics() removed — topic areas are now chosen dynamically
+  // by the AI inside getNextConversationalTurn() on each answer turn.
 
   // ==========================================================
   // STAGE 2
   //
   // Called AFTER EVERY ANSWER.
   //
-  // This is the adaptive interviewer.
+  // Fully adaptive — the AI chooses the next evaluation area
+  // based on the candidate's role, profile, and prior answers.
+  // No pre-generated topic pool is used.
   // ==========================================================
 
   async getNextConversationalTurn(params: {
@@ -554,19 +393,13 @@ Return ONLY valid JSON.
     experience?: string;
     skills?: string[];
 
-    currentTopic: string;
-    topicObjective?: string;
-
     previousQuestion: string;
     candidateAnswer: string;
 
     conversationSummary: string;
-
-    topicsCovered: string[];
-    topicsRemaining: string[];
+    areasExplored: string[];
 
     followUpsUsed: number;
-
     recentQuestions?: string[];
 
     turnNumber?: number;
@@ -576,56 +409,24 @@ Return ONLY valid JSON.
       role,
       experience,
       skills,
-
-      currentTopic,
-      topicObjective,
-
       previousQuestion,
       candidateAnswer,
-
       conversationSummary,
-
-      topicsCovered,
-      topicsRemaining,
-
+      areasExplored,
       followUpsUsed,
-
       recentQuestions,
-
       turnNumber,
       maxTurns,
     } = params;
 
-    const cleanedAnswer =
-      candidateAnswer?.trim() ||
-      'The candidate gave little or no response.';
+    const cleanedAnswer = candidateAnswer?.trim() || 'The candidate gave little or no response.';
+    const skillList = this.getSkillList(skills);
 
-    const skillList =
-      this.getSkillList(skills);
+    const recentQuestionList = recentQuestions && recentQuestions.length > 0
+      ? recentQuestions.slice(-5).map((q, i) => `${i + 1}. ${q}`).join('\n')
+      : 'None';
 
-    const recentQuestionList =
-      recentQuestions &&
-      recentQuestions.length > 0
-        ? recentQuestions
-            .slice(-10)
-            .map(
-              (question, index) =>
-                `${index + 1}. ${question}`,
-            )
-            .join('\n')
-        : 'None';
-
-    const coveredTopics =
-      topicsCovered &&
-      topicsCovered.length > 0
-        ? topicsCovered.join(', ')
-        : 'None';
-
-    const remainingTopics =
-      topicsRemaining &&
-      topicsRemaining.length > 0
-        ? topicsRemaining.join(', ')
-        : 'None';
+    const exploredList = areasExplored.length > 0 ? areasExplored.join(', ') : 'None yet';
 
     const currentTurn = turnNumber || 1;
     const totalMaxTurns = maxTurns || 8;
@@ -633,304 +434,140 @@ Return ONLY valid JSON.
     const isPenultimateTurn = currentTurn === totalMaxTurns - 1;
     const isFinalClosingTurn = currentTurn >= totalMaxTurns;
 
-    let stageInstructions = '';
+    // Compact stage tag + constraint (replaces the old 20-line stageInstructions block)
+    let stageTag: string;
+    let stageConstraint: string;
+
     if (isFinalClosingTurn) {
-      stageInstructions = `
-==================================================
-CURRENT INTERVIEW STAGE: [FINAL_CLOSING_FAREWELL]
-==================================================
-* The candidate has just answered the final interview question.
-* The interview has officially CONCLUDED.
-* Do NOT ask another technical question or problem!
-* Action MUST be: "end_interview"
-* nextTopic: "Interview Conclusion"
-* nextQuestion: Deliver a warm, authentic, collegial closing farewell remark thanking the candidate for their time and thoughtful answers, and wishing them luck in their journey as a ${role}.
-  Example nextQuestion: "That brings us to the end of our interview today! Thank you so much for walking through your experience with me. We'll compile your performance review right now. Best of luck!"
-* acknowledgement: A warm spoken reaction (e.g. "Thank you for walking me through that." or "Understood, thank you.").
-`;
+      stageTag = 'FINAL_FAREWELL';
+      stageConstraint = `action MUST be "end_interview". nextQuestion must be a warm closing farewell — no technical question. nextTopic: "Interview Conclusion".`;
     } else if (isPenultimateTurn) {
-      stageInstructions = `
-==================================================
-CURRENT INTERVIEW STAGE: [PENULTIMATE_WRAPUP_QUESTION]
-==================================================
-* We have time for ONE last question before wrapping up today.
-* Signpost the finish naturally to the candidate in your question:
-  Example: "We have time for one last question before we wrap up today: what's a challenging problem or incident you recently resolved as a ${role}?"
-  Example: "For our final question today, what's one process or technical decision you'd approach differently on a past project?"
-* Exactly ONE question mark. Maximum 18 words.
-`;
+      stageTag = 'PENULTIMATE';
+      stageConstraint = `This is the last technical question. Naturally signal to the candidate that we are wrapping up. One question mark, max 18 words.`;
     } else if (isIntroTransition) {
-      stageInstructions = `
-==================================================
-CURRENT INTERVIEW STAGE: [TRANSITION_FROM_INTRO_TO_TECHNICAL]
-==================================================
-* The candidate has just provided their background introduction.
-* A real human interviewer ACTIVELY LISTENS to their introduction!
-* Identify ONE specific tool, technology, programming language, system, or scenario the candidate mentioned in their intro or listed in their profile for their role as a ${role} (${skillList || role}).
-* CRITICAL ROLE-SPECIFIC RULE:
-  Ground the technical question strictly in the candidate's actual role "${role}" and their tools:
-  - If a Support Engineer / Operations role: ask about how they diagnosed a tricky customer issue, investigated server/application logs, or used SQL/tickets to resolve an escalation.
-    Example: "You mentioned diagnosing customer issues using SQL. How did you track down that database discrepancy?"
-    Example: "Since you handle customer escalations, how do you determine root cause when server logs show intermittent errors?"
-  - If a Developer / Software Engineer role: ask about how they implemented a feature, managed state, or handled async API errors using their specific language or framework.
-    Example: "You mentioned building that service with Python. How did you handle background task processing there?"
-  - If a DevOps / Cloud role: ask about CI/CD pipelines, container orchestration, or cloud infrastructure troubleshooting.
-  - DO NOT ask about Flutter or Dart unless the candidate's role is specifically Flutter or Dart!
-* Human acknowledgement: short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never displayed in UI card.
-* Strictly ONE question mark. Maximum 18 words.
-`;
+      stageTag = 'INTRO_TO_TECHNICAL';
+      stageConstraint = `Candidate just gave their intro. Pick ONE specific tool, experience, or scenario they mentioned and ask a grounded first technical question for a ${role}. Never assume a technology not mentioned in the role or profile.`;
     } else {
-      stageInstructions = `
-==================================================
-CURRENT INTERVIEW STAGE: [CORE_TECHNICAL_EXPLORATION]
-==================================================
-* Evaluate practical competence in the candidate's actual role (${role}) and their tools/skills (${skillList}).
-* Every question MUST be a practical question grounded in their actual role domain:
-  - Real-world scenarios, troubleshooting, incident management, edge cases, system performance, or engineering judgment relevant to a ${role}.
-  - If candidate is a Support Engineer: focus on ticket triage, log parsing, isolating bugs between client/backend, SQL queries, SLA prioritization, and communicating complex technical fixes.
-  - If candidate is a Developer: focus on framework APIs, code architecture, error handling, optimization, and debugging in their tech stack.
-  - If candidate's previous answer was strong: ask ONE deeper follow-up on edge cases, root cause, or trade-offs.
-  - If candidate's previous answer was weak: gently acknowledge and smoothly pivot to another practical area of ${role}.
-  - DO NOT ask about Flutter or Dart unless the role is Flutter!
-* Human acknowledgement: short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never displayed in UI card.
-* Strictly ONE question mark. Maximum 18 words.
-`;
+      stageTag = 'CORE_TECHNICAL';
+      stageConstraint = `Ask a practical, role-grounded question. If the answer was strong, go deeper into edge cases or trade-offs. If weak, smoothly pivot to another relevant area for a ${role}.`;
     }
 
-    const prompt = `
-You are a senior technical interviewer conducting a live, adaptive interview for a ${role}.
+    const prompt = `You are a senior interviewer conducting a live adaptive mock interview.
 
-Your goal is to behave like a REAL human interviewer, not an automated quiz bot or an exam.
+GLOBAL RULE: Conduct a realistic interview appropriate for the candidate's target role. Never assume a specific technology, profession, or domain unless explicitly stated in the role or profile. Skills listed are context only — base questions on the candidate's actual profession.
 
-Listen carefully to the candidate's actual answer and decide what would be the most valuable next question.
+ROLE: ${role} | EXP: ${experience || 'not specified'} | TOOLS (context only): ${skillList}
+STAGE: ${stageTag}   TURN: ${currentTurn}/${totalMaxTurns}   FOLLOWUPS_USED: ${followUpsUsed}
 
-==================================================
-CANDIDATE PROFILE
-=================
-Role: ${role}
-Experience: ${experience || 'Not specified'}
-Skills & Tools: ${skillList}
-
-==================================================
-CURRENT INTERVIEW STATE
-=======================
-Current topic: ${currentTopic}
-Topic objective: ${topicObjective || `Evaluate practical competence for ${role}`}
-
-Previous question:
+CURRENT QUESTION:
 "${previousQuestion}"
 
-Candidate answer:
+CANDIDATE ANSWER:
 "${cleanedAnswer}"
 
-Conversation memory:
-"${conversationSummary || 'Interview just started.'}"
+INTERVIEW MEMORY:
+${conversationSummary || 'Interview just started.'}
 
-Topics already discussed:
-${(topicsCovered || []).join(', ') || 'None'}
+AREAS ALREADY EXPLORED: ${exploredList}
 
-Remaining topic pool:
-${remainingTopics}
-
-Follow-ups used on current topic:
-${followUpsUsed}
-
-Current turn:
-${currentTurn} / ${totalMaxTurns}
-
-${stageInstructions}
-
-==================================================
-RECENT QUESTIONS ALREADY ASKED
-==============================
+RECENT QUESTIONS (do not repeat):
 ${recentQuestionList}
 
-Do not repeat these questions. Avoid asking substantially identical questions.
+STAGE INSTRUCTION: ${stageConstraint}
 
-==================================================
-CRITICAL HUMAN INTERVIEW RULES
-==============================
-1. STRICTLY ONE QUESTION: Exactly ONE question mark ('?'). NEVER ask two questions in one sentence (no "and how...", "and why...", "and what...").
-2. CONCISE & PUNCHY: Spoken questions must be between 8 and 18 words. Never ask a long paragraph or bullet points.
-3. SPOKEN ACKNOWLEDGEMENT ONLY: Provide a short, realistic conversational reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). This is spoken via TTS only and MUST NOT be part of nextQuestion.
-4. GROUNDED IN CANDIDATE'S ROLE & TOOLS: Ask practical questions about the actual tools, systems, and responsibilities of a ${role} (using their tools: ${skillList}). Never assume Flutter or mobile development unless the role explicitly states Flutter.
-5. NATURAL CONVERSATIONAL TONE: Sound like a friendly senior colleague speaking over video call.
+RULES:
+1. Exactly ONE question mark. Max 18 words. No compound questions.
+2. acknowledgement: 2–4 spoken words only (TTS, never shown in UI).
+3. nextTopic: choose a relevant evaluation area for a "${role}" not yet explored. Do not use a predefined list — pick what genuinely fits this role and this candidate.
+4. action: follow_up | new_topic | end_interview
 
-==================================================
-OUTPUT FORMAT
-=============
-Return ONLY valid JSON.
-
-acknowledgement:
-Short, realistic conversational reaction to what the candidate just said (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point.", "Thank you."). Spoken via TTS only; do NOT include the question here.
-
-action:
-"follow_up", "new_topic", or "end_interview"
-
-answerQuality:
-"weak", "average", "strong", or "excellent"
-
-nextQuestion:
-The pure interview question only (or warm closing remark if end_interview). Do NOT include any acknowledgement, reaction, or conversational filler in nextQuestion. Grounded strictly in the candidate's role and tools. Maximum 18 words. Exactly one question mark.
-
-nextTopic:
-The topic or skill area being evaluated (e.g. "Incident Diagnosis", "SQL Verification", or "Interview Conclusion").
-
-conversationSummary:
-A concise 1-2 sentence summary of ability demonstrated so far.
-`;
+Return ONLY valid JSON.`;
 
     const schema = {
       type: Type.OBJECT,
-
       properties: {
         acknowledgement: {
           type: Type.STRING,
-          description:
-            'Short natural interviewer reaction (2-4 words, e.g. "Understood.", "Got it, that makes sense.", "Makes sense.", "Fair point."). Spoken via TTS only, never shown in UI.',
+          description: 'Short spoken reaction (2–4 words). TTS only, never shown in UI.',
         },
-
         action: {
           type: Type.STRING,
-          enum: [
-            'follow_up',
-            'new_topic',
-            'end_interview',
-          ],
+          enum: ['follow_up', 'new_topic', 'end_interview'],
         },
-
-        answerQuality: {
-          type: Type.STRING,
-          enum: [
-            'weak',
-            'average',
-            'strong',
-            'excellent',
-          ],
-        },
-
         nextQuestion: {
           type: Type.STRING,
-          description:
-            'The pure interview question ONLY (or closing remark if end_interview). Do NOT include the acknowledgement or conversational filler here. Grounded in the candidate\'s role and tools. Maximum 18 words. Exactly one question mark.',
+          description: 'Pure interview question only. No acknowledgement mixed in. Max 18 words. One "?".',
         },
-
         nextTopic: {
           type: Type.STRING,
-          description:
-            'The topic or skill area being evaluated (or "Interview Conclusion").',
+          description: 'Relevant evaluation area for this specific role (not from a fixed list).',
         },
-
         conversationSummary: {
           type: Type.STRING,
-          description:
-            'Short 1-2 sentence memory of useful candidate information.',
+          description: 'Short 1–2 sentence memory of candidate ability demonstrated so far.',
         },
       },
-
-      required: [
-        'acknowledgement',
-        'action',
-        'answerQuality',
-        'nextQuestion',
-        'nextTopic',
-        'conversationSummary',
-      ],
-
+      required: ['acknowledgement', 'action', 'nextQuestion', 'nextTopic', 'conversationSummary'],
       additionalProperties: false,
     };
 
-    const result =
-      await this.executeWithFallback(
-        prompt,
-        schema,
-      );
+    const t0 = Date.now();
+    const result = await this.executeWithTimeout(
+      () => this.executeWithFallback(prompt, schema),
+      15_000,
+      'getNextConversationalTurn',
+    );
+    console.log(`[AIService] getNextConversationalTurn | latency=${Date.now() - t0}ms | turn=${currentTurn}/${totalMaxTurns}`);
 
-    // ----------------------------------------------------------
-    // Normalize result
-    // ----------------------------------------------------------
+    // ── Normalize ──────────────────────────────────────────────
 
-    let action:
-      | 'follow_up'
-      | 'new_topic'
-      | 'end_interview' =
+    let action: 'follow_up' | 'new_topic' | 'end_interview' =
       result.action === 'end_interview' || isFinalClosingTurn
         ? 'end_interview'
         : result.action === 'follow_up'
         ? 'follow_up'
         : 'new_topic';
 
-    let answerQuality: AnswerQuality =
-      ['weak', 'average', 'strong', 'excellent'].includes(
-        result.answerQuality,
-      )
-        ? result.answerQuality
-        : 'average';
-
     const fallbackQuestion = isFinalClosingTurn
-      ? 'That brings us to the end of our interview today! Thank you so much for walking through your experience with me.'
+      ? `Thank you so much for your time today — that brings our interview to a close!`
       : isPenultimateTurn
-      ? `For our final question today, what's a challenging problem or complex issue you recently resolved as a ${role}?`
+      ? `For our final question, what's a challenging problem you recently solved in your role as a ${role}?`
       : isIntroTransition
-      ? `To start into your technical work, what's a primary tool or system you rely on most as a ${role}?`
-      : `In your day-to-day work as a ${role}, how do you approach diagnosing and resolving unexpected issues?`;
+      ? `To start on the technical side, what's a core tool or system you rely on most as a ${role}?`
+      : `In your day-to-day work as a ${role}, how do you approach diagnosing unexpected issues?`;
 
     let nextQuestion = this.enforceSingleQuestion(
       String(result.nextQuestion || '').trim(),
       fallbackQuestion,
     );
 
-    let nextTopic =
-      String(
-        result.nextTopic ||
-          (isFinalClosingTurn ? 'Interview Conclusion' : currentTopic),
-      ).trim();
+    // Safety fallback for blank nextTopic
+    const DEFAULT_AREA_FALLBACK = [
+      'Core Technical Skills', 'Problem Solving', 'System Design',
+      'Real-World Scenarios', 'Communication & Process',
+    ];
 
-    let acknowledgement =
-      String(
-        result.acknowledgement || '',
-      ).trim();
-
-    const summary =
-      String(
-        result.conversationSummary ||
-          conversationSummary ||
-          '',
-      ).trim();
-
-    // ----------------------------------------------------------
-    // Safety cleanup
-    // ----------------------------------------------------------
-
-    if (acknowledgement.length > 40) {
-      acknowledgement =
-        acknowledgement
-          .split(/\s+/)
-          .slice(0, 4)
-          .join(' ');
-    }
-
-    // Never allow more than 2 follow-ups.
-    if (followUpsUsed >= 2 && action === 'follow_up') {
-      action = 'new_topic';
-    }
-
-    if (!nextQuestion) {
-      nextQuestion = fallbackQuestion;
-    }
-
+    let nextTopic = String(
+      result.nextTopic || (isFinalClosingTurn ? 'Interview Conclusion' : ''),
+    ).trim();
     if (!nextTopic) {
-      nextTopic = isFinalClosingTurn ? 'Interview Conclusion' : currentTopic;
+      nextTopic = isFinalClosingTurn
+        ? 'Interview Conclusion'
+        : DEFAULT_AREA_FALLBACK[areasExplored.length % DEFAULT_AREA_FALLBACK.length];
     }
 
-    return {
-      acknowledgement,
-      action,
-      answerQuality,
-      nextQuestion,
-      nextTopic,
-      conversationSummary: summary,
-    };
+    let acknowledgement = String(result.acknowledgement || '').trim();
+    if (acknowledgement.length > 40) {
+      acknowledgement = acknowledgement.split(/\s+/).slice(0, 4).join(' ');
+    }
+
+    const summary = String(result.conversationSummary || conversationSummary || '').trim();
+
+    // Max 2 follow-ups per area
+    if (followUpsUsed >= 2 && action === 'follow_up') action = 'new_topic';
+    if (!nextQuestion) nextQuestion = fallbackQuestion;
+
+    return { acknowledgement, action, nextQuestion, nextTopic, conversationSummary: summary };
   }
 
   // ==========================================================
@@ -1228,11 +865,13 @@ Return ONLY valid JSON.
       `[AIService] Generating final evaluation for ${transcript.length} turns`,
     );
 
-    const result =
-      await this.executeWithFallback(
-        prompt,
-        schema,
-      );
+    const t0 = Date.now();
+    const result = await this.executeWithTimeout(
+      () => this.executeWithFallback(prompt, schema),
+      60_000,
+      'generateFinalEvaluation',
+    );
+    console.log(`[AIService] generateFinalEvaluation | latency=${Date.now() - t0}ms | turns=${transcript.length}`);
 
     // ----------------------------------------------------------
     // Helpers

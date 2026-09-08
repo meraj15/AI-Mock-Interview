@@ -22,7 +22,8 @@ export interface ActiveConversationalSession {
 
   topics: InterviewTopic[];
   currentTopicIndex: number;
-  topicsCovered: string[];
+  totalTopics: number;
+  areasExplored: string[];
   followUpsUsedForCurrentTopic: number;
 
   totalTurns: number;
@@ -111,10 +112,8 @@ export class InterviewService {
 
     const sessionId = randomUUID();
 
-    const maxTurns = Math.max(
-      4,
-      questionCount,
-    );
+    const totalTopics = Math.max(3, Math.min(10, questionCount));
+    const maxTurns = totalTopics * 2;
 
     const session: ActiveConversationalSession = {
       id: sessionId,
@@ -125,7 +124,8 @@ export class InterviewService {
 
       topics: placeholderTopics,
       currentTopicIndex: 0,
-      topicsCovered: [],
+      totalTopics,
+      areasExplored: ['Introduction'],
       followUpsUsedForCurrentTopic: 0,
 
       totalTurns: 1,
@@ -153,13 +153,6 @@ export class InterviewService {
       session,
     );
 
-    // Do not block the first-question response.
-    this.populateTopicsAsync(sessionId, {
-      role: session.role,
-      skills: session.skills,
-      experience: session.experience,
-    });
-
     logger.info(
       `[InterviewService] Started conversational interview ${sessionId} for user=${userId} role="${session.role}"`,
     );
@@ -170,76 +163,9 @@ export class InterviewService {
       topics: session.topics,
       currentTopic: session.topics[0].name,
       currentTopicIndex: 0,
-      totalTopics: session.topics.length,
+      totalTopics: session.totalTopics,
       firstQuestion: plan.firstQuestion,
     };
-  }
-
-  /**
-   * Generates the broad Flutter/Dart topic pool in the background.
-   *
-   * Candidate skills are passed as context only. The AI service is
-   * responsible for ensuring they do not restrict the interview.
-   */
-  private populateTopicsAsync(
-    sessionId: string,
-    params: {
-      role: string;
-      skills?: string[];
-      experience?: string;
-    },
-  ): void {
-    aiService
-      .generateTopics(params)
-      .then((topics) => {
-        const session =
-          this.activeSessions.get(sessionId);
-
-        if (
-          !session ||
-          session.status === 'completed'
-        ) {
-          return;
-        }
-
-        if (topics.length === 0) {
-          logger.warn(
-            `[InterviewService] No topics generated for session ${sessionId}`,
-          );
-          return;
-        }
-
-        session.topics = topics;
-
-        session.maxTurns = Math.min(
-          12,
-          Math.max(6, topics.length * 2),
-        );
-
-        // The first interaction is an opening question,
-        // not a technical topic.
-        if (
-          session.interactions[0]?.topic ===
-          'Introduction'
-        ) {
-          session.interactions[0].topic =
-            'Introduction';
-        }
-
-        logger.info(
-          `[InterviewService] Topics populated for session ${sessionId}: ${topics
-            .map((topic) => topic.name)
-            .join(', ')}`,
-        );
-      })
-      .catch((err) => {
-        // Topic generation must never crash an active interview.
-        logger.warn(
-          `[InterviewService] Background topic generation failed for session ${sessionId}: ${
-            err?.message || err
-          }`,
-        );
-      });
   }
 
   /**
@@ -265,11 +191,6 @@ export class InterviewService {
       | 'follow_up'
       | 'new_topic'
       | 'end_interview';
-    answerQuality:
-      | 'weak'
-      | 'average'
-      | 'strong'
-      | 'excellent';
     nextQuestion: string;
     nextTopic: string;
     currentTopicIndex: number;
@@ -301,13 +222,12 @@ export class InterviewService {
       return {
         acknowledgement: '',
         action: 'end_interview',
-        answerQuality: 'average',
         nextQuestion:
           'The interview is already completed.',
         nextTopic: 'Completed',
         currentTopicIndex:
           session.currentTopicIndex,
-        totalTopics: session.topics.length,
+        totalTopics: session.totalTopics,
         isComplete: true,
       };
     }
@@ -334,36 +254,23 @@ export class InterviewService {
       lastInteraction.answer = cleanedAnswer;
     }
 
-    const currentTopic =
-      session.topics[
-        session.currentTopicIndex
-      ] || {
-        name: 'General',
-        objective:
-          `Evaluate practical competence for ${session.role}.`,
-      };
-
-    const topicsRemaining =
-      session.topics
-        .slice(
-          session.currentTopicIndex + 1,
-        )
-        .map((topic) => topic.name);
+    const currentTopicName =
+      lastInteraction?.topic || 'Introduction';
 
     const isPastMaxTurns =
-      session.totalTurns > session.maxTurns;
+      session.totalTurns >= session.maxTurns;
 
     if (isPastMaxTurns) {
       return this.completeInterview(
         session,
-        currentTopic.name,
+        currentTopicName,
         'Maximum interview turns reached.',
       );
     }
 
     const recentQuestions =
       session.interactions
-        .slice(-10)
+        .slice(-5)
         .map((interaction) =>
           interaction.question?.trim(),
         )
@@ -378,10 +285,6 @@ export class InterviewService {
         experience: session.experience,
         skills: session.skills,
 
-        currentTopic: currentTopic.name,
-        topicObjective:
-          currentTopic.objective,
-
         previousQuestion:
           lastInteraction?.question || '',
 
@@ -390,10 +293,8 @@ export class InterviewService {
         conversationSummary:
           session.conversationSummary,
 
-        topicsCovered:
-          session.topicsCovered,
-
-        topicsRemaining,
+        areasExplored:
+          session.areasExplored,
 
         followUpsUsed:
           session.followUpsUsedForCurrentTopic,
@@ -438,65 +339,20 @@ export class InterviewService {
     }
 
     // ----------------------------------------------------------
-    // Move to a new topic only when AI selected new_topic.
-    // Synchronize the topic index with the topic AI selected.
+    // Move to a new area only when AI selected new_topic.
+    // Dynamically track areasExplored and advance currentTopicIndex.
     // ----------------------------------------------------------
 
     if (
       finalAction === 'new_topic'
     ) {
-      if (currentTopic.name) {
-        if (
-          !session.topicsCovered.includes(
-            currentTopic.name,
-          )
-        ) {
-          session.topicsCovered.push(
-            currentTopic.name,
-          );
-        }
+      if (nextTopic && !session.areasExplored.includes(nextTopic)) {
+        session.areasExplored.push(nextTopic);
       }
-
-      const matchedTopicIndex =
-        session.topics.findIndex(
-          (topic, index) =>
-            index >
-              session.currentTopicIndex &&
-            topic.name
-              .trim()
-              .toLowerCase() ===
-              nextTopic
-                .trim()
-                .toLowerCase(),
-        );
-
-      if (matchedTopicIndex >= 0) {
-        session.currentTopicIndex =
-          matchedTopicIndex;
-      } else {
-        const nextIndex =
-          session.currentTopicIndex + 1;
-
-        if (
-          nextIndex >=
-          session.topics.length
-        ) {
-          return this.completeInterview(
-            session,
-            currentTopic.name,
-            'All interview topics have been covered.',
-          );
-        }
-
-        session.currentTopicIndex =
-          nextIndex;
-
-        nextTopic =
-          session.topics[
-            nextIndex
-          ]?.name || nextTopic;
-      }
-
+      session.currentTopicIndex = Math.min(
+        session.totalTopics - 1,
+        session.currentTopicIndex + 1,
+      );
       session.followUpsUsedForCurrentTopic = 0;
     }
 
@@ -530,11 +386,10 @@ export class InterviewService {
       return {
         acknowledgement: turn.acknowledgement || 'Thank you.',
         action: 'end_interview',
-        answerQuality: turn.answerQuality,
         nextQuestion,
         nextTopic: 'Completed',
         currentTopicIndex: session.currentTopicIndex,
-        totalTopics: session.topics.length,
+        totalTopics: session.totalTopics,
         isComplete: true,
       };
     }
@@ -555,7 +410,7 @@ export class InterviewService {
     });
 
     logger.info(
-      `[InterviewService] Session ${sessionId}: turn=${session.totalTurns}, action=${finalAction}, quality=${turn.answerQuality}, topic="${nextTopic}"`,
+      `[InterviewService] Session ${sessionId}: turn=${session.totalTurns}, action=${finalAction}, topic="${nextTopic}"`,
     );
 
     return {
@@ -563,9 +418,6 @@ export class InterviewService {
         turn.acknowledgement,
 
       action: finalAction,
-
-      answerQuality:
-        turn.answerQuality,
 
       nextQuestion,
 
@@ -575,7 +427,7 @@ export class InterviewService {
         session.currentTopicIndex,
 
       totalTopics:
-        session.topics.length,
+        session.totalTopics,
 
       isComplete: false,
     };
@@ -591,11 +443,6 @@ export class InterviewService {
   ): {
     acknowledgement: string;
     action: 'end_interview';
-    answerQuality:
-      | 'weak'
-      | 'average'
-      | 'strong'
-      | 'excellent';
     nextQuestion: string;
     nextTopic: string;
     currentTopicIndex: number;
@@ -611,13 +458,12 @@ export class InterviewService {
     return {
       acknowledgement: 'Thank you.',
       action: 'end_interview',
-      answerQuality: 'average',
       nextQuestion:
         'That covers the interview. Thank you for your time!',
       nextTopic: topic,
       currentTopicIndex:
         session.currentTopicIndex,
-      totalTopics: session.topics.length,
+      totalTopics: session.totalTopics,
       isComplete: true,
     };
   }
