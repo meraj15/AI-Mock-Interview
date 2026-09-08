@@ -79,6 +79,10 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   InterviewPhase _phase = InterviewPhase.loading;
   int _sessionElapsedSeconds = 0;
   Timer? _sessionTimer;
+  int _questionTimeRemaining = 120;
+  int _questionTimeLimit = 120;
+  Timer? _questionTimer;
+  bool _isAutoSubmitting = false;
 
   // ── Wave & Pulse Animations ───────────────────────────────────────────────
   late AnimationController _waveAnimCtrl;
@@ -140,6 +144,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   @override
   void dispose() {
     _streamingTimer?.cancel();
+    _questionTimer?.cancel();
     _ttsSafetyTimer?.cancel();
     _loadingStatusTimer?.cancel();
     _tts.stop();
@@ -324,6 +329,9 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final ic = context.read<InterviewController>();
     if (!mounted || ic.prompts.isEmpty) return;
 
+    // Reset and start fresh timer for this question
+    _startQuestionTimer();
+
     _ttsSafetyTimer?.cancel();
     _setPhase(InterviewPhase.speaking);
 
@@ -401,6 +409,127 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         _displayedWordCount = _questionWords.length;
       });
     }
+  }
+
+  // ── Per-Question Timer & Auto-Submit ──────────────────────────────────────
+
+  void _startQuestionTimer() {
+    _questionTimer?.cancel();
+    _isAutoSubmitting = false;
+
+    final ic = context.read<InterviewController>();
+    final limit = ic.config.timeLimitPerQuestion;
+    _questionTimeLimit = limit;
+    _questionTimeRemaining = limit > 0 ? limit : 0;
+
+    if (limit <= 0) {
+      // No limit mode: timer tracks elapsed seconds for this question
+      _questionTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        if (_phase == InterviewPhase.thinking ||
+            _phase == InterviewPhase.done ||
+            _phase == InterviewPhase.loading) {
+          return;
+        }
+        setState(() => _questionTimeRemaining++);
+      });
+      return;
+    }
+
+    // Countdown mode
+    _questionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      // Pause during thinking, loading, or completed phases
+      if (_phase == InterviewPhase.thinking ||
+          _phase == InterviewPhase.done ||
+          _phase == InterviewPhase.loading) {
+        return;
+      }
+
+      if (_questionTimeRemaining > 1) {
+        setState(() => _questionTimeRemaining--);
+      } else {
+        setState(() => _questionTimeRemaining = 0);
+        timer.cancel();
+        _onQuestionTimeLimitExceeded();
+      }
+    });
+  }
+
+  Future<void> _onQuestionTimeLimitExceeded() async {
+    if (_isAutoSubmitting ||
+        _phase == InterviewPhase.thinking ||
+        _phase == InterviewPhase.done ||
+        !mounted) {
+      return;
+    }
+    _isAutoSubmitting = true;
+
+    debugPrint('[InterviewSession] Question time limit exceeded. Auto-submitting.');
+
+    // 1. Stop TTS if speaking
+    _ttsSafetyTimer?.cancel();
+    try {
+      await _tts.stop();
+    } catch (_) {}
+
+    // 2. Stop STT if recording
+    _isExplicitlyStopping = true;
+    try {
+      if (_stt.isListening) {
+        await _stt.stop();
+      }
+    } catch (_) {}
+
+    _commitCurrentSessionWords();
+
+    // 3. Resolve answer text (prioritize editor, then accumulated, then live, then fallback)
+    String answer = _answerCtrl.text.trim();
+    if (answer.isEmpty) {
+      answer = _accumulatedTranscript.trim();
+    }
+    if (answer.isEmpty) {
+      answer = _liveTranscript.trim();
+    }
+    if (answer.isEmpty) {
+      answer = 'Time limit reached — no response provided.';
+    }
+
+    if (mounted) {
+      final colors = AppColorScheme.of(context);
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: colors.destructive,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
+          content: Row(
+            children: [
+              const Icon(Icons.timer_off_outlined, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Time limit reached! Submitting your answer…',
+                  style: AppTypography.semiBold(13, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 4. Auto-submit answer
+    await _submitAnswer(answer);
   }
 
   // ── Voice Input Lifecycle ─────────────────────────────────────────────────
@@ -520,6 +649,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   Future<void> _submitAnswer(String answer) async {
     final ic = context.read<InterviewController>();
+    _questionTimer?.cancel();
     _setPhase(InterviewPhase.thinking);
 
     await ic.submitAnswer(answer);
@@ -547,6 +677,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
   void _navigateToResult(InterviewController ic) {
     _streamingTimer?.cancel();
+    _questionTimer?.cancel();
     _tts.stop();
     _stt.stop();
     _sessionTimer?.cancel();
@@ -628,6 +759,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
             onPressed: () {
               Navigator.of(ctx).pop();
               _streamingTimer?.cancel();
+              _questionTimer?.cancel();
               _tts.stop();
               _stt.stop();
               Navigator.of(context).pop();
@@ -690,9 +822,32 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
             SessionHeader(
               role: role,
               elapsedSeconds: _sessionElapsedSeconds,
+              questionRemainingSeconds: _questionTimeRemaining,
+              questionTimeLimit: _questionTimeLimit,
+              currentQuestionIndex: ic.currentIndex,
+              totalQuestions: ic.totalQuestions,
               onExit: () => _confirmExit(colors),
               colors: colors,
             ),
+
+            // Question countdown progress bar
+            if (_questionTimeLimit > 0 && !isLoading && _phase != InterviewPhase.done)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                height: 3,
+                width: double.infinity,
+                child: LinearProgressIndicator(
+                  value: (_questionTimeRemaining / _questionTimeLimit).clamp(0.0, 1.0),
+                  backgroundColor: colors.muted.withValues(alpha: 0.25),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    _questionTimeRemaining <= 10
+                        ? colors.destructive
+                        : (_questionTimeRemaining <= 30
+                            ? colors.yellow
+                            : colors.mint),
+                  ),
+                ),
+              ),
 
             // ── 2. Interactive Interview Room Content ───────────────────────
             Expanded(

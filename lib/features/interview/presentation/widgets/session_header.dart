@@ -8,6 +8,10 @@ class SessionHeader extends StatelessWidget {
   final int elapsedSeconds;
   final VoidCallback onExit;
   final AppColorScheme colors;
+  final int? questionRemainingSeconds;
+  final int? questionTimeLimit;
+  final int? currentQuestionIndex;
+  final int? totalQuestions;
 
   const SessionHeader({
     super.key,
@@ -15,6 +19,10 @@ class SessionHeader extends StatelessWidget {
     required this.elapsedSeconds,
     required this.onExit,
     required this.colors,
+    this.questionRemainingSeconds,
+    this.questionTimeLimit,
+    this.currentQuestionIndex,
+    this.totalQuestions,
   });
 
   String _formatTime(int s) {
@@ -25,6 +33,32 @@ class SessionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCountdown = questionTimeLimit != null && questionTimeLimit! > 0;
+    final displaySeconds = isCountdown
+        ? (questionRemainingSeconds ?? 0)
+        : elapsedSeconds;
+
+    final isUrgent = isCountdown && displaySeconds <= 10;
+    final isWarning = isCountdown && displaySeconds <= 30 && !isUrgent;
+
+    final badgeBorderColor = isUrgent
+        ? colors.destructive
+        : (isWarning ? colors.yellow : colors.border.withValues(alpha: 0.4));
+
+    final badgeBgColor = isUrgent
+        ? colors.destructive.withValues(alpha: 0.12)
+        : (isWarning ? colors.yellow.withValues(alpha: 0.12) : colors.card);
+
+    final textColor = isUrgent
+        ? colors.destructive
+        : (isWarning ? colors.yellow : colors.text);
+
+    final iconColor = isUrgent
+        ? colors.destructive
+        : (isWarning ? colors.yellow : colors.mutedForeground);
+
+    final icon = isUrgent ? FeatherIcons.alertCircle : FeatherIcons.clock;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
@@ -73,7 +107,9 @@ class SessionHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    'AI Mock Interview',
+                    (currentQuestionIndex != null && totalQuestions != null && totalQuestions! > 0)
+                        ? 'Question ${currentQuestionIndex! + 1} of $totalQuestions'
+                        : 'AI Mock Interview',
                     style: AppTypography.medium(10, color: colors.mint),
                     textAlign: TextAlign.center,
                   ),
@@ -83,21 +119,22 @@ class SessionHeader extends StatelessWidget {
           ),
 
           // Timer Badge
-          Container(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color: colors.card,
+              color: badgeBgColor,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colors.border.withValues(alpha: 0.4)),
+              border: Border.all(color: badgeBorderColor),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(FeatherIcons.clock, size: 11, color: colors.mutedForeground),
+                Icon(icon, size: 11, color: iconColor),
                 const SizedBox(width: 4),
                 Text(
-                  _formatTime(elapsedSeconds),
-                  style: AppTypography.semiBold(11, color: colors.text),
+                  _formatTime(displaySeconds),
+                  style: AppTypography.semiBold(11, color: textColor),
                 ),
               ],
             ),
