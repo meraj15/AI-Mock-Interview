@@ -1,7 +1,18 @@
 import { prisma } from '../config/database';
-import { InterviewSession } from '@prisma/client';
+import { InterviewSession, InterviewQuestion } from '@prisma/client';
 
 // ── Input / output types ──────────────────────────────────────────────────────
+
+export interface CreateInterviewQuestionInput {
+  questionNumber: number;
+  question: string;
+  candidateAnswer: string;
+  expectedAnswer: string;
+  feedback: string;
+  score: number;
+  topic?: string | null;
+  type?: string | null;
+}
 
 export interface CreateInterviewSessionInput {
   userId: string;
@@ -28,6 +39,16 @@ export interface CreateInterviewSessionInput {
   durationSecs: number;
 }
 
+export interface CreateInterviewSessionWithQuestionsInput
+  extends CreateInterviewSessionInput {
+  id?: string;
+  questions: CreateInterviewQuestionInput[];
+}
+
+export type InterviewSessionWithQuestions = InterviewSession & {
+  questions: InterviewQuestion[];
+};
+
 export interface InterviewStats {
   averageScore: number;
   totalInterviews: number;
@@ -44,7 +65,7 @@ export interface InterviewStats {
 }
 
 // Re-export for consumers
-export type { InterviewSession };
+export type { InterviewSession, InterviewQuestion };
 
 // ── Repository ────────────────────────────────────────────────────────────────
 
@@ -74,6 +95,52 @@ export class InterviewRepository {
         // Difficulty is NOT user-controlled.
         difficulty: 'Adaptive',
       },
+    });
+  }
+
+  /**
+   * Persist an interview session along with its question reviews atomically.
+   */
+  async createWithQuestions(
+    data: CreateInterviewSessionWithQuestionsInput,
+  ): Promise<InterviewSessionWithQuestions> {
+    const { questions, id, ...sessionData } = data;
+
+    return prisma.$transaction(async (tx) => {
+      const session = await tx.interviewSession.create({
+        data: {
+          ...(id ? { id } : {}),
+          ...sessionData,
+          type: sessionData.type ?? 'technical',
+          difficulty: 'Adaptive',
+        },
+      });
+
+      if (questions && questions.length > 0) {
+        await tx.interviewQuestion.createMany({
+          data: questions.map((q) => ({
+            interviewId: session.id,
+            questionNumber: q.questionNumber,
+            question: q.question,
+            candidateAnswer: q.candidateAnswer,
+            expectedAnswer: q.expectedAnswer,
+            feedback: q.feedback,
+            score: q.score,
+            topic: q.topic ?? null,
+            type: q.type ?? null,
+          })),
+        });
+      }
+
+      const storedQuestions = await tx.interviewQuestion.findMany({
+        where: { interviewId: session.id },
+        orderBy: { questionNumber: 'asc' },
+      });
+
+      return {
+        ...session,
+        questions: storedQuestions,
+      };
     });
   }
 
@@ -110,6 +177,28 @@ export class InterviewRepository {
     return prisma.interviewSession.findUnique({
       where: {
         id,
+      },
+    });
+  }
+
+  /**
+   * Get a single interview session with all its question reviews ordered.
+   *
+   * Ownership is checked in the service layer.
+   */
+  async findByIdWithQuestions(
+    id: string,
+  ): Promise<InterviewSessionWithQuestions | null> {
+    return prisma.interviewSession.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        questions: {
+          orderBy: {
+            questionNumber: 'asc',
+          },
+        },
       },
     });
   }

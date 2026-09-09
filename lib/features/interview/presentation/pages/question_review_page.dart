@@ -1,6 +1,7 @@
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/services/ai_interview_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_header.dart';
@@ -10,7 +11,14 @@ import '../../../../core/widgets/section_title.dart';
 import '../controllers/interview_controller.dart';
 
 class QuestionReviewPage extends StatefulWidget {
-  const QuestionReviewPage({super.key});
+  final List<QuestionReview>? questions;
+  final String? role;
+
+  const QuestionReviewPage({
+    super.key,
+    this.questions,
+    this.role,
+  });
 
   @override
   State<QuestionReviewPage> createState() => _QuestionReviewPageState();
@@ -24,7 +32,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
     final colors = AppColorScheme.of(context);
     final interviewCtrl = context.watch<InterviewController>();
     final eval = interviewCtrl.lastEvaluation;
-    final reviews = eval?.questionReviews ?? [];
+    final reviews = widget.questions ?? eval?.questionReviews ?? [];
     final history = interviewCtrl.sessionHistory;
 
     final total = reviews.isNotEmpty
@@ -50,11 +58,11 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
       answerText = r.answer.isNotEmpty ? r.answer : 'No answer provided.';
       expectedAnswerText = r.expectedAnswer.isNotEmpty
           ? r.expectedAnswer
-          : 'A great answer explains the core idea in plain English first, followed by a concrete real-world example from your development experience.';
+          : 'A strong candidate explains the core concept in plain, simple English, followed by a concrete practical example.';
       feedbackText = r.feedback;
       scoreVal = r.score;
       topicName = history.isNotEmpty && _index < history.length
-          ? (history[_index]['topic'] ?? 'Topic ${_index + 1}')
+          ? (history[_index]['topic'] ?? 'Question ${_index + 1}')
           : 'Question ${_index + 1}';
     } else if (history.isNotEmpty && _index < history.length) {
       final h = history[_index];
@@ -63,20 +71,17 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
           ? h['answer']!
           : 'No answer provided.';
       expectedAnswerText =
-          'A great answer explains the core idea in plain English first, followed by a concrete real-world example from your development experience.';
+          'A strong candidate explains the core concept in plain, simple English, followed by a concrete practical example.';
       feedbackText = 'Clear and structured response.';
       scoreVal = 75;
-      topicName = h['topic'] ?? 'Topic ${_index + 1}';
+      topicName = h['topic'] ?? 'Question ${_index + 1}';
     } else {
-      questionText =
-          'What is dependency injection, and why do we use it in Flutter?';
-      answerText =
-          'I think dependency injection means we don\'t create the object directly inside the class. We pass it from outside, so it is easier to manage and test.';
-      expectedAnswerText =
-          'Dependency injection means giving a class the things it needs instead of creating them inside the class. For example, if my service needs a database or API client, I pass it in through the constructor. This makes the code much easier to test and change later.';
-      feedbackText = 'Detailed technical evaluation.';
-      scoreVal = 80;
-      topicName = 'Architecture';
+      questionText = 'No recorded questions found for this session.';
+      answerText = 'No response captured.';
+      expectedAnswerText = '';
+      feedbackText = 'Complete an interview session to review your answers.';
+      scoreVal = 0;
+      topicName = 'Review';
     }
 
     final isHigh = scoreVal >= 75;
@@ -248,7 +253,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'How a real engineer answers naturally:',
+                                'How a strong candidate could answer naturally:',
                                 style: AppTypography.bold(12, color: colors.mint),
                               ),
                               const Spacer(),

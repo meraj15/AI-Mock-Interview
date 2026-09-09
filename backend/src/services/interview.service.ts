@@ -4,6 +4,7 @@ import {
   CreateInterviewSessionInput,
   InterviewStats,
   InterviewSession,
+  InterviewSessionWithQuestions,
 } from '../repositories/interview.repository';
 import {
   aiService,
@@ -559,128 +560,186 @@ export class InterviewService {
     sessionId: string,
     userId: string,
   ): Promise<FinalInterviewEvaluation> {
-    const session =
-      this.activeSessions.get(sessionId);
+    let session = this.activeSessions.get(sessionId);
 
+    // If active session is not in memory (e.g. server restarted or session completed earlier),
+    // check if it has already been persisted to the database.
     if (!session) {
+      const persisted =
+        await interviewRepository.findByIdWithQuestions(sessionId);
+
+      if (persisted) {
+        if (persisted.userId !== userId) {
+          throw Object.assign(
+            new Error('Forbidden: session does not belong to user'),
+            { statusCode: 403 },
+          );
+        }
+
+        return this._toEvaluation(persisted);
+      }
+
       throw Object.assign(
-        new Error(
-          'Interview session not found or already archived',
-        ),
+        new Error('Interview session not found or already archived'),
         { statusCode: 404 },
       );
     }
 
     if (session.userId !== userId) {
       throw Object.assign(
-        new Error(
-          'Forbidden: session does not belong to user',
-        ),
+        new Error('Forbidden: session does not belong to user'),
         { statusCode: 403 },
       );
     }
 
-    if (!session.finalEvaluation) {
-      const transcript =
-        session.interactions.filter(
-          (interaction) =>
-            interaction.answer.trim().length > 0,
+    // In-memory idempotency check: if evaluation already computed, return it
+    if (session.finalEvaluation) {
+      return session.finalEvaluation;
+    }
+
+    // Database idempotency check: if session was already persisted with this ID
+    const existingInDb =
+      await interviewRepository.findByIdWithQuestions(sessionId);
+    if (existingInDb) {
+      const evalFromDb = this._toEvaluation(existingInDb);
+      session.finalEvaluation = evalFromDb;
+      session.status = 'completed';
+      return evalFromDb;
+    }
+
+    const transcript = session.interactions.filter(
+      (interaction) => interaction.answer.trim().length > 0,
+    );
+
+    if (transcript.length === 0) {
+      throw Object.assign(
+        new Error('No completed interview answers found'),
+        { statusCode: 400 },
+      );
+    }
+
+    const evaluation = await aiService.generateFinalEvaluation({
+      role: session.role,
+      experience: session.experience,
+      skills: session.skills,
+      transcript,
+    });
+
+    const durationSecs = Math.max(
+      1,
+      Math.round((Date.now() - session.startedAt) / 1000),
+    );
+
+    const hiringBand =
+      evaluation.performanceLevel === 'Excellent'
+        ? 'Strong Hire'
+        : evaluation.performanceLevel === 'Good'
+        ? 'Hire'
+        : evaluation.performanceLevel === 'Average'
+        ? 'Leaning Hire'
+        : 'Needs Practice';
+
+    // Map question reviews with transcript topic and type matching
+    const questionsToPersist = (evaluation.questionReviews || []).map(
+      (review, idx) => {
+        const match = transcript.find(
+          (t) =>
+            t.question.trim().toLowerCase() ===
+            review.question.trim().toLowerCase(),
         );
 
-      if (transcript.length === 0) {
-        throw Object.assign(
-          new Error(
-            'No completed interview answers found',
-          ),
-          { statusCode: 400 },
-        );
-      }
+        return {
+          questionNumber: idx + 1,
+          question: review.question,
+          candidateAnswer: review.answer,
+          expectedAnswer: review.expectedAnswer ?? '',
+          feedback: review.feedback,
+          score: review.score,
+          topic:
+            match?.topic ??
+            (idx < transcript.length ? transcript[idx].topic : null) ??
+            null,
+          type:
+            match?.type ??
+            (idx < transcript.length ? transcript[idx].type : null) ??
+            null,
+        };
+      },
+    );
 
-      const evaluation =
-        await aiService.generateFinalEvaluation({
-          role: session.role,
-          experience: session.experience,
-          skills: session.skills,
-          transcript,
-        });
+    try {
+      await interviewRepository.createWithQuestions({
+        id: sessionId,
+        userId,
+        role: session.role,
+        type: 'technical',
+        questionCount: transcript.length,
+        score: evaluation.overallScore,
+        hiringBand,
+        summary: evaluation.summary,
+        strengths: evaluation.strengths,
+        areasToImprove: evaluation.areasToImprove,
+        skillScores: evaluation.skillPerformance ?? {},
+        durationSecs,
+        questions: questionsToPersist,
+      });
 
-      session.finalEvaluation =
-        evaluation;
-
+      session.finalEvaluation = evaluation;
       session.status = 'completed';
 
-      const durationSecs = Math.max(
-        1,
-        Math.round(
-          (Date.now() -
-            session.startedAt) /
-            1000,
-        ),
+      logger.info(
+        `[InterviewService] Saved interview ${sessionId} with ${questionsToPersist.length} questions into database for user=${userId}`,
       );
-
-      const hiringBand =
-        evaluation.performanceLevel ===
-        'Excellent'
-          ? 'Strong Hire'
-          : evaluation.performanceLevel ===
-            'Good'
-          ? 'Hire'
-          : evaluation.performanceLevel ===
-            'Average'
-          ? 'Leaning Hire'
-          : 'Needs Practice';
-
-      try {
-        /*
-         * The repository may still require a legacy `difficulty`
-         * database field. We keep the database value as "Adaptive"
-         * for backward compatibility, while difficulty is completely
-         * removed from the active interview/AI logic.
-         *
-         * If you remove `difficulty` from the database schema later,
-         * remove this field from the repository input as well.
-         */
-        await interviewRepository.create({
-          userId,
-          role: session.role,
-          type: 'technical',
-
-          questionCount:
-            transcript.length,
-
-          score:
-            evaluation.overallScore,
-
-          hiringBand,
-
-          summary:
-            evaluation.summary,
-
-          strengths:
-            evaluation.strengths,
-
-          areasToImprove:
-            evaluation.areasToImprove,
-
-          skillScores:
-            evaluation.skillPerformance ??
-            {},
-
-          durationSecs,
-        });
-
-        logger.info(
-          `[InterviewService] Saved interview ${sessionId} into database for user=${userId}`,
-        );
-      } catch (dbErr) {
-        logger.error(
-          `[InterviewService] Failed to save session to DB:`,
-          dbErr,
-        );
-      }
+    } catch (dbErr) {
+      logger.error(
+        `[InterviewService] Failed to persist interview ${sessionId} with questions to DB:`,
+        dbErr,
+      );
+      throw Object.assign(
+        new Error('Failed to persist interview question reviews to database'),
+        { statusCode: 500, cause: dbErr },
+      );
     }
 
     return session.finalEvaluation;
+  }
+
+  /**
+   * Reconstruct a FinalInterviewEvaluation from an InterviewSessionWithQuestions record.
+   */
+  private _toEvaluation(
+    session: InterviewSessionWithQuestions,
+  ): FinalInterviewEvaluation {
+    const level: FinalInterviewEvaluation['performanceLevel'] =
+      session.score >= 85
+        ? 'Excellent'
+        : session.score >= 70
+        ? 'Good'
+        : session.score >= 55
+        ? 'Average'
+        : 'Needs Improvement';
+
+    const rawSkillScores =
+      session.skillScores && typeof session.skillScores === 'object'
+        ? (session.skillScores as Record<string, number>)
+        : {};
+
+    return {
+      overallScore: session.score,
+      performanceLevel: level,
+      summary: session.summary,
+      strengths: session.strengths ?? [],
+      areasToImprove: session.areasToImprove ?? [],
+      skillPerformance: rawSkillScores,
+      recommendations: [],
+      questionReviews: (session.questions ?? []).map((q) => ({
+        question: q.question,
+        answer: q.candidateAnswer,
+        expectedAnswer: q.expectedAnswer,
+        feedback: q.feedback,
+        score: q.score,
+      })),
+    };
   }
 
   /**
@@ -722,14 +781,14 @@ export class InterviewService {
   }
 
   /**
-   * Get a single session from DB.
+   * Get a single session with all its question reviews from DB.
    */
   async getSession(
     sessionId: string,
     userId: string,
-  ): Promise<InterviewSession> {
+  ): Promise<InterviewSessionWithQuestions> {
     const session =
-      await interviewRepository.findById(
+      await interviewRepository.findByIdWithQuestions(
         sessionId,
       );
 

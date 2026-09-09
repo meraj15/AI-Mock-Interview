@@ -99,8 +99,34 @@ model InterviewSession {
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions InterviewQuestion[]
 
   @@index([userId])
   @@index([userId, createdAt])
   @@map("interview_sessions")
 }
+
+// ── InterviewQuestion ─────────────────────────────────────────────────────────
+model InterviewQuestion {
+  id              String   @id @default(uuid())
+  interviewId     String
+  questionNumber  Int
+
+  question        String   @db.Text
+  candidateAnswer String   @db.Text
+  expectedAnswer  String   @db.Text
+  feedback        String   @db.Text
+  score           Int
+
+  topic           String?
+  type            String?
+
+  createdAt       DateTime @default(now())
+
+  interview InterviewSession @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@index([interviewId])
+  @@unique([interviewId, questionNumber])
+  @@map("interview_questions")
+}
+

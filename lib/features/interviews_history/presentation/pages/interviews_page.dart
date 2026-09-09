@@ -8,8 +8,12 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/empty_state_widget.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
+import '../../../../core/services/ai_interview_service.dart';
+import '../../../../core/widgets/app_button.dart';
 import '../../../dashboard/presentation/controllers/dashboard_controller.dart';
 import '../../../interview/data/datasources/interview_remote_data_source.dart';
+import '../../../interview/presentation/controllers/interview_controller.dart';
+import '../../../interview/presentation/pages/question_review_page.dart';
 import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
 
 class InterviewsPage extends StatefulWidget {
@@ -221,6 +225,52 @@ class _InterviewsPageState extends State<InterviewsPage> {
                       ),
                     ),
                   ],
+
+                  const SizedBox(height: 18),
+
+                  AppButton(
+                    label: 'Review Questions & Answers',
+                    icon: FeatherIcons.list,
+                    onPress: () async {
+                      final ctrl = context.read<InterviewController>();
+                      final dataSource = ctrl.remoteDataSource;
+                      if (dataSource == null) return;
+
+                      // Dismiss sheet and open QuestionReviewPage
+                      Navigator.of(ctx).pop();
+
+                      try {
+                        final details =
+                            await dataSource.getSessionDetails(session.id);
+                        final rawQuestions =
+                            details['questions'] as List? ?? [];
+                        final questions = rawQuestions
+                            .whereType<Map<String, dynamic>>()
+                            .map((q) => QuestionReview(
+                                  question: q['question'] as String? ?? '',
+                                  answer: q['candidateAnswer'] as String? ?? '',
+                                  expectedAnswer:
+                                      q['expectedAnswer'] as String? ?? '',
+                                  feedback: q['feedback'] as String? ?? '',
+                                  score: (q['score'] as num?)?.toInt() ?? 0,
+                                ))
+                            .toList();
+
+                        if (context.mounted) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => QuestionReviewPage(
+                                questions: questions,
+                                role: session.role,
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        debugPrint('Failed to load session questions: $e');
+                      }
+                    },
+                  ),
 
                   const SizedBox(height: 24),
                 ],

@@ -185,6 +185,7 @@ abstract class InterviewRemoteDataSource {
   Future<void> saveSession(SaveInterviewRequest request);
   Future<InterviewStatsModel> getStats();
   Future<List<InterviewSessionSummary>> listSessions({int limit, int offset});
+  Future<Map<String, dynamic>> getSessionDetails(String sessionId);
 }
 
 class InterviewRemoteDataSourceImpl implements InterviewRemoteDataSource {
@@ -222,5 +223,16 @@ class InterviewRemoteDataSourceImpl implements InterviewRemoteDataSource {
         .whereType<Map<String, dynamic>>()
         .map(InterviewSessionSummary.fromJson)
         .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> getSessionDetails(String sessionId) async {
+    final response = await apiClient.get('${ApiConfig.interviewsEndpoint}/$sessionId');
+    final data = response.data is Map<String, dynamic>
+        ? response.data as Map<String, dynamic>
+        : <String, dynamic>{};
+    return data['data'] is Map<String, dynamic>
+        ? data['data'] as Map<String, dynamic>
+        : data;
   }
 }

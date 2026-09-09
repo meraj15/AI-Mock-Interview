@@ -119,10 +119,12 @@ For every interviewer question:
 * Include the question.
 * Include the candidate's actual answer.
 * Provide an expectedAnswer:
-  - This MUST sound like a real, experienced human engineer answering conversationally in a real interview.
-  - Do NOT write robotic, academic, or textbook definitions.
-  - Use simple, plain English that is easy to understand.
-  - Structure it naturally: explain what it means in 1-2 simple sentences, then give a quick practical real-world example (e.g. "For example, if my service needs...").
+  - This MUST represent how a strong candidate could answer naturally in a real interview for a ${role}.
+  - Use simple, natural, spoken English appropriate for their stated experience level (${experience || 'general'}).
+  - It must sound like something a real person could say verbally in an interview.
+  - Explain the core concept or approach clearly in 1-2 simple sentences, followed by a quick practical example appropriate for a ${role}.
+  - Avoid unnecessary jargon, academic/textbook language, and overly sophisticated AI documentation style.
+  - For non-technical roles, use natural terminology fitting that role. Do NOT assume technical or engineering roles unless the target role actually requires it.
 * Give a score from 0-100 based on the quality of the candidate's actual answer.
 * Provide one concise feedback sentence explaining what was good or what could be improved.
 

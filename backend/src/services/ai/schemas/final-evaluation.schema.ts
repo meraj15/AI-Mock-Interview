@@ -73,7 +73,7 @@ export const finalEvaluationGeminiSchema = {
           expectedAnswer: {
             type: Type.STRING,
             description:
-              'A natural, practical, human-like ideal answer in simple conversational English with a relatable example. Must sound like a real engineer, NOT textbook or AI-generated.',
+              'A natural, practical, human-like ideal answer in simple conversational English with a relatable example. Must sound like how a strong candidate answers verbally in an interview, NOT textbook or AI-generated.',
           },
           feedback: {
             type: Type.STRING,
@@ -161,7 +161,7 @@ export const finalEvaluationOpenAISchema = {
           expectedAnswer: {
             type: 'string',
             description:
-              'A natural, practical, human-like ideal answer in simple conversational English with a relatable example. Must sound like a real engineer, NOT textbook or AI-generated.',
+              'A natural, practical, human-like ideal answer in simple conversational English with a relatable example. Must sound like how a strong candidate answers verbally in an interview, NOT textbook or AI-generated.',
           },
           feedback: { type: 'string' },
           score: { type: 'integer' },
