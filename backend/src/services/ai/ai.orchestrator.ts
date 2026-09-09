@@ -470,6 +470,7 @@ export class AIOrchestrator {
       ? raw.questionReviews.map((review: any) => ({
           question: String(review?.question || '').trim(),
           answer: String(review?.answer || '').trim(),
+          expectedAnswer: String(review?.expectedAnswer || '').trim(),
           feedback: String(review?.feedback || '').trim(),
           score: this.clamp(review?.score),
         }))

@@ -70,6 +70,11 @@ export const finalEvaluationGeminiSchema = {
           answer: {
             type: Type.STRING,
           },
+          expectedAnswer: {
+            type: Type.STRING,
+            description:
+              'A natural, practical, human-like ideal answer in simple conversational English with a relatable example. Must sound like a real engineer, NOT textbook or AI-generated.',
+          },
           feedback: {
             type: Type.STRING,
           },
@@ -77,7 +82,7 @@ export const finalEvaluationGeminiSchema = {
             type: Type.INTEGER,
           },
         },
-        required: ['question', 'answer', 'feedback', 'score'],
+        required: ['question', 'answer', 'expectedAnswer', 'feedback', 'score'],
         additionalProperties: false,
       },
     },
@@ -153,10 +158,15 @@ export const finalEvaluationOpenAISchema = {
         properties: {
           question: { type: 'string' },
           answer: { type: 'string' },
+          expectedAnswer: {
+            type: 'string',
+            description:
+              'A natural, practical, human-like ideal answer in simple conversational English with a relatable example. Must sound like a real engineer, NOT textbook or AI-generated.',
+          },
           feedback: { type: 'string' },
           score: { type: 'integer' },
         },
-        required: ['question', 'answer', 'feedback', 'score'],
+        required: ['question', 'answer', 'expectedAnswer', 'feedback', 'score'],
         additionalProperties: false,
       },
     },

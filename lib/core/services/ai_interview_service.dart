@@ -92,12 +92,14 @@ class ConversationalTurnResult {
 class QuestionReview {
   final String question;
   final String answer;
+  final String expectedAnswer;
   final String feedback;
   final int score;
 
   const QuestionReview({
     required this.question,
     required this.answer,
+    this.expectedAnswer = '',
     required this.feedback,
     required this.score,
   });
@@ -105,6 +107,7 @@ class QuestionReview {
   factory QuestionReview.fromJson(Map<String, dynamic> j) => QuestionReview(
         question: j['question'] as String? ?? '',
         answer: j['answer'] as String? ?? '',
+        expectedAnswer: j['expectedAnswer'] as String? ?? '',
         feedback: j['feedback'] as String? ?? '',
         score: (j['score'] as num?)?.toInt() ?? 75,
       );

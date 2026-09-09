@@ -23,6 +23,7 @@ export interface ConversationalTurn {
 export interface QuestionReview {
   question: string;
   answer: string;
+  expectedAnswer?: string;
   feedback: string;
   score: number;
 }

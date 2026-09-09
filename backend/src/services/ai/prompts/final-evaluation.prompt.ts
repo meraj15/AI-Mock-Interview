@@ -117,11 +117,14 @@ QUESTION REVIEWS
 
 For every interviewer question:
 * Include the question.
-* Include the candidate's answer.
-* Give a score from 0-100.
-* Provide one concise feedback sentence.
-
-Feedback must explain the quality of the candidate's actual answer.
+* Include the candidate's actual answer.
+* Provide an expectedAnswer:
+  - This MUST sound like a real, experienced human engineer answering conversationally in a real interview.
+  - Do NOT write robotic, academic, or textbook definitions.
+  - Use simple, plain English that is easy to understand.
+  - Structure it naturally: explain what it means in 1-2 simple sentences, then give a quick practical real-world example (e.g. "For example, if my service needs...").
+* Give a score from 0-100 based on the quality of the candidate's actual answer.
+* Provide one concise feedback sentence explaining what was good or what could be improved.
 
 Return ONLY valid JSON matching the schema.`;
 }
