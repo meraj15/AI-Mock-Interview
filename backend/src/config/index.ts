@@ -22,4 +22,21 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? '',
   },
+  ai: {
+    livePrimaryProvider: (process.env.AI_LIVE_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
+    livePrimaryModel: process.env.AI_LIVE_PRIMARY_MODEL ?? 'gemini-3.7-flash',
+    liveFallbackProvider: (process.env.AI_LIVE_FALLBACK_PROVIDER ?? 'openai').toLowerCase(),
+    liveFallbackModel: process.env.AI_LIVE_FALLBACK_MODEL ?? 'gpt-4o-mini',
+
+    evalPrimaryProvider: (process.env.AI_EVAL_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
+    evalPrimaryModel: process.env.AI_EVAL_PRIMARY_MODEL ?? 'gemini-3.7-flash',
+    evalFallbackProvider: (process.env.AI_EVAL_FALLBACK_PROVIDER ?? 'openai').toLowerCase(),
+    evalFallbackModel: process.env.AI_EVAL_FALLBACK_MODEL ?? 'gpt-4o',
+
+    circuitFailureThreshold: parseInt(process.env.AI_CIRCUIT_FAILURE_THRESHOLD ?? '3', 10),
+    circuitCooldownMs: parseInt(process.env.AI_CIRCUIT_COOLDOWN_MS ?? '30000', 10),
+    liveTimeoutMs: parseInt(process.env.AI_LIVE_TIMEOUT_MS ?? '8000', 10),
+    evalTimeoutMs: parseInt(process.env.AI_EVAL_TIMEOUT_MS ?? '60000', 10),
+  },
 } as const;
+

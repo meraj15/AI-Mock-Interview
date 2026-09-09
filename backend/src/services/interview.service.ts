@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import {
   interviewRepository,
   CreateInterviewSessionInput,
@@ -34,6 +34,15 @@ export interface ActiveConversationalSession {
 
   status: 'in_progress' | 'completed';
   finalEvaluation?: FinalInterviewEvaluation;
+
+  // Scoped idempotency tracking: key is `${sessionId}:${turnNumber}:${answerId}`
+  idempotentTurns?: Map<string, any>;
+  inFlightTurns?: Map<string, Promise<any>>;
+  lastProcessedTurn?: {
+    turnNumber: number;
+    answerId: string;
+    result: any;
+  };
 
   createdAt: Date;
   startedAt: number;
@@ -185,6 +194,8 @@ export class InterviewService {
     sessionId: string,
     userId: string,
     answer: string,
+    answerId?: string,
+    turnNumber?: number,
   ): Promise<{
     acknowledgement: string;
     action:
@@ -244,11 +255,62 @@ export class InterviewService {
       );
     }
 
-    // Save candidate answer to the current/last interaction.
-    const lastInteraction =
-      session.interactions[
-        session.interactions.length - 1
-      ];
+    // Scoped Idempotency Key: sessionId + turnNumber + answerId
+    const effectiveAnswerId =
+      answerId?.trim() ||
+      createHash('sha256').update(cleanedAnswer).digest('hex').slice(0, 16);
+    const turnBeingAnswered = typeof turnNumber === 'number' ? turnNumber : session.totalTurns;
+    const idempotencyKey = `${sessionId}:${turnBeingAnswered}:${effectiveAnswerId}`;
+
+    if (!session.idempotentTurns) {
+      session.idempotentTurns = new Map();
+    }
+    if (!session.inFlightTurns) {
+      session.inFlightTurns = new Map();
+    }
+
+    // 1. Direct match on scoped key (sessionId + turnNumber + answerId)
+    if (session.idempotentTurns.has(idempotencyKey)) {
+      logger.info(
+        `[InterviewService] Idempotency hit: returning cached result for key=${idempotencyKey}`,
+      );
+      return session.idempotentTurns.get(idempotencyKey);
+    }
+
+    // 2. Retry match when previous turn already advanced
+    if (
+      session.lastProcessedTurn &&
+      session.lastProcessedTurn.answerId === effectiveAnswerId &&
+      (turnNumber === undefined || session.lastProcessedTurn.turnNumber === turnNumber)
+    ) {
+      logger.info(
+        `[InterviewService] Idempotency hit: returning duplicate result for answerId=${effectiveAnswerId}`,
+      );
+      return session.lastProcessedTurn.result;
+    }
+
+    // 3. In-flight coalescing: prevent concurrent duplicate requests from executing twice
+    if (session.inFlightTurns.has(idempotencyKey)) {
+      logger.info(
+        `[InterviewService] In-flight turn processing in progress: coalescing concurrent request for key=${idempotencyKey}`,
+      );
+      return await session.inFlightTurns.get(idempotencyKey)!;
+    }
+
+    const executeTurn = async (): Promise<{
+      acknowledgement: string;
+      action: 'follow_up' | 'new_topic' | 'end_interview';
+      nextQuestion: string;
+      nextTopic: string;
+      currentTopicIndex: number;
+      totalTopics: number;
+      isComplete: boolean;
+    }> => {
+      // Save candidate answer to the current/last interaction.
+      const lastInteraction =
+        session.interactions[
+          session.interactions.length - 1
+        ];
 
     if (lastInteraction) {
       lastInteraction.answer = cleanedAnswer;
@@ -413,7 +475,7 @@ export class InterviewService {
       `[InterviewService] Session ${sessionId}: turn=${session.totalTurns}, action=${finalAction}, topic="${nextTopic}"`,
     );
 
-    return {
+    const result = {
       acknowledgement:
         turn.acknowledgement,
 
@@ -431,7 +493,25 @@ export class InterviewService {
 
       isComplete: false,
     };
+
+    return result;
+  };
+
+  const turnPromise = executeTurn();
+  session.inFlightTurns.set(idempotencyKey, turnPromise);
+  try {
+    const result = await turnPromise;
+    session.idempotentTurns.set(idempotencyKey, result);
+    session.lastProcessedTurn = {
+      turnNumber: turnBeingAnswered,
+      answerId: effectiveAnswerId,
+      result,
+    };
+    return result;
+  } finally {
+    session.inFlightTurns.delete(idempotencyKey);
   }
+}
 
   /**
    * Completes the active interview without generating another question.

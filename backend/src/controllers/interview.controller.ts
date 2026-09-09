@@ -35,6 +35,14 @@ const submitAnswerSchema = z.object({
     .string()
     .trim()
     .min(1, 'answer is required'),
+  answerId: z
+    .string()
+    .trim()
+    .optional(),
+  turnNumber: z
+    .number()
+    .int()
+    .optional(),
 });
 
 const saveSessionSchema = z.object({
@@ -165,7 +173,9 @@ export const interviewController = {
         await interviewService.submitAnswer(
           sessionId,
           userId,
-          parsed.answer
+          parsed.answer,
+          parsed.answerId,
+          parsed.turnNumber,
         );
 
       res.status(200).json({
