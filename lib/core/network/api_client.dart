@@ -140,7 +140,7 @@ class ApiClient {
     bool autoRefresh = true,
     Duration? customTimeout,
   }) async {
-    if (ApiConfig.currentEnvironment != Environment.development || ApiConfig.isResolved) {
+    if (ApiConfig.isProduction || ApiConfig.isResolved) {
       return _sendSingleRequest(
         baseUrl: ApiConfig.baseUrl,
         method: method,
