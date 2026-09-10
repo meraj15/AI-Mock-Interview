@@ -15,6 +15,7 @@ import {
 } from '../errors/AppError';
 import { AuthResult, AuthTokens, UserResponse } from '../types/auth.types';
 import { User, UserProfile } from '@prisma/client';
+import { prisma } from '../config/database';
 import crypto from 'crypto';
 
 export class AuthService {
@@ -47,29 +48,69 @@ export class AuthService {
     // Check existing user
     const existing = await this.repo.findUserByEmail(email);
     if (existing) {
-      throw new ConflictError('Email already registered', 'EMAIL_ALREADY_EXISTS');
+      // Check if this is an orphaned user created from a prior failed attempt:
+      // (e.g. user was created but profile/token creation crashed midway,
+      // so user has no profile, no refresh tokens, never logged in, and not verified).
+      const profile = await prisma.userProfile.findUnique({ where: { userId: existing.id } });
+      const tokensCount = await prisma.refreshToken.count({ where: { userId: existing.id } });
+
+      if (!profile && tokensCount === 0 && !existing.lastLoginAt) {
+        // Safe to clean up the incomplete/failed registration orphan
+        await prisma.user.delete({ where: { id: existing.id } });
+      } else {
+        throw new ConflictError('Email already registered', 'EMAIL_ALREADY_EXISTS');
+      }
     }
 
     // Hash password with Argon2
     const passwordHash = await hashPassword(input.password);
 
-    // Create user
-    const user = await this.repo.createUser(email, passwordHash);
+    // Create user, profile, and refresh token in an atomic transaction.
+    // If ANY step throws, Prisma rolls back the entire transaction automatically,
+    // so no orphaned user row is left in PostgreSQL.
+    const { user, profile, refreshToken } = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+        },
+      });
 
-    // Seed a UserProfile immediately so profile data exists from day one.
-    // fullName comes from the registration form (optional field).
-    const profile = await profileRepository.seedProfileAtRegistration(
-      user.id,
-      input.fullName ?? null,
-    );
+      const newProfile = await tx.userProfile.upsert({
+        where: { userId: newUser.id },
+        update: {
+          ...(input.fullName ? { fullName: input.fullName.trim() } : {}),
+        },
+        create: {
+          userId: newUser.id,
+          fullName: input.fullName?.trim() ?? null,
+          skills: [],
+          education: [],
+          projects: [],
+          certifications: [],
+        },
+      });
 
-    // Generate tokens
+      const { token: refToken, expiresAt } = generateRefreshToken(newUser.id);
+      const tokenHash = hashToken(refToken);
+
+      await tx.refreshToken.create({
+        data: {
+          userId: newUser.id,
+          tokenHash,
+          expiresAt,
+        },
+      });
+
+      return {
+        user: newUser,
+        profile: newProfile,
+        refreshToken: refToken,
+      };
+    });
+
+    // Generate access token
     const accessToken = generateAccessToken(user.id);
-    const { token: refreshToken, expiresAt } = generateRefreshToken(user.id);
-
-    // Hash & store refresh token
-    const tokenHash = hashToken(refreshToken);
-    await this.repo.saveRefreshToken(user.id, tokenHash, expiresAt);
 
     return {
       user: this.sanitizeUser(user, profile),

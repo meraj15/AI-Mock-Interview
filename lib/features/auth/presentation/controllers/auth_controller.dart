@@ -159,7 +159,12 @@ class AuthController extends ChangeNotifier {
     // ── Client-side validation ──────────────────────────────────────────────
     final clientErrors = <String>[];
 
-    if (cleanEmail.isEmpty) clientErrors.add('Email address is required.');
+    if (cleanName.isEmpty) clientErrors.add('Full name is required.');
+    if (cleanEmail.isEmpty) {
+      clientErrors.add('Email address is required.');
+    } else if (!RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(cleanEmail)) {
+      clientErrors.add('Please enter a valid email address.');
+    }
     if (cleanPassword.isEmpty) clientErrors.add('Password is required.');
 
     if (cleanPassword.isNotEmpty) {

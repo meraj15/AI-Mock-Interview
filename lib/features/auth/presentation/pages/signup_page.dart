@@ -53,16 +53,44 @@ class _SignupPageState extends State<SignupPage> {
 
   void _submit() async {
     final auth = context.read<AuthController>();
+    if (auth.isLoading) return;
+
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (name.isEmpty) {
+      _showErrorToast('Please enter your full name');
+      return;
+    }
+
+    if (email.isEmpty) {
+      _showErrorToast('Please enter your email address');
+      return;
+    }
+
+    final emailRegex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$');
+    if (!emailRegex.hasMatch(email)) {
+      _showErrorToast('Please enter a valid email address');
+      return;
+    }
+
+    if (!_passwordStrong) {
+      setState(() => _showStrengthHints = true);
+      _showErrorToast('Please meet all password requirements');
+      return;
+    }
+
     final success = await auth.signUp(
-      _nameController.text,
-      _emailController.text,
-      _passwordController.text,
+      name,
+      email,
+      password,
     );
 
     if (success && mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => EmailVerificationPage(email: _emailController.text),
+          builder: (_) => EmailVerificationPage(email: email),
         ),
       );
       return;
