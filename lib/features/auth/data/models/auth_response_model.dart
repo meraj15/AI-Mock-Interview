@@ -16,22 +16,30 @@ class AuthResponseModel {
   });
 
   factory AuthResponseModel.fromJson(Map<String, dynamic> json) {
-    final data = json['data'] is Map<String, dynamic>
+    // If json has a nested 'data' map, unwrap it; otherwise use json directly
+    final Map<String, dynamic> data = (json['data'] is Map<String, dynamic>)
         ? json['data'] as Map<String, dynamic>
-        : <String, dynamic>{};
+        : json;
 
-    final userJson = data['user'] is Map<String, dynamic>
-        ? data['user'] as Map<String, dynamic>
-        : data;
+    // Resolve user object: check data['user'], json['user'], or data itself if it contains user fields
+    Map<String, dynamic>? userMap;
+    if (data['user'] is Map<String, dynamic>) {
+      userMap = data['user'] as Map<String, dynamic>;
+    } else if (json['user'] is Map<String, dynamic>) {
+      userMap = json['user'] as Map<String, dynamic>;
+    } else if (data.containsKey('id') || data.containsKey('email')) {
+      userMap = data;
+    }
+
+    final accessToken = (data['accessToken'] ?? json['accessToken']) as String? ?? '';
+    final refreshToken = (data['refreshToken'] ?? json['refreshToken']) as String? ?? '';
 
     return AuthResponseModel(
       success: json['success'] as bool? ?? true,
       message: json['message'] as String?,
-      user: (data['user'] != null || userJson['id'] != null)
-          ? UserModel.fromJson(userJson)
-          : null,
-      accessToken: data['accessToken'] as String? ?? '',
-      refreshToken: data['refreshToken'] as String? ?? '',
+      user: userMap != null ? UserModel.fromJson(userMap) : null,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
     );
   }
 }

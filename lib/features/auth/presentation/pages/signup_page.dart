@@ -101,14 +101,9 @@ class _SignupPageState extends State<SignupPage> {
       } catch (_) {}
       if (!mounted) return;
 
-      final hasCompleted = (auth.user?.isProfileComplete ?? false) ||
-          (profileCtrl.profile?.isComplete ?? false);
-
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => hasCompleted
-              ? const MainNavPage()
-              : const ProfileSetupPage(),
+          builder: (_) => const ProfileSetupPage(),
         ),
         (route) => false,
       );

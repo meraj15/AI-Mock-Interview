@@ -4,6 +4,7 @@ import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_data_source.dart';
 import '../datasources/auth_remote_data_source.dart';
+import '../models/user_model.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource remoteDataSource;
@@ -51,16 +52,26 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     // Save tokens securely
-    await tokenStorage.saveTokens(
-      accessToken: response.accessToken,
-      refreshToken: response.refreshToken,
-    );
+    if (response.accessToken.isNotEmpty && response.refreshToken.isNotEmpty) {
+      await tokenStorage.saveTokens(
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+      );
+    }
+
+    final user = response.user ??
+        UserModel(
+          id: 'usr_login',
+          name: email.contains('@') ? email.split('@').first : 'Candidate',
+          email: email,
+          isProfileComplete: true,
+        );
 
     // Cache user locally and set onboarding complete
-    await localDataSource.saveUser(response.user!);
+    await localDataSource.saveUser(user);
     await localDataSource.setOnboardingComplete();
 
-    return response.user!;
+    return user;
   }
 
   @override
@@ -72,16 +83,26 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     // Save tokens securely
-    await tokenStorage.saveTokens(
-      accessToken: response.accessToken,
-      refreshToken: response.refreshToken,
-    );
+    if (response.accessToken.isNotEmpty && response.refreshToken.isNotEmpty) {
+      await tokenStorage.saveTokens(
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+      );
+    }
+
+    final user = response.user ??
+        UserModel(
+          id: 'usr_registered',
+          name: name.isNotEmpty ? name : (email.contains('@') ? email.split('@').first : 'Candidate'),
+          email: email,
+          isProfileComplete: false,
+        );
 
     // Cache user locally and set onboarding complete
-    await localDataSource.saveUser(response.user!);
+    await localDataSource.saveUser(user);
     await localDataSource.setOnboardingComplete();
 
-    return response.user!;
+    return user;
   }
 
   @override
