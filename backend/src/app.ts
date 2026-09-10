@@ -15,6 +15,11 @@ import aiRouter from './routes/ai.routes';
 export function createApp(): Application {
   const app = express();
 
+  // ── Trust proxy (Railway) ─────────────────────────────────────────────────
+  // Railway sits behind one reverse-proxy hop. Setting this to 1 allows
+  // express-rate-limit to read the real client IP from X-Forwarded-For safely.
+  app.set('trust proxy', 1);
+
   // ── Security headers ─────────────────────────────────────────────────────
   app.use(helmet());
 

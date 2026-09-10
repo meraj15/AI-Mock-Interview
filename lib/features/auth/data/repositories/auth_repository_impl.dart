@@ -57,10 +57,10 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     // Cache user locally and set onboarding complete
-    await localDataSource.saveUser(response.user);
+    await localDataSource.saveUser(response.user!);
     await localDataSource.setOnboardingComplete();
 
-    return response.user;
+    return response.user!;
   }
 
   @override
@@ -78,10 +78,10 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     // Cache user locally and set onboarding complete
-    await localDataSource.saveUser(response.user);
+    await localDataSource.saveUser(response.user!);
     await localDataSource.setOnboardingComplete();
 
-    return response.user;
+    return response.user!;
   }
 
   @override
@@ -110,19 +110,28 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<String> forgotPassword(String email) async {
-    return await remoteDataSource.forgotPassword(email: email);
+  Future<void> forgotPassword(String email) async {
+    await remoteDataSource.forgotPassword(email: email);
+  }
+
+  @override
+  Future<String> verifyResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    return await remoteDataSource.verifyResetOtp(
+      email: email,
+      otp: otp,
+    );
   }
 
   @override
   Future<void> resetPassword({
-    required String email,
-    required String otp,
+    required String resetToken,
     required String newPassword,
   }) async {
     await remoteDataSource.resetPassword(
-      email: email,
-      otp: otp,
+      resetToken: resetToken,
       newPassword: newPassword,
     );
   }

@@ -5,6 +5,7 @@ import {
   loginSchema,
   refreshTokenSchema,
   forgotPasswordSchema,
+  verifyResetOtpSchema,
   resetPasswordSchema,
 } from '../validators/auth.validator';
 import { AuthenticatedRequest } from '../types/auth.types';
@@ -111,13 +112,26 @@ export class AuthController {
   forgotPassword = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const validated = forgotPasswordSchema.parse(req.body);
-      const result = await this.service.forgotPassword(validated);
+      await this.service.forgotPassword(validated);
+
+      // Generic response — never reveals whether the email exists
+      res.status(200).json({
+        success: true,
+        message: 'If an account exists for this email, a verification code has been sent.',
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  verifyResetOtp = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const validated = verifyResetOtpSchema.parse(req.body);
+      const result = await this.service.verifyResetOtp(validated);
 
       res.status(200).json({
         success: true,
-        message: 'If that email exists, a reset code has been sent.',
-        // otp is included in dev mode so you can test without an email service.
-        // Remove `data` in production and send the OTP via email instead.
+        message: 'OTP verified successfully.',
         data: result,
       });
     } catch (err) {

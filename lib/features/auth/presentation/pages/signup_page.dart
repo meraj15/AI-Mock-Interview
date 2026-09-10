@@ -9,8 +9,9 @@ import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
+import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../controllers/auth_controller.dart';
-import 'email_verification_page.dart';
+import 'profile_setup_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -88,10 +89,28 @@ class _SignupPageState extends State<SignupPage> {
     );
 
     if (success && mounted) {
-      Navigator.of(context).push(
+      final profileCtrl = context.read<ProfileController>();
+      if (auth.user != null) {
+        profileCtrl.applyAuthUserData(
+          name: auth.user!.name,
+          email: auth.user!.email,
+        );
+      }
+      try {
+        await profileCtrl.loadProfile();
+      } catch (_) {}
+      if (!mounted) return;
+
+      final hasCompleted = (auth.user?.isProfileComplete ?? false) ||
+          (profileCtrl.profile?.isComplete ?? false);
+
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => EmailVerificationPage(email: email),
+          builder: (_) => hasCompleted
+              ? const MainNavPage()
+              : const ProfileSetupPage(),
         ),
+        (route) => false,
       );
       return;
     }

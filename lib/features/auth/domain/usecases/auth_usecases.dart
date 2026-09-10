@@ -79,8 +79,23 @@ class ForgotPasswordUseCase {
   final AuthRepository repository;
   ForgotPasswordUseCase(this.repository);
 
-  Future<String> call(String email) {
+  Future<void> call(String email) {
     return repository.forgotPassword(email);
+  }
+}
+
+class VerifyResetOtpUseCase {
+  final AuthRepository repository;
+  VerifyResetOtpUseCase(this.repository);
+
+  Future<String> call({
+    required String email,
+    required String otp,
+  }) {
+    return repository.verifyResetOtp(
+      email: email,
+      otp: otp,
+    );
   }
 }
 
@@ -89,13 +104,11 @@ class ResetPasswordUseCase {
   ResetPasswordUseCase(this.repository);
 
   Future<void> call({
-    required String email,
-    required String otp,
+    required String resetToken,
     required String newPassword,
   }) {
     return repository.resetPassword(
-      email: email,
-      otp: otp,
+      resetToken: resetToken,
       newPassword: newPassword,
     );
   }

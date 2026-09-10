@@ -59,6 +59,7 @@ void main() async {
   final completeOnboardingUseCase = CompleteOnboardingUseCase(authRepository);
   final checkOnboardingUseCase = CheckOnboardingUseCase(authRepository);
   final forgotPasswordUseCase = ForgotPasswordUseCase(authRepository);
+  final verifyResetOtpUseCase = VerifyResetOtpUseCase(authRepository);
   final resetPasswordUseCase = ResetPasswordUseCase(authRepository);
 
   runApp(
@@ -76,6 +77,7 @@ void main() async {
             completeOnboardingUseCase: completeOnboardingUseCase,
             checkOnboardingUseCase: checkOnboardingUseCase,
             forgotPasswordUseCase: forgotPasswordUseCase,
+            verifyResetOtpUseCase: verifyResetOtpUseCase,
             resetPasswordUseCase: resetPasswordUseCase,
           )..init(),
         ),

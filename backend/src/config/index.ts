@@ -22,6 +22,10 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? '',
   },
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY ?? '',
+    from: process.env.EMAIL_FROM ?? 'onboarding@resend.dev',
+  },
   ai: {
     livePrimaryProvider: (process.env.AI_LIVE_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
     livePrimaryModel: process.env.AI_LIVE_PRIMARY_MODEL ?? 'gemini-3.7-flash',

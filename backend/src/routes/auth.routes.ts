@@ -5,9 +5,11 @@ import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Rate limiter for authentication endpoints: 30 requests per 15 minutes
+// ── Rate Limiters ─────────────────────────────────────────────────────────────
+
+/** General auth limiter — registration, login, token refresh */
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
@@ -21,12 +23,64 @@ const authLimiter = rateLimit({
   },
 });
 
+/** Stricter limiter for OTP verification — 10 attempts per 15 minutes per IP */
+const verifyOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many verification attempts, please try again later',
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many verification attempts, please try again later',
+    },
+  },
+});
+
+/** Resend OTP — 5 requests per hour per IP */
+const resendOtpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many resend requests, please try again after an hour',
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many resend requests, please try again after an hour',
+    },
+  },
+});
+
+/** Password reset flow — same tight limit as OTP verification */
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many password reset attempts, please try again later',
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many password reset attempts, please try again later',
+    },
+  },
+});
+
 // ── Public Auth Routes ────────────────────────────────────────────────────────
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
 router.post('/refresh', authLimiter, authController.refresh);
-router.post('/forgot-password', authLimiter, authController.forgotPassword);
-router.post('/reset-password', authLimiter, authController.resetPassword);
+
+// ── Password Reset Flow (OTP) ─────────────────────────────────────────────────
+router.post('/forgot-password', passwordResetLimiter, authController.forgotPassword);
+router.post('/verify-reset-otp', verifyOtpLimiter, authController.verifyResetOtp);
+router.post('/reset-password', passwordResetLimiter, authController.resetPassword);
+
 
 // ── Protected Auth Routes ─────────────────────────────────────────────────────
 router.get('/me', authMiddleware, authController.getCurrentUser);

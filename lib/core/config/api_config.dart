@@ -17,7 +17,7 @@ class ApiConfig {
   /// Or override via CLI:
   ///   flutter run --dart-define=IS_PRODUCTION=true
   static bool _isProduction =
-      const bool.fromEnvironment('IS_PRODUCTION', defaultValue: true);
+      const bool.fromEnvironment('IS_PRODUCTION', defaultValue: false);
 
   static bool get isProduction => _isProduction;
 
@@ -152,6 +152,7 @@ class ApiConfig {
   static const String logoutEndpoint = '/api/v1/auth/logout';
   static const String logoutAllEndpoint = '/api/v1/auth/logout-all';
   static const String forgotPasswordEndpoint = '/api/v1/auth/forgot-password';
+  static const String verifyResetOtpEndpoint = '/api/v1/auth/verify-reset-otp';
   static const String resetPasswordEndpoint = '/api/v1/auth/reset-password';
   static const String profileEndpoint = '/api/v1/profile';
   static const String profileMergeResumeEndpoint = '/api/v1/profile/merge-resume';

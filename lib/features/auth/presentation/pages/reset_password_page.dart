@@ -11,13 +11,11 @@ import '../controllers/auth_controller.dart';
 import 'login_page.dart';
 
 class ResetPasswordPage extends StatefulWidget {
-  final String email;
-  final String otp;
+  final String resetToken;
 
   const ResetPasswordPage({
     super.key,
-    required this.email,
-    required this.otp,
+    required this.resetToken,
   });
 
   @override
@@ -57,8 +55,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
     final auth = context.read<AuthController>();
     final success = await auth.resetPassword(
-      email: widget.email,
-      otp: widget.otp,
+      resetToken: widget.resetToken,
       newPassword: _newPasswordController.text,
     );
 

@@ -12,18 +12,21 @@ datasource db {
 
 // ── User ──────────────────────────────────────────────────────────────────────
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String
-  isVerified    Boolean        @default(false)
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  lastLoginAt   DateTime?
-  profile       UserProfile?
-  refreshTokens RefreshToken[]
-  interviewSessions InterviewSession[]
-  passwordResetTokens PasswordResetToken[]
+  id                   String         @id @default(uuid())
+  email                String         @unique
+  passwordHash         String
+  isVerified           Boolean        @default(false)
+  emailVerifiedAt      DateTime?      // null = unverified; timestamp = when verified
+  isActive             Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  lastLoginAt          DateTime?
+  profile              UserProfile?
+  refreshTokens        RefreshToken[]
+  interviewSessions    InterviewSession[]
+  passwordResetTokens  PasswordResetToken[]
+  passwordResetOtps    PasswordResetOtp[]
+  emailVerificationOtps EmailVerificationOtp[]
 
   @@map("users")
 }
@@ -81,6 +84,25 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+// ── PasswordResetOtp ──────────────────────────────────────────────────────────
+model PasswordResetOtp {
+  id         String    @id @default(uuid())
+  userId     String
+  email      String
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email])
+  @@map("password_reset_otps")
+}
+
 // ── InterviewSession ──────────────────────────────────────────────────────────
 model InterviewSession {
   id            String   @id @default(uuid())
@@ -128,5 +150,26 @@ model InterviewQuestion {
   @@index([interviewId])
   @@unique([interviewId, questionNumber])
   @@map("interview_questions")
+}
+
+// ── EmailVerificationOtp ──────────────────────────────────────────────────────
+model EmailVerificationOtp {
+  id           String    @id @default(uuid())
+  userId       String?
+  email        String
+  otpHash      String
+  passwordHash String?   // Stored temporarily for pending registration
+  fullName     String?   // Stored temporarily for pending registration
+  expiresAt    DateTime
+  attempts     Int       @default(0)
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email])
+  @@map("email_verification_otps")
 }
 

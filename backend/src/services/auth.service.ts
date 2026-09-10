@@ -1,22 +1,32 @@
+import crypto from 'crypto';
 import { AuthRepository, authRepository } from '../repositories/auth.repository';
 import { profileRepository } from '../repositories/profile.repository';
-import { RegisterInput, LoginInput, ForgotPasswordInput, ResetPasswordInput } from '../validators/auth.validator';
+import {
+  RegisterInput,
+  LoginInput,
+  ForgotPasswordInput,
+  VerifyResetOtpInput,
+  ResetPasswordInput,
+} from '../validators/auth.validator';
 import { hashPassword, verifyPassword, hashToken } from '../utils/password';
 import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
 } from '../utils/token';
+import { generateOtp, hashOtp, otpExpiresAt, OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN_MS } from '../utils/otp';
+import { sendPasswordResetOtpEmail } from './email.service';
 import {
   UnauthorizedError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  AppError,
 } from '../errors/AppError';
 import { AuthResult, AuthTokens, UserResponse } from '../types/auth.types';
 import { User, UserProfile } from '@prisma/client';
 import { prisma } from '../config/database';
-import crypto from 'crypto';
+import { logger } from '../utils/logger';
 
 export class AuthService {
   constructor(private readonly repo: AuthRepository = authRepository) {}
@@ -42,75 +52,32 @@ export class AuthService {
     };
   }
 
+  // ── Registration (Immediate Account Creation — No OTP) ──────────────────────
+
   async register(input: RegisterInput): Promise<AuthResult> {
     const email = input.email.toLowerCase().trim();
 
-    // Check existing user
+    // Check if user already exists
     const existing = await this.repo.findUserByEmail(email);
     if (existing) {
-      // Check if this is an orphaned user created from a prior failed attempt:
-      // (e.g. user was created but profile/token creation crashed midway,
-      // so user has no profile, no refresh tokens, never logged in, and not verified).
-      const profile = await prisma.userProfile.findUnique({ where: { userId: existing.id } });
-      const tokensCount = await prisma.refreshToken.count({ where: { userId: existing.id } });
-
-      if (!profile && tokensCount === 0 && !existing.lastLoginAt) {
-        // Safe to clean up the incomplete/failed registration orphan
-        await prisma.user.delete({ where: { id: existing.id } });
-      } else {
-        throw new ConflictError('Email already registered', 'EMAIL_ALREADY_EXISTS');
-      }
+      throw new ConflictError('Email already registered', 'EMAIL_ALREADY_EXISTS');
     }
 
-    // Hash password with Argon2
+    // Hash password and create user + profile immediately
     const passwordHash = await hashPassword(input.password);
-
-    // Create user, profile, and refresh token in an atomic transaction.
-    // If ANY step throws, Prisma rolls back the entire transaction automatically,
-    // so no orphaned user row is left in PostgreSQL.
-    const { user, profile, refreshToken } = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          email,
-          passwordHash,
-        },
-      });
-
-      const newProfile = await tx.userProfile.upsert({
-        where: { userId: newUser.id },
-        update: {
-          ...(input.fullName ? { fullName: input.fullName.trim() } : {}),
-        },
-        create: {
-          userId: newUser.id,
-          fullName: input.fullName?.trim() ?? null,
-          skills: [],
-          education: [],
-          projects: [],
-          certifications: [],
-        },
-      });
-
-      const { token: refToken, expiresAt } = generateRefreshToken(newUser.id);
-      const tokenHash = hashToken(refToken);
-
-      await tx.refreshToken.create({
-        data: {
-          userId: newUser.id,
-          tokenHash,
-          expiresAt,
-        },
-      });
-
-      return {
-        user: newUser,
-        profile: newProfile,
-        refreshToken: refToken,
-      };
+    const { user, profile } = await this.repo.createUserWithProfile({
+      email,
+      passwordHash,
+      fullName: input.fullName?.trim() || null,
     });
 
-    // Generate access token
+    // Issue authentication tokens
     const accessToken = generateAccessToken(user.id);
+    const { token: refreshToken, expiresAt } = generateRefreshToken(user.id);
+    const tokenHash = hashToken(refreshToken);
+    await this.repo.saveRefreshToken(user.id, tokenHash, expiresAt);
+
+    logger.info('[AuthService] User registered successfully', { userId: user.id });
 
     return {
       user: this.sanitizeUser(user, profile),
@@ -119,37 +86,32 @@ export class AuthService {
     };
   }
 
+  // ── Login ────────────────────────────────────────────────────────────────────
+
   async login(input: LoginInput): Promise<AuthResult> {
     const email = input.email.toLowerCase().trim();
 
-    // Find user
     const user = await this.repo.findUserByEmail(email);
     if (!user) {
       throw new UnauthorizedError('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
-    // Check if account is active
     if (!user.isActive) {
       throw new ForbiddenError('Account is disabled', 'ACCOUNT_DISABLED');
     }
 
-    // Verify password
     const isValid = await verifyPassword(input.password, user.passwordHash);
     if (!isValid) {
       throw new UnauthorizedError('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
-    // Update lastLoginAt
     await this.repo.updateLastLogin(user.id);
 
-    // Fetch user profile to get fullName
     const profile = await profileRepository.getProfileByUserId(user.id);
 
-    // Generate tokens
     const accessToken = generateAccessToken(user.id);
     const { token: refreshToken, expiresAt } = generateRefreshToken(user.id);
 
-    // Hash & store refresh token
     const tokenHash = hashToken(refreshToken);
     await this.repo.saveRefreshToken(user.id, tokenHash, expiresAt);
 
@@ -160,8 +122,9 @@ export class AuthService {
     };
   }
 
+  // ── Token Refresh ────────────────────────────────────────────────────────────
+
   async refresh(rawRefreshToken: string): Promise<AuthTokens> {
-    // 1. Verify JWT signature & structure
     let decoded;
     try {
       decoded = verifyRefreshToken(rawRefreshToken);
@@ -169,7 +132,6 @@ export class AuthService {
       throw new UnauthorizedError('Invalid refresh token', 'INVALID_REFRESH_TOKEN');
     }
 
-    // 2. Hash raw token and lookup in database
     const tokenHash = hashToken(rawRefreshToken);
     const record = await this.repo.findRefreshToken(tokenHash);
 
@@ -177,29 +139,23 @@ export class AuthService {
       throw new UnauthorizedError('Invalid refresh token', 'INVALID_REFRESH_TOKEN');
     }
 
-    // 3. Check revocation
     if (record.revokedAt) {
       throw new UnauthorizedError('Refresh token has been revoked', 'REFRESH_TOKEN_REVOKED');
     }
 
-    // 4. Check expiration
     if (record.expiresAt < new Date()) {
       throw new UnauthorizedError('Refresh token has expired', 'REFRESH_TOKEN_EXPIRED');
     }
 
-    // 5. Check user status
     if (!record.user.isActive) {
       throw new ForbiddenError('Account is disabled', 'ACCOUNT_DISABLED');
     }
 
-    // 6. Token rotation: revoke old token
     await this.repo.revokeRefreshToken(record.id);
 
-    // 7. Generate new token pair
     const accessToken = generateAccessToken(record.userId);
     const { token: newRefreshToken, expiresAt } = generateRefreshToken(record.userId);
 
-    // 8. Save new token hash
     const newTokenHash = hashToken(newRefreshToken);
     await this.repo.saveRefreshToken(record.userId, newTokenHash, expiresAt);
 
@@ -208,6 +164,8 @@ export class AuthService {
       refreshToken: newRefreshToken,
     };
   }
+
+  // ── Logout ───────────────────────────────────────────────────────────────────
 
   async logout(rawRefreshToken: string): Promise<void> {
     try {
@@ -237,63 +195,138 @@ export class AuthService {
     return this.sanitizeUser(user, profile);
   }
 
-  // ── Password Reset ──────────────────────────────────────────────────────────
+  // ── Password Reset Flow (OTP Exclusively for Forgot Password) ───────────────
 
   /**
-   * Generate a 6-digit OTP, persist it hashed, and return it.
-   * In production you would email this OTP instead of returning it.
-   * OTP expires in 15 minutes.
+   * Step 1: User enters email.
+   * Generates a 6-digit OTP, hashes it, stores in PasswordResetOtp, and emails user.
+   * Generic response to prevent email enumeration.
    */
-  async forgotPassword(input: ForgotPasswordInput): Promise<{ otp: string }> {
+  async forgotPassword(input: ForgotPasswordInput): Promise<void> {
     const email = input.email.toLowerCase().trim();
 
-    // Always respond with success to prevent user enumeration attacks,
-    // but only generate a token if the user actually exists.
     const user = await this.repo.findUserByEmail(email);
     if (!user || !user.isActive) {
-      // Return a fake success — client has no way to distinguish real vs fake
-      return { otp: '' };
+      logger.info('[AuthService] forgotPassword: user not found or inactive — generic response', { email });
+      return;
     }
 
-    // Generate a cryptographically secure 6-digit OTP
-    const otp = String(crypto.randomInt(100000, 999999));
-    const tokenHash = hashToken(otp);
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    // Check resend cooldown
+    const latestOtp = await this.repo.findLatestPasswordResetOtp(email);
+    if (latestOtp && !latestOtp.consumedAt) {
+      const cooldownExpires = latestOtp.createdAt.getTime() + OTP_RESEND_COOLDOWN_MS;
+      if (Date.now() < cooldownExpires) {
+        const waitSecs = Math.ceil((cooldownExpires - Date.now()) / 1000);
+        throw new AppError(
+          `Please wait ${waitSecs} seconds before requesting a new code.`,
+          429,
+          'RESEND_COOLDOWN',
+        );
+      }
+    }
 
-    await this.repo.upsertPasswordResetToken(user.id, tokenHash, expiresAt);
+    const otp = generateOtp();
+    const otpHash = hashOtp(otp);
 
-    // TODO: In production — send otp via email and return { otp: '' }
-    return { otp };
+    await this.repo.upsertPasswordResetOtp({
+      userId: user.id,
+      email,
+      otpHash,
+      expiresAt: otpExpiresAt(),
+    });
+
+    try {
+      const profile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+      await sendPasswordResetOtpEmail(email, otp, profile?.fullName);
+    } catch (err) {
+      logger.error('[AuthService] Failed to send password reset OTP email', { err });
+      throw new AppError('Failed to send verification email. Please try again later.', 503, 'EMAIL_SEND_FAILED');
+    }
   }
 
   /**
-   * Verify the OTP and update the user's password.
+   * Step 2: User enters 6-digit OTP.
+   * Verifies OTP against PasswordResetOtp, marks consumed, issues a short-lived resetToken.
    */
-  async resetPassword(input: ResetPasswordInput): Promise<void> {
+  async verifyResetOtp(input: VerifyResetOtpInput): Promise<{ resetToken: string }> {
     const email = input.email.toLowerCase().trim();
 
     const user = await this.repo.findUserByEmail(email);
     if (!user) {
-      throw new UnauthorizedError('Invalid or expired reset code', 'INVALID_RESET_TOKEN');
+      throw new UnauthorizedError('Invalid or expired verification code.', 'INVALID_OTP');
     }
 
-    const tokenHash = hashToken(input.otp);
+    const otpRecord = await this.repo.findLatestPasswordResetOtp(email);
+
+    if (!otpRecord) {
+      throw new UnauthorizedError('No active verification code found. Please request a new code.', 'OTP_NOT_FOUND');
+    }
+
+    if (otpRecord.consumedAt !== null) {
+      throw new UnauthorizedError('This code has already been used. Please request a new one.', 'OTP_CONSUMED');
+    }
+
+    if (otpRecord.expiresAt < new Date()) {
+      throw new UnauthorizedError('Verification code has expired. Please request a new one.', 'OTP_EXPIRED');
+    }
+
+    if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+      throw new UnauthorizedError(
+        'Too many failed attempts. Please request a new verification code.',
+        'OTP_MAX_ATTEMPTS',
+      );
+    }
+
+    // Compare SHA-256 hashes
+    const submittedHash = hashOtp(input.otp);
+    if (submittedHash !== otpRecord.otpHash) {
+      await this.repo.incrementPasswordResetOtpAttempts(otpRecord.id);
+      const remaining = OTP_MAX_ATTEMPTS - (otpRecord.attempts + 1);
+      throw new UnauthorizedError(
+        remaining > 0
+          ? `Invalid code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Too many failed attempts. Please request a new code.',
+        'INVALID_OTP',
+      );
+    }
+
+    // Consume OTP
+    await this.repo.consumePasswordResetOtp(otpRecord.id);
+
+    // Issue short-lived reset token (15 minutes)
+    const rawResetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = hashToken(rawResetToken);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await this.repo.createPasswordResetToken(user.id, resetTokenHash, expiresAt);
+
+    return { resetToken: rawResetToken };
+  }
+
+  /**
+   * Step 3: User enters new password with resetToken.
+   * Updates password, consumes resetToken, and invalidates all active sessions.
+   */
+  async resetPassword(input: ResetPasswordInput): Promise<void> {
+    const tokenHash = hashToken(input.resetToken);
     const record = await this.repo.findPasswordResetToken(tokenHash);
 
-    if (!record || record.userId !== user.id) {
-      throw new UnauthorizedError('Invalid or expired reset code', 'INVALID_RESET_TOKEN');
+    if (!record) {
+      throw new UnauthorizedError('Invalid or expired reset token', 'INVALID_RESET_TOKEN');
     }
 
     if (record.usedAt) {
-      throw new UnauthorizedError('Reset code has already been used', 'RESET_TOKEN_USED');
+      throw new UnauthorizedError('Reset token has already been used', 'RESET_TOKEN_USED');
     }
 
     if (record.expiresAt < new Date()) {
-      throw new UnauthorizedError('Reset code has expired', 'RESET_TOKEN_EXPIRED');
+      throw new UnauthorizedError('Reset token has expired', 'RESET_TOKEN_EXPIRED');
     }
 
     const newPasswordHash = await hashPassword(input.newPassword);
-    await this.repo.consumePasswordResetToken(record.id, user.id, newPasswordHash);
+    await this.repo.completePasswordReset(record.id, record.userId, newPasswordHash);
+
+    logger.info('[AuthService] Password reset completed successfully', { userId: record.userId });
   }
 }
 

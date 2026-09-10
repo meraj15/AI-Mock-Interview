@@ -38,24 +38,23 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     final auth = context.read<AuthController>();
-    final otp = await auth.forgotPassword(email);
+    final success = await auth.forgotPassword(email);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (otp == null) {
+    if (!success) {
       // Controller set an errorMessage
       setState(() => _errorMessage = auth.errorMessage ?? 'Something went wrong. Try again.');
       return;
     }
 
-    // Navigate to reset page — pass the email and the dev-mode OTP
+    // Navigate to reset page — pass the email for password reset verification
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => EmailVerificationPage(
           email: email,
           mode: VerificationMode.passwordReset,
-          devOtp: otp,
         ),
       ),
     );

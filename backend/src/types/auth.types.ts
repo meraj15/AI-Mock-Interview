@@ -33,6 +33,12 @@ export interface AuthenticatedUser {
   isActive: boolean;
 }
 
+export interface VerificationRequiredResult {
+  verificationRequired: true;
+  email: string;
+  message: string;
+}
+
 export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
 }

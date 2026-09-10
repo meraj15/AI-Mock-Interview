@@ -7,9 +7,6 @@ import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../controllers/auth_controller.dart';
-import '../../../dashboard/presentation/pages/main_nav_page.dart';
-import '../../../profile/presentation/controllers/profile_controller.dart';
-import 'profile_setup_page.dart';
 import 'reset_password_page.dart';
 
 enum VerificationMode { emailVerify, passwordReset }
@@ -18,14 +15,10 @@ class EmailVerificationPage extends StatefulWidget {
   final String email;
   final VerificationMode mode;
 
-  /// Dev mode only — pre-fills the OTP boxes when mode == passwordReset.
-  final String devOtp;
-
   const EmailVerificationPage({
     super.key,
     required this.email,
-    this.mode = VerificationMode.emailVerify,
-    this.devOtp = '',
+    this.mode = VerificationMode.passwordReset,
   });
 
   @override
@@ -33,24 +26,23 @@ class EmailVerificationPage extends StatefulWidget {
 }
 
 class _EmailVerificationPageState extends State<EmailVerificationPage> {
-  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers =
+      List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
-  int _countdown = 45;
+
+  int _countdown = 60;
   bool _resending = false;
+  bool _resendError = false;
+  String? _resendErrorMessage;
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill boxes in password-reset dev mode
-    if (widget.mode == VerificationMode.passwordReset && widget.devOtp.length == 6) {
-      for (int i = 0; i < 6; i++) {
-        _controllers[i].text = widget.devOtp[i];
-      }
-    }
     _startTimer();
   }
 
   void _startTimer() async {
+    setState(() => _countdown = 60);
     while (_countdown > 0 && mounted) {
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) {
@@ -60,18 +52,34 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
   }
 
   void _resend() async {
+    if (_resending) return;
+
     setState(() {
       _resending = true;
-      _countdown = 45;
+      _resendError = false;
+      _resendErrorMessage = null;
     });
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (mounted) {
-      setState(() => _resending = false);
-      _startTimer();
+
+    final authCtrl = context.read<AuthController>();
+    final success = await authCtrl.forgotPassword(widget.email);
+
+    if (!mounted) return;
+
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('A new 6-digit verification code was sent to your email.')),
+        const SnackBar(
+          content: Text('A new 6-digit reset code was sent to your email.'),
+        ),
       );
+      _startTimer();
+    } else {
+      setState(() {
+        _resendError = true;
+        _resendErrorMessage = authCtrl.errorMessage ?? 'Failed to resend code. Please try again.';
+      });
     }
+
+    if (mounted) setState(() => _resending = false);
   }
 
   void _verify() async {
@@ -83,46 +91,18 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
       return;
     }
 
-    if (widget.mode == VerificationMode.passwordReset) {
-      // OTP is verified server-side during resetPassword — just pass it forward
+    final authCtrl = context.read<AuthController>();
+    final resetToken = await authCtrl.verifyResetOtp(widget.email, code);
+
+    if (!mounted) return;
+
+    if (resetToken != null) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ResetPasswordPage(
-            email: widget.email,
-            otp: code,
+            resetToken: resetToken,
           ),
         ),
-      );
-      return;
-    }
-
-    // Default: email verification flow
-    final authCtrl = context.read<AuthController>();
-    final success = await authCtrl.verifyEmailOtp(code);
-
-    if (success && mounted) {
-      final profileCtrl = context.read<ProfileController>();
-      if (authCtrl.user != null) {
-        profileCtrl.applyAuthUserData(
-          name: authCtrl.user!.name,
-          email: authCtrl.user!.email,
-        );
-      }
-      try {
-        await profileCtrl.loadProfile();
-      } catch (_) {}
-      if (!mounted) return;
-
-      final hasCompleted = (authCtrl.user?.isProfileComplete ?? false) ||
-          (profileCtrl.profile?.isComplete ?? false);
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => hasCompleted
-              ? const MainNavPage()
-              : const ProfileSetupPage(),
-        ),
-        (route) => false,
       );
     }
   }
@@ -183,29 +163,6 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
             textAlign: TextAlign.center,
           ),
 
-          // Dev badge — only shown in password reset dev mode
-          if (widget.mode == VerificationMode.passwordReset && widget.devOtp.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: colors.mint.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(FeatherIcons.terminal, size: 11, color: colors.mint),
-                  const SizedBox(width: 5),
-                  Text(
-                    'DEV — code pre-filled',
-                    style: AppTypography.bold(9, color: colors.mint),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
           const SizedBox(height: 32),
 
           // 6-digit OTP Row
@@ -247,7 +204,45 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
             }),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 12),
+
+          // Error message from auth controller
+          if (auth.status == AuthStatus.error && auth.errorMessage != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5534B).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                auth.errorMessage!,
+                style: AppTypography.regular(12, color: const Color(0xFFE5534B)),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Resend error message
+          if (_resendError && _resendErrorMessage != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5534B).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                _resendErrorMessage!,
+                style: AppTypography.regular(12, color: const Color(0xFFE5534B)),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          const SizedBox(height: 16),
 
           AppButton(
             label: widget.mode == VerificationMode.passwordReset
@@ -270,12 +265,21 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                   )
                 : TextButton(
                     onPressed: _resending ? null : _resend,
-                    child: Text(
-                      widget.mode == VerificationMode.passwordReset
-                          ? 'Resend reset code'
-                          : 'Resend verification code',
-                      style: AppTypography.semiBold(13, color: colors.primary),
-                    ),
+                    child: _resending
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colors.primary,
+                            ),
+                          )
+                        : Text(
+                            widget.mode == VerificationMode.passwordReset
+                                ? 'Resend reset code'
+                                : 'Resend verification code',
+                            style: AppTypography.semiBold(13, color: colors.primary),
+                          ),
                   ),
           ),
           const SizedBox(height: 30),

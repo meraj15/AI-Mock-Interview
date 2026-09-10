@@ -21,14 +21,18 @@ abstract class AuthRemoteDataSource {
 
   Future<void> logoutAll();
 
-  /// Sends a forgot-password request.
-  /// Returns the OTP string from the server (dev mode only; will be empty in production).
-  Future<String> forgotPassword({required String email});
+  /// Sends a forgot-password request (OTP sent via email).
+  Future<void> forgotPassword({required String email});
 
-  /// Verifies the OTP and sets a new password.
-  Future<void> resetPassword({
+  /// Verifies password reset OTP and returns a short-lived resetToken.
+  Future<String> verifyResetOtp({
     required String email,
     required String otp,
+  });
+
+  /// Resets the user's password using the verified resetToken.
+  Future<void> resetPassword({
+    required String resetToken,
     required String newPassword,
   });
 }
@@ -116,29 +120,42 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   }
 
   @override
-  Future<String> forgotPassword({required String email}) async {
-    final response = await apiClient.post(
+  Future<void> forgotPassword({required String email}) async {
+    await apiClient.post(
       ApiConfig.forgotPasswordEndpoint,
       body: {'email': email.trim().toLowerCase()},
       requiresAuth: false,
     );
-    final data = response.data as Map<String, dynamic>? ?? {};
-    final inner = data['data'] as Map<String, dynamic>? ?? {};
-    // In dev mode the backend returns the OTP; in production this will be ''
-    return (inner['otp'] as String?) ?? '';
+  }
+
+  @override
+  Future<String> verifyResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    final response = await apiClient.post(
+      ApiConfig.verifyResetOtpEndpoint,
+      body: {
+        'email': email.trim().toLowerCase(),
+        'otp': otp.trim(),
+      },
+      requiresAuth: false,
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    final innerData = data['data'] as Map<String, dynamic>? ?? data;
+    return innerData['resetToken'] as String;
   }
 
   @override
   Future<void> resetPassword({
-    required String email,
-    required String otp,
+    required String resetToken,
     required String newPassword,
   }) async {
     await apiClient.post(
       ApiConfig.resetPasswordEndpoint,
       body: {
-        'email': email.trim().toLowerCase(),
-        'otp': otp.trim(),
+        'resetToken': resetToken.trim(),
         'newPassword': newPassword,
       },
       requiresAuth: false,
