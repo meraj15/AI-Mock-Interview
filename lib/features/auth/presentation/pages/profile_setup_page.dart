@@ -209,7 +209,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
   // ── Manual Submit ────────────────────────────────────────────────────────────
 
   Future<void> _submitManual() async {
-    // Gather role & skills — either pre-filled or newly entered
     final role = _roleCtrl.text.trim();
     if (role.isEmpty) {
       setState(() => _errorMessage = 'Please enter your target role.');
@@ -221,6 +220,11 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
+
+    if (skills.isEmpty) {
+      setState(() => _errorMessage = 'Please add at least one key skill to continue.');
+      return;
+    }
 
     // Parse experience years from text
     double? expYears;
@@ -719,17 +723,14 @@ class _UploadScreen extends StatelessWidget {
 }
 
 // ── Manual Screen ─────────────────────────────────────────────────────────────
-// Only shows information the app does NOT already have.
-// Pre-filled data is shown read-only with an edit affordance.
+// Sleek, minimal-scroll candidate profile setup with tag-style skill chips.
 
-class _ManualScreen extends StatelessWidget {
+class _ManualScreen extends StatefulWidget {
   final AppColorScheme colors;
-  // Pre-filled (already known) data
   final String existingName;
   final String existingEmail;
   final bool existingHasRole;
   final bool existingHasSkills;
-  // Editable controllers (may be pre-filled if data exists)
   final TextEditingController roleCtrl;
   final TextEditingController expCtrl;
   final TextEditingController skillsCtrl;
@@ -759,254 +760,540 @@ class _ManualScreen extends StatelessWidget {
   });
 
   @override
+  State<_ManualScreen> createState() => _ManualScreenState();
+}
+
+class _ManualScreenState extends State<_ManualScreen> {
+  late List<String> _skills;
+  final _skillInputCtrl = TextEditingController();
+  final _skillFocusNode = FocusNode();
+  String? _selectedExpTier;
+  bool _showAdditional = false;
+
+  static const List<String> _popularRoles = [
+    'Flutter Developer',
+    'Frontend Engineer',
+    'Backend Engineer',
+    'Full Stack Developer',
+    'Mobile Developer',
+    'DevOps Engineer',
+    'AI / ML Engineer',
+    'Product Manager',
+  ];
+
+  static const List<String> _quickSkills = [
+    'Flutter',
+    'Dart',
+    'React',
+    'Node.js',
+    'Python',
+    'TypeScript',
+    'PostgreSQL',
+    'Docker',
+    'AWS',
+    'REST APIs',
+    'System Design',
+    'Git',
+    'Firebase',
+    'MongoDB',
+    'GraphQL',
+    'SQL',
+  ];
+
+  static const List<({String label, String value})> _expOptions = [
+    (label: 'Fresher (< 1y)', value: '0-1 years'),
+    (label: 'Junior (1-3y)', value: '1-3 years'),
+    (label: 'Mid (3-5y)', value: '3-5 years'),
+    (label: 'Senior (5+y)', value: '5+ years'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _skills = widget.skillsCtrl.text
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    _syncSkills();
+
+    final currentExp = widget.expCtrl.text.toLowerCase().trim();
+    if (currentExp.isNotEmpty) {
+      for (final opt in _expOptions) {
+        if (currentExp.contains(opt.value.toLowerCase()) ||
+            currentExp.contains(opt.label.toLowerCase())) {
+          _selectedExpTier = opt.label;
+          break;
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _skillInputCtrl.dispose();
+    _skillFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _syncSkills() {
+    widget.skillsCtrl.text = _skills.join(', ');
+  }
+
+  void _addSkill(String s) {
+    final trimmed = s.trim();
+    if (trimmed.isEmpty) return;
+
+    final exists = _skills.any((item) => item.toLowerCase() == trimmed.toLowerCase());
+    if (!exists) {
+      setState(() {
+        _skills.add(trimmed);
+        _syncSkills();
+      });
+    }
+    _skillInputCtrl.clear();
+    _skillFocusNode.requestFocus();
+  }
+
+  void _removeSkill(String s) {
+    setState(() {
+      _skills.removeWhere((item) => item.toLowerCase() == s.toLowerCase());
+      _syncSkills();
+    });
+  }
+
+  void _selectRole(String role) {
+    setState(() {
+      widget.roleCtrl.text = role;
+    });
+  }
+
+  void _selectExp(String label, String value) {
+    setState(() {
+      _selectedExpTier = label;
+      widget.expCtrl.text = value;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final colors = widget.colors;
+    final availableQuickSkills = _quickSkills
+        .where((s) => !_skills.any((item) => item.toLowerCase() == s.toLowerCase()))
+        .toList();
+
     return SafeArea(
       child: Column(
         children: [
-          // Top bar
+          // ── Clean Header ─────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 10, 20, 0),
+            padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
             child: Row(
               children: [
                 IconButton(
-                  onPressed: onBack,
+                  onPressed: widget.onBack,
                   icon: Icon(FeatherIcons.arrowLeft, size: 20, color: colors.foreground),
+                  splashRadius: 22,
                 ),
-                Text(
-                  'Complete your profile',
-                  style: AppTypography.bold(17, color: colors.foreground),
+                Expanded(
+                  child: Text(
+                    'Profile Setup',
+                    style: AppTypography.bold(17, color: colors.foreground),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'Step 2 of 2',
+                    style: AppTypography.bold(11, color: colors.primary),
+                  ),
                 ),
               ],
             ),
           ),
 
+          // ── Compact Scrollable Form ──────────────────────────────────
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               physics: const BouncingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Title & Intro
                   Text(
-                    'Almost there.',
+                    'Target Role & Skills',
                     style: AppTypography.bold(22, color: colors.foreground),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
-                    'We already have the basics from signup. Just add a few more details to tailor your interviews.',
-                    style: AppTypography.regular(
-                      13,
-                      color: colors.mutedForeground,
-                      height: 1.5,
-                    ),
+                    'Tailor your AI mock interviews to your exact stack.',
+                    style: AppTypography.regular(13, color: colors.mutedForeground),
                   ),
 
                   const SizedBox(height: 20),
 
-                  // ── Already collected banner ────────────────────────────
-                  _AlreadyCollectedSection(
-                    colors: colors,
-                    name: existingName,
-                    email: existingEmail,
+                  // ── Target Role ──────────────────────────────────────
+                  Row(
+                    children: [
+                      Text(
+                        'Target Role',
+                        style: AppTypography.semiBold(13, color: colors.foreground),
+                      ),
+                      Text(' *', style: AppTypography.bold(13, color: colors.coral)),
+                    ],
                   ),
+                  const SizedBox(height: 7),
+                  AppTextField(
+                    controller: widget.roleCtrl,
+                    placeholder: 'e.g. Flutter Developer, Backend Engineer',
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 8),
 
-                  const SizedBox(height: 24),
-
-                  // ── Role (editable — may or may not be pre-filled) ─────
-                  _Field(
-                    label: 'Target role',
-                    required: true,
-                    hint: existingHasRole ? 'Pre-filled from your profile — edit if needed' : null,
-                    child: AppTextField(
-                      controller: roleCtrl,
-                      placeholder: 'e.g. Flutter Developer, Backend Engineer',
+                  // Role Quick-Pick Pills
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: _popularRoles.map((role) {
+                        final isSelected = widget.roleCtrl.text.trim().toLowerCase() == role.toLowerCase();
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InkWell(
+                            onTap: () => _selectRole(role),
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isSelected ? colors.primary : colors.secondary,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? colors.primary : colors.border,
+                                ),
+                              ),
+                              child: Text(
+                                role,
+                                style: AppTypography.semiBold(
+                                  11,
+                                  color: isSelected ? colors.primaryForeground : colors.foreground,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
 
-                  // ── Skills (editable — may or may not be pre-filled) ───
-                  _Field(
-                    label: 'Key skills',
-                    hint: existingHasSkills
-                        ? 'Pre-filled from your profile — edit if needed'
-                        : 'Separate with commas',
-                    child: AppTextField(
-                      controller: skillsCtrl,
-                      placeholder: 'e.g. Flutter, Dart, Firebase, REST APIs',
+                  const SizedBox(height: 22),
+
+                  // ── Skills (Interactive Tag Input) ───────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Key Skills & Technologies',
+                            style: AppTypography.semiBold(13, color: colors.foreground),
+                          ),
+                          Text(' *', style: AppTypography.bold(13, color: colors.coral)),
+                        ],
+                      ),
+                      if (_skills.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: colors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_skills.length} added',
+                            style: AppTypography.bold(11, color: colors.primary),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+
+                  // Tag Input Container
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _skills.isEmpty ? colors.border : colors.primary.withValues(alpha: 0.35),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Selected Chips Wrap
+                        if (_skills.isNotEmpty) ...[
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: _skills.map((skill) {
+                              return Container(
+                                padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+                                decoration: BoxDecoration(
+                                  color: colors.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: colors.primary.withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      skill,
+                                      style: AppTypography.semiBold(12, color: colors.foreground),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    GestureDetector(
+                                      onTap: () => _removeSkill(skill),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(2),
+                                        child: Icon(FeatherIcons.x, size: 12, color: colors.primary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          Divider(height: 1, color: colors.border.withValues(alpha: 0.5)),
+                          const SizedBox(height: 4),
+                        ],
+
+                        // Input line
+                        Row(
+                          children: [
+                            Icon(FeatherIcons.tag, size: 14, color: colors.mutedForeground),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _skillInputCtrl,
+                                focusNode: _skillFocusNode,
+                                textInputAction: TextInputAction.done,
+                                onSubmitted: _addSkill,
+                                style: AppTypography.medium(13, color: colors.foreground),
+                                decoration: InputDecoration(
+                                  hintText: _skills.isEmpty
+                                      ? 'Type skill (e.g. Flutter, Docker) & press Enter'
+                                      : 'Add another skill...',
+                                  hintStyle: AppTypography.regular(12, color: colors.mutedForeground),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () => _addSkill(_skillInputCtrl.text),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: colors.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '+ Add',
+                                  style: AppTypography.bold(11, color: colors.primary),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
 
-                  const SizedBox(height: 4),
-                  _SectionDivider(label: 'Additional details', colors: colors),
-                  const SizedBox(height: 16),
-
-                  // ── Experience ────────────────────────────────────────
-                  _Field(
-                    label: 'Years of experience',
-                    child: AppTextField(
-                      controller: expCtrl,
-                      placeholder: 'e.g. 2 years, Fresher',
+                  // Quick Suggestion Chips
+                  if (availableQuickSkills.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Quick add:',
+                          style: AppTypography.semiBold(11, color: colors.mutedForeground),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: Row(
+                              children: availableQuickSkills.take(10).map((skill) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: InkWell(
+                                    onTap: () => _addSkill(skill),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: colors.secondary,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: colors.border),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(FeatherIcons.plus, size: 10, color: colors.primary),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            skill,
+                                            style: AppTypography.medium(11, color: colors.foreground),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-
-                  // ── Education ─────────────────────────────────────────
-                  _Field(
-                    label: 'Education',
-                    hint: 'Optional — e.g. B.Tech Computer Science, MIT 2022',
-                    child: AppTextField(
-                      controller: educationCtrl,
-                      placeholder: 'Degree, Institution, Year',
-                    ),
-                  ),
-
-                  // ── Projects ──────────────────────────────────────────
-                  _Field(
-                    label: 'Notable project',
-                    hint: 'Optional — your most impressive project',
-                    child: AppTextField(
-                      controller: projectsCtrl,
-                      placeholder: 'e.g. E-commerce app with Flutter & Firebase',
-                    ),
-                  ),
-
-                  if (errorMessage != null) ...[
-                    const SizedBox(height: 8),
-                    _ErrorBanner(message: errorMessage!, colors: colors),
                   ],
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 22),
+
+                  // ── Experience Level ─────────────────────────────────
+                  Text(
+                    'Experience Level',
+                    style: AppTypography.semiBold(13, color: colors.foreground),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: _expOptions.map((opt) {
+                      final isSelected = _selectedExpTier == opt.label ||
+                          widget.expCtrl.text.trim().toLowerCase() == opt.value.toLowerCase();
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: InkWell(
+                            onTap: () => _selectExp(opt.label, opt.value),
+                            borderRadius: BorderRadius.circular(10),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              padding: const EdgeInsets.symmetric(vertical: 9),
+                              decoration: BoxDecoration(
+                                color: isSelected ? colors.primary : colors.secondary,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected ? colors.primary : colors.border,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                opt.label,
+                                style: AppTypography.semiBold(
+                                  11,
+                                  color: isSelected ? colors.primaryForeground : colors.foreground,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Expandable Additional Details (Education & Projects) ──
+                  InkWell(
+                    onTap: () => setState(() => _showAdditional = !_showAdditional),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: colors.secondary.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(FeatherIcons.bookOpen, size: 14, color: colors.mutedForeground),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Add Education & Projects (Optional)',
+                              style: AppTypography.semiBold(12, color: colors.foreground),
+                            ),
+                          ),
+                          Icon(
+                            _showAdditional ? FeatherIcons.chevronUp : FeatherIcons.chevronDown,
+                            size: 16,
+                            color: colors.mutedForeground,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  if (_showAdditional) ...[
+                    const SizedBox(height: 12),
+                    Text('Education', style: AppTypography.medium(12, color: colors.foreground)),
+                    const SizedBox(height: 5),
+                    AppTextField(
+                      controller: widget.educationCtrl,
+                      placeholder: 'e.g. B.Tech Computer Science, 2023',
+                    ),
+                    const SizedBox(height: 10),
+                    Text('Notable Project', style: AppTypography.medium(12, color: colors.foreground)),
+                    const SizedBox(height: 5),
+                    AppTextField(
+                      controller: widget.projectsCtrl,
+                      placeholder: 'e.g. Real-time chat app with Flutter & Node.js',
+                    ),
+                  ],
+
+                  if (widget.errorMessage != null) ...[
+                    const SizedBox(height: 14),
+                    _ErrorBanner(message: widget.errorMessage!, colors: colors),
+                  ],
+
+                  const SizedBox(height: 10),
                 ],
               ),
             ),
           ),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+          // ── Sticky Bottom Action Bar ─────────────────────────────────
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            decoration: BoxDecoration(
+              color: colors.card,
+              border: Border(top: BorderSide(color: colors.border)),
+            ),
             child: AppButton(
-              label: 'Save & continue',
+              label: 'Save & Start Practicing',
               icon: FeatherIcons.arrowRight,
-              isLoading: isLoading,
-              onPress: onSubmit,
+              isLoading: widget.isLoading,
+              onPress: widget.onSubmit,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-// ── Already Collected Section ─────────────────────────────────────────────────
-
-class _AlreadyCollectedSection extends StatelessWidget {
-  final AppColorScheme colors;
-  final String name;
-  final String email;
-
-  const _AlreadyCollectedSection({
-    required this.colors,
-    required this.name,
-    required this.email,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasData = name.isNotEmpty || email.isNotEmpty;
-    if (!hasData) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.mint.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.mint.withValues(alpha: 0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(FeatherIcons.checkCircle, size: 14, color: colors.mint),
-              const SizedBox(width: 8),
-              Text(
-                'Already collected from signup',
-                style: AppTypography.semiBold(12, color: colors.mint),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (name.isNotEmpty)
-            _InfoRow(label: 'Name', value: name, colors: colors),
-          if (email.isNotEmpty)
-            _InfoRow(label: 'Email', value: email, colors: colors),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final AppColorScheme colors;
-
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    required this.colors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 52,
-            child: Text(
-              label,
-              style: AppTypography.regular(12, color: colors.mutedForeground),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: AppTypography.semiBold(12, color: colors.foreground),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Section Divider ───────────────────────────────────────────────────────────
-
-class _SectionDivider extends StatelessWidget {
-  final String label;
-  final AppColorScheme colors;
-
-  const _SectionDivider({required this.label, required this.colors});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: Divider(color: colors.border, thickness: 1)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            label.toUpperCase(),
-            style: AppTypography.bold(
-              9,
-              color: colors.mutedForeground,
-              letterSpacing: 1.0,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: colors.border, thickness: 1)),
-      ],
     );
   }
 }
@@ -1360,55 +1647,6 @@ class _ErrorBanner extends StatelessWidget {
               style: AppTypography.semiBold(12, color: colors.coral),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Field extends StatelessWidget {
-  final String label;
-  final String? hint;
-  final bool required;
-  final Widget child;
-
-  const _Field({
-    required this.label,
-    required this.child,
-    this.hint,
-    this.required = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColorScheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                label,
-                style: AppTypography.semiBold(12, color: colors.foreground),
-              ),
-              if (required)
-                Text(
-                  ' *',
-                  style: AppTypography.bold(12, color: colors.coral),
-                ),
-            ],
-          ),
-          if (hint != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              hint!,
-              style: AppTypography.regular(10, color: colors.mutedForeground),
-            ),
-          ],
-          const SizedBox(height: 8),
-          child,
         ],
       ),
     );
