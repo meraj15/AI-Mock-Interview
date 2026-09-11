@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'Interview Coach';
-  static const String appTagline = 'Production-Grade AI Mock Interview Platform';
+  static const String appTagline = 'Production-Grade Interview Coach Platform';
   static const String appVersion = '1.0.0';
 
   // Storage Keys

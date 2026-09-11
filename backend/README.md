@@ -1,6 +1,6 @@
-# AI Interview Coach — Backend API
+# Interview Coach — Backend API
 
-Express + TypeScript + PostgreSQL + Prisma REST API powering the AI Mock Interview platform.
+Express + TypeScript + PostgreSQL + Prisma REST API powering the Interview Coach platform.
 
 ---
 

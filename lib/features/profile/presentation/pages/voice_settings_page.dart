@@ -52,7 +52,7 @@ class _VoiceSettingsPageState extends State<VoiceSettingsPage> {
 
           const SectionTitle(title: 'Interviewer Persona'),
           Text(
-            'Select the personality and vocal profile of your AI mock interviewer.',
+            'Select the personality and vocal profile of your interviewer coach.',
             style: AppTypography.regular(12, color: colors.mutedForeground),
           ),
           const SizedBox(height: 14),

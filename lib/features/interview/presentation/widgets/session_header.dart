@@ -109,7 +109,7 @@ class SessionHeader extends StatelessWidget {
                   Text(
                     (currentQuestionIndex != null && totalQuestions != null && totalQuestions! > 0)
                         ? 'Question ${currentQuestionIndex! + 1} of $totalQuestions'
-                        : 'AI Mock Interview',
+                        : 'Interview Coach',
                     style: AppTypography.medium(10, color: colors.mint),
                     textAlign: TextAlign.center,
                   ),

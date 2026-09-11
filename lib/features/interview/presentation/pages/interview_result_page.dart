@@ -65,7 +65,7 @@ class _InterviewResultPageState extends State<InterviewResultPage>
     String band,
     String role,
   ) {
-    final text = 'AI Mock Interview Report\n'
+    final text = 'Interview Coach Report\n'
         'Role: $role\n'
         'Overall Score: $score/100 ($band)\n\n'
         'Executive Summary:\n$summary';

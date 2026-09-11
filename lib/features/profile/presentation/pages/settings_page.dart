@@ -167,7 +167,7 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Version 1.0.0 · Production-Grade AI Mock Interviews',
+                  'Version 1.0.0 · Production-Grade Interview Coach',
                   style: AppTypography.regular(11, color: colors.mutedForeground),
                 ),
               ],

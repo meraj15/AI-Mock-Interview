@@ -145,7 +145,7 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Production-Grade AI Mock Interviews',
+                  'Production-Grade Interview Coach',
                   style: AppTypography.regular(12, color: const Color(0xFFBFCBE5), letterSpacing: 0.8),
                 ),
               ],

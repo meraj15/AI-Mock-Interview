@@ -29,9 +29,9 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "nodemailer": "^10.0.3",
     "openai": "^7.5.0",
     "pdf-parse": "^2.4.5",
-    "resend": "^6.27.0",
     "winston": "^3.17.0",
     "zod": "^3.24.1"
   },
@@ -41,6 +41,7 @@
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.15.29",
+    "@types/nodemailer": "^8.0.1",
     "jest": "^29.7.0",
     "prisma": "^5.22.0",
     "ts-jest": "^29.2.5",

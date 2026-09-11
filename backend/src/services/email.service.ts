@@ -1,23 +1,54 @@
-import { Resend } from 'resend';
+import nodemailer, { Transporter } from 'nodemailer';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { AppError } from '../errors/AppError';
 
-function getResendClient(): Resend {
-  const apiKey = (process.env.RESEND_API_KEY || config.email.resendApiKey || '').trim();
-  if (!apiKey) {
-    logger.error('[EmailService] RESEND_API_KEY is not set in environment');
+let transporter: Transporter | null = null;
+
+/**
+ * Lazily initialize and return the Brevo SMTP Nodemailer transporter.
+ */
+function getMailTransporter(): Transporter {
+  if (transporter) return transporter;
+
+  const host = (process.env.SMTP_HOST || config.email.smtpHost || 'smtp-relay.brevo.com').trim();
+  const port = parseInt(process.env.SMTP_PORT || String(config.email.smtpPort) || '587', 10);
+  const user = (process.env.SMTP_USER || config.email.smtpUser || '').trim();
+  const pass = (process.env.SMTP_PASSWORD || config.email.smtpPassword || '').trim();
+
+  if (!user || !pass) {
+    logger.error('[EmailService] Brevo SMTP credentials (SMTP_USER / SMTP_PASSWORD) are not configured');
     throw new AppError(
-      'Email service is not configured. Please set RESEND_API_KEY in environment variables.',
+      'Email service is not configured. Please set SMTP_USER and SMTP_PASSWORD in environment variables.',
       503,
       'EMAIL_NOT_CONFIGURED',
     );
   }
-  return new Resend(apiKey);
+
+  transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
+    auth: {
+      user,
+      pass,
+    },
+  });
+
+  return transporter;
 }
 
 /**
- * Send an OTP verification email using Resend.
+ * Build standard From address string: e.g. "Mock Interview <user@example.com>"
+ */
+function getFromAddress(): string {
+  const fromEmail = (process.env.EMAIL_FROM || config.email.from || 'khanmeraj1542005@gmail.com').trim();
+  const fromName = (process.env.EMAIL_FROM_NAME || config.email.fromName || 'Mock Interview').trim();
+  return `"${fromName}" <${fromEmail}>`;
+}
+
+/**
+ * Send an OTP verification email using Brevo SMTP.
  *
  * IMPORTANT: The raw OTP value is used only to build the email body here
  * and is never persisted or logged inside this function.
@@ -35,7 +66,7 @@ export async function sendOtpEmail(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Verify your AI Mock Interview account</title>
+  <title>Verify your Interview Coach account</title>
 </head>
 <body style="margin:0;padding:0;background:#0f0f12;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f12;padding:40px 0;">
@@ -46,7 +77,7 @@ export async function sendOtpEmail(
           <!-- Header -->
           <tr>
             <td style="padding:32px 40px 24px;border-bottom:1px solid #2a2a35;">
-              <p style="margin:0;font-size:13px;font-weight:600;color:#7c5cfc;letter-spacing:1.5px;text-transform:uppercase;">AI Mock Interview</p>
+              <p style="margin:0;font-size:13px;font-weight:600;color:#7c5cfc;letter-spacing:1.5px;text-transform:uppercase;">Interview Coach</p>
               <h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#f0f0f5;">Verify your email address</h1>
             </td>
           </tr>
@@ -80,7 +111,7 @@ export async function sendOtpEmail(
           <tr>
             <td style="padding:20px 40px;border-top:1px solid #2a2a35;">
               <p style="margin:0;font-size:11px;color:#5a5a72;text-align:center;">
-                AI Mock Interview Team · This is an automated message, please do not reply.
+                Interview Coach Team · This is an automated message, please do not reply.
               </p>
             </td>
           </tr>
@@ -93,33 +124,43 @@ export async function sendOtpEmail(
 </html>
   `.trim();
 
-  try {
-    const resend = getResendClient();
-    const fromAddress = (process.env.EMAIL_FROM || config.email.from || 'onboarding@resend.dev').trim();
+  const text = `
+Hi ${displayName},
 
-    const { data, error } = await resend.emails.send({
-      from: fromAddress,
-      to: [to],
-      subject: 'Verify your AI Mock Interview account',
+Thanks for signing up! Use the code below to verify your email address and complete your registration:
+
+${otp}
+
+This code expires in 10 minutes.
+If you did not create an account, you can safely ignore this email.
+
+Thanks,
+Interview Coach Team
+  `.trim();
+
+  try {
+    const transport = getMailTransporter();
+    const from = getFromAddress();
+
+    const info = await transport.sendMail({
+      from,
+      to,
+      subject: 'Verify your Interview Coach account',
+      text,
       html,
     });
 
-    if (error) {
-      logger.error('[EmailService] Resend error', { code: error.name, message: error.message, to });
-      throw new AppError(`Failed to send verification email: ${error.message}`, 503, 'EMAIL_SEND_FAILED');
-    }
-
-    logger.info('[EmailService] OTP email sent successfully', { to, messageId: data?.id });
+    logger.info('[EmailService] OTP email sent successfully via Brevo SMTP', { to, messageId: info.messageId });
   } catch (err) {
     if (err instanceof AppError) throw err;
     const msg = err instanceof Error ? err.message : 'Unexpected error';
-    logger.error('[EmailService] Error sending email', { err: msg });
+    logger.error('[EmailService] Error sending OTP email via Brevo SMTP', { err: msg, to });
     throw new AppError(`Failed to send verification email: ${msg}`, 503, 'EMAIL_SEND_FAILED');
   }
 }
 
 /**
- * Send password recovery OTP email using Resend.
+ * Send password recovery OTP email using Brevo SMTP.
  *
  * Subject: Reset your AI Mock Interview password
  */
@@ -136,7 +177,7 @@ export async function sendPasswordResetOtpEmail(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Reset your AI Mock Interview password</title>
+  <title>Reset your Interview Coach password</title>
 </head>
 <body style="margin:0;padding:0;background:#0f0f12;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f12;padding:40px 0;">
@@ -145,7 +186,7 @@ export async function sendPasswordResetOtpEmail(
         <table width="480" cellpadding="0" cellspacing="0" style="background:#1a1a22;border-radius:16px;border:1px solid #2a2a35;overflow:hidden;">
           <tr>
             <td style="padding:32px 40px 24px;border-bottom:1px solid #2a2a35;">
-              <p style="margin:0;font-size:13px;font-weight:600;color:#7c5cfc;letter-spacing:1.5px;text-transform:uppercase;">AI Mock Interview</p>
+              <p style="margin:0;font-size:13px;font-weight:600;color:#7c5cfc;letter-spacing:1.5px;text-transform:uppercase;">Interview Coach</p>
               <h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#f0f0f5;">Reset your password</h1>
             </td>
           </tr>
@@ -155,7 +196,7 @@ export async function sendPasswordResetOtpEmail(
                 ${greeting}
               </p>
               <p style="margin:0 0 24px;font-size:14px;color:#9090a8;line-height:1.6;">
-                We received a request to reset your AI Mock Interview password.
+                We received a request to reset your Interview Coach password.
               </p>
               <div style="background:#0f0f12;border:1px solid #2a2a35;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
                 <p style="margin:0 0 8px;font-size:11px;font-weight:600;color:#9090a8;letter-spacing:1.5px;text-transform:uppercase;">Your verification code</p>
@@ -169,7 +210,7 @@ export async function sendPasswordResetOtpEmail(
               </p>
               <p style="margin:0;font-size:13px;color:#9090a8;line-height:1.6;">
                 Thanks,<br/>
-                <strong style="color:#f0f0f5;">AI Mock Interview</strong>
+                <strong style="color:#f0f0f5;">Interview Coach</strong>
               </p>
             </td>
           </tr>
@@ -184,7 +225,7 @@ export async function sendPasswordResetOtpEmail(
   const text = `
 ${greeting}
 
-We received a request to reset your AI Mock Interview password.
+We received a request to reset your Interview Coach password.
 
 Your verification code is:
 
@@ -195,31 +236,26 @@ This code expires in 10 minutes.
 If you did not request a password reset, you can safely ignore this email.
 
 Thanks,
-AI Mock Interview
+Interview Coach
   `.trim();
 
   try {
-    const resend = getResendClient();
-    const fromAddress = (process.env.EMAIL_FROM || config.email.from || 'onboarding@resend.dev').trim();
+    const transport = getMailTransporter();
+    const from = getFromAddress();
 
-    const { data, error } = await resend.emails.send({
-      from: fromAddress,
-      to: [to],
-      subject: 'Reset your AI Mock Interview password',
+    const info = await transport.sendMail({
+      from,
+      to,
+      subject: 'Reset your Interview Coach password',
       text,
       html,
     });
 
-    if (error) {
-      logger.error('[EmailService] Resend error on reset OTP', { code: error.name, message: error.message, to });
-      throw new AppError(`Failed to send password reset email: ${error.message}`, 503, 'EMAIL_SEND_FAILED');
-    }
-
-    logger.info('[EmailService] Password reset OTP sent successfully', { to, messageId: data?.id });
+    logger.info('[EmailService] Password reset OTP sent successfully via Brevo SMTP', { to, messageId: info.messageId });
   } catch (err) {
     if (err instanceof AppError) throw err;
     const msg = err instanceof Error ? err.message : 'Unexpected error';
-    logger.error('[EmailService] Error sending password reset email', { err: msg });
+    logger.error('[EmailService] Error sending password reset email via Brevo SMTP', { err: msg, to });
     throw new AppError(`Failed to send password reset email: ${msg}`, 503, 'EMAIL_SEND_FAILED');
   }
 }

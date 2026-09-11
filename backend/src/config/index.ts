@@ -23,8 +23,12 @@ export const config = {
     apiKey: process.env.GEMINI_API_KEY ?? '',
   },
   email: {
-    resendApiKey: process.env.RESEND_API_KEY ?? '',
-    from: process.env.EMAIL_FROM ?? 'onboarding@resend.dev',
+    smtpHost: process.env.SMTP_HOST ?? 'smtp-relay.brevo.com',
+    smtpPort: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    smtpUser: process.env.SMTP_USER ?? '',
+    smtpPassword: process.env.SMTP_PASSWORD ?? '',
+    from: process.env.EMAIL_FROM ?? 'khanmeraj1542005@gmail.com',
+    fromName: process.env.EMAIL_FROM_NAME ?? 'Mock Interview',
   },
   ai: {
     livePrimaryProvider: (process.env.AI_LIVE_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),

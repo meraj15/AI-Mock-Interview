@@ -1,4 +1,4 @@
-// Prisma Schema — AI Mock Interview Platform
+// Prisma Schema — Interview Coach Platform
 // Phase 10 — Step 4: User Profile
 
 generator client {

@@ -37,7 +37,8 @@ class ApiConfig {
       .isNotEmpty
       ? const String.fromEnvironment('UAT_BASE_URL')
       : (defaultTargetPlatform == TargetPlatform.android
-          ? 'http://192.168.0.113:3000'
+          // ? 'http://192.168.0.113:3000'
+          ? 'http://192.168.0.118:3000'
           : 'http://localhost:3000');
 
   /// Convenient alias for uatBaseUrl
@@ -86,14 +87,15 @@ class ApiConfig {
 
   /// Candidate local endpoints (tested in order of priority when running locally).
   ///
-  /// • 192.168.0.113 — current LAN IP of the dev machine (update if your IP changes)
+  /// • 192.168.0.118 — current LAN IP of the dev machine (update if your IP changes)
   /// • 10.0.2.2      — Android emulator alias for host localhost
   /// • localhost     — Windows / web / desktop runner
   static const List<String> localCandidates = [
     // 'http://192.168.0.115:3000',
-    'http://192.168.0.113:3000',
-    // 'http://10.0.2.2:3000',
-    // 'http://localhost:3000',
+    // 'http://192.168.0.113:3000',
+    'http://192.168.0.118:3000',
+    'http://10.0.2.2:3000',
+    'http://localhost:3000',
   ];
 
   /// Backward-compatible alias for localCandidates

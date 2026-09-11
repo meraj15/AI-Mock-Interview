@@ -354,7 +354,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
                 EmptyStateWidget(
                   icon: FeatherIcons.layers,
                   title: 'No interviews yet',
-                  description: 'Start your first AI mock interview session to see your full history and feedback here.',
+                  description: 'Start your first interview coach session to see your full history and feedback here.',
                   actionLabel: 'Start Interview',
                   onAction: () {
                     Navigator.of(context).push(
