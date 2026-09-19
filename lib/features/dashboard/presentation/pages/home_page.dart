@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/app_shimmer.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
@@ -494,13 +495,48 @@ class _StatsLoadingShimmer extends StatelessWidget {
   final AppColorScheme colors;
   const _StatsLoadingShimmer({required this.colors});
 
-  Widget _shimmerBox(AppColorScheme c, {double h = 100}) => Container(
-        height: h,
-        decoration: BoxDecoration(
-          color: c.secondary,
-          borderRadius: BorderRadius.circular(18),
+  Widget _buildStatCardSkeleton() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.border),
+      ),
+      child: AppShimmer(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ShimmerBox(
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+            ),
+            const SizedBox(height: 12),
+            const ShimmerBox(
+              width: 54,
+              height: 22,
+              borderRadius: 6,
+            ),
+            const SizedBox(height: 6),
+            const ShimmerBox(
+              width: 76,
+              height: 12,
+              borderRadius: 4,
+            ),
+            const SizedBox(height: 6),
+            const ShimmerBox(
+              width: 46,
+              height: 10,
+              borderRadius: 4,
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -508,17 +544,17 @@ class _StatsLoadingShimmer extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(child: _shimmerBox(colors)),
+            Expanded(child: _buildStatCardSkeleton()),
             const SizedBox(width: 10),
-            Expanded(child: _shimmerBox(colors)),
+            Expanded(child: _buildStatCardSkeleton()),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _shimmerBox(colors)),
+            Expanded(child: _buildStatCardSkeleton()),
             const SizedBox(width: 10),
-            Expanded(child: _shimmerBox(colors)),
+            Expanded(child: _buildStatCardSkeleton()),
           ],
         ),
       ],
@@ -535,10 +571,47 @@ class _RecentLoadingShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 68,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: colors.secondary,
+        color: colors.card,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.border),
+      ),
+      child: const AppShimmer(
+        child: Row(
+          children: [
+            ShimmerBox(
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ShimmerBox(
+                    width: 130,
+                    height: 14,
+                    borderRadius: 5,
+                  ),
+                  SizedBox(height: 6),
+                  ShimmerBox(
+                    width: 80,
+                    height: 10,
+                    borderRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+            ShimmerBox(
+              width: 44,
+              height: 22,
+              borderRadius: 6,
+            ),
+          ],
+        ),
       ),
     );
   }

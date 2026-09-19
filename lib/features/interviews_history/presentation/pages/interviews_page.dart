@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/app_shimmer.dart';
 import '../../../../core/widgets/empty_state_widget.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
@@ -473,40 +474,44 @@ class _InterviewsPageState extends State<InterviewsPage> {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: colors.card.withValues(alpha: 0.6),
+            color: colors.card,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: colors.border.withValues(alpha: 0.3)),
+            border: Border.all(color: colors.border),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: colors.border.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(14),
+          child: const AppShimmer(
+            child: Row(
+              children: [
+                ShimmerBox(
+                  width: 44,
+                  height: 44,
+                  borderRadius: 14,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 14,
-                      color: colors.border.withValues(alpha: 0.3),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: 80,
-                      height: 10,
-                      color: colors.border.withValues(alpha: 0.2),
-                    ),
-                  ],
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ShimmerBox(
+                        width: 130,
+                        height: 14,
+                        borderRadius: 5,
+                      ),
+                      SizedBox(height: 6),
+                      ShimmerBox(
+                        width: 80,
+                        height: 10,
+                        borderRadius: 4,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                ShimmerBox(
+                  width: 44,
+                  height: 22,
+                  borderRadius: 6,
+                ),
+              ],
+            ),
           ),
         ),
       ),

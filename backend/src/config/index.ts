@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 
-// Reload environment variables
+// Reload environment variables (updated to gemini-3.7-flash)
 dotenv.config();
 
 export const config = {

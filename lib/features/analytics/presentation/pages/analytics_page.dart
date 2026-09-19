@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/app_shimmer.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../dashboard/presentation/controllers/dashboard_controller.dart';
@@ -151,7 +152,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 SizedBox(
                   height: 145,
                   child: isLoading
-                      ? _shimmerBox(colors, height: 110)
+                      ? AppShimmer(child: _shimmerBox(colors, height: 110))
                       : scoreHistory.isEmpty
                           ? _emptyChart(colors)
                           : _ScoreBarChart(
@@ -249,22 +250,21 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   }
 
   Widget _shimmerRow(AppColorScheme colors) {
-    return Row(
-      children: [
-        Expanded(child: _shimmerBox(colors, height: 90)),
-        const SizedBox(width: 10),
-        Expanded(child: _shimmerBox(colors, height: 90)),
-      ],
+    return AppShimmer(
+      child: Row(
+        children: [
+          Expanded(child: _shimmerBox(colors, height: 90)),
+          const SizedBox(width: 10),
+          Expanded(child: _shimmerBox(colors, height: 90)),
+        ],
+      ),
     );
   }
 
   Widget _shimmerBox(AppColorScheme colors, {double height = 60}) =>
-      Container(
+      ShimmerBox(
         height: height,
-        decoration: BoxDecoration(
-          color: colors.secondary,
-          borderRadius: BorderRadius.circular(16),
-        ),
+        borderRadius: 16,
       );
 
   Widget _emptyChart(AppColorScheme colors) => Center(
