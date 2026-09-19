@@ -140,7 +140,7 @@ class ApiClient {
     bool autoRefresh = true,
     Duration? customTimeout,
   }) async {
-    if (ApiConfig.isProduction || ApiConfig.isResolved) {
+    if (ApiConfig.isProduction) {
       return _sendSingleRequest(
         baseUrl: ApiConfig.baseUrl,
         method: method,
@@ -152,6 +152,28 @@ class ApiClient {
         autoRefresh: autoRefresh,
         customTimeout: customTimeout,
       );
+    }
+
+    if (ApiConfig.isResolved) {
+      try {
+        return await _sendSingleRequest(
+          baseUrl: ApiConfig.baseUrl,
+          method: method,
+          path: path,
+          body: body,
+          headers: headers,
+          queryParameters: queryParameters,
+          requiresAuth: requiresAuth,
+          autoRefresh: autoRefresh,
+          customTimeout: customTimeout,
+        );
+      } on NetworkException {
+        ApiConfig.clearResolvedBaseUrl();
+      } on SocketException {
+        ApiConfig.clearResolvedBaseUrl();
+      } on TimeoutException {
+        ApiConfig.clearResolvedBaseUrl();
+      }
     }
 
     // Build candidate list — resolved host (if known) goes first so we skip
