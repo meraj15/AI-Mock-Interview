@@ -87,6 +87,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
     final isHigh = scoreVal >= 75;
 
     return AppScaffold(
+      scrollable: false,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

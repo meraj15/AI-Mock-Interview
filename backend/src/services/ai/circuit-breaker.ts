@@ -22,8 +22,9 @@ export function isTransientError(err: unknown): boolean {
   if (
     status === 408 || // Request Timeout
     status === 429 || // Too Many Requests / Quota Exceeded
+    status === 500 || // Internal Server Error
     status === 502 || // Bad Gateway
-    status === 503 || // Service Unavailable
+    status === 503 || // Service Unavailable / High Demand
     status === 504    // Gateway Timeout
   ) {
     return true;
@@ -63,6 +64,7 @@ export function isTransientError(err: unknown): boolean {
   const transientPatterns = [
     '408',
     '429',
+    '500',
     '502',
     '503',
     '504',
@@ -72,6 +74,7 @@ export function isTransientError(err: unknown): boolean {
     'unavailable',
     'overloaded',
     'high demand',
+    'spikes in demand',
     'temporarily unavailable',
     'timed out',
     'timeout',

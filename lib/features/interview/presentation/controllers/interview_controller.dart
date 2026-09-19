@@ -20,7 +20,7 @@ class InterviewController extends ChangeNotifier {
   String _currentAcknowledgement = '';
   String _currentTopic = '';
   int _currentTopicIndex = 0;
-  int _totalTopics = 5;
+  int _totalTopics = 10;
   bool _isFollowUp = false;
   bool _isComplete = false;
 
@@ -58,9 +58,11 @@ class InterviewController extends ChangeNotifier {
       ? _topics[_currentTopicIndex].objective
       : '';
 
-  int get currentIndex => _currentTopicIndex;
-  int get questionNumber => _currentTopicIndex + 1;
-  int get totalQuestions => _totalTopics;
+  int get currentIndex => _sessionHistory.length < totalQuestions
+      ? _sessionHistory.length
+      : (totalQuestions > 0 ? totalQuestions - 1 : 0);
+  int get questionNumber => currentIndex + 1;
+  int get totalQuestions => _config.questions > 0 ? _config.questions : _totalTopics;
   bool get isFollowUp => _isFollowUp;
   bool get isComplete => _isComplete;
 
@@ -116,7 +118,7 @@ class InterviewController extends ChangeNotifier {
     _currentAcknowledgement = '';
     _currentTopic = '';
     _currentTopicIndex = 0;
-    _totalTopics = _config.questions > 0 ? _config.questions : 5;
+    _totalTopics = _config.questions > 0 ? _config.questions : 10;
     _isFollowUp = false;
     _isComplete = false;
     _topics = [];
@@ -233,7 +235,9 @@ class InterviewController extends ChangeNotifier {
       _totalTopics = turn.totalTopics;
       _isComplete = turn.isComplete;
 
-      if (turn.isComplete || turn.action == 'end_interview') {
+      if (turn.isComplete ||
+          turn.action == 'end_interview' ||
+          _sessionHistory.length >= totalQuestions) {
         _isComplete = true;
         _sessionStatus = SessionStatus.active;
         // Start pre-fetching final evaluation in background
@@ -316,7 +320,7 @@ class InterviewController extends ChangeNotifier {
     _currentAcknowledgement = '';
     _currentTopic = '';
     _currentTopicIndex = 0;
-    _totalTopics = 5;
+    _totalTopics = 10;
     _isFollowUp = false;
     _isComplete = false;
     _lastEvaluation = null;

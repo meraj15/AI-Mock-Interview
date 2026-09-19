@@ -38,7 +38,7 @@ const interviewPlanSchema = z.object({
     .min(1)
     .max(20)
     .optional()
-    .default(5),
+    .default(10),
 });
 
 /**

@@ -32,18 +32,18 @@ export const config = {
   },
   ai: {
     livePrimaryProvider: (process.env.AI_LIVE_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
-    livePrimaryModel: process.env.AI_LIVE_PRIMARY_MODEL ?? 'gemini-3.7-flash',
-    liveFallbackProvider: (process.env.AI_LIVE_FALLBACK_PROVIDER ?? 'openai').toLowerCase(),
-    liveFallbackModel: process.env.AI_LIVE_FALLBACK_MODEL ?? 'gpt-4o-mini',
+    livePrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_LIVE_PRIMARY_MODEL ?? 'gemini-3.8-flash',
+    liveFallbackProvider: (process.env.AI_LIVE_FALLBACK_PROVIDER ?? 'gemini').toLowerCase(),
+    liveFallbackModel: process.env.GEMINI_MODEL ?? process.env.AI_LIVE_FALLBACK_MODEL ?? 'gemini-3.8-flash',
 
     evalPrimaryProvider: (process.env.AI_EVAL_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
-    evalPrimaryModel: process.env.AI_EVAL_PRIMARY_MODEL ?? 'gemini-3.7-flash',
-    evalFallbackProvider: (process.env.AI_EVAL_FALLBACK_PROVIDER ?? 'openai').toLowerCase(),
-    evalFallbackModel: process.env.AI_EVAL_FALLBACK_MODEL ?? 'gpt-4o',
+    evalPrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_EVAL_PRIMARY_MODEL ?? 'gemini-3.8-flash',
+    evalFallbackProvider: (process.env.AI_EVAL_FALLBACK_PROVIDER ?? 'gemini').toLowerCase(),
+    evalFallbackModel: process.env.GEMINI_MODEL ?? process.env.AI_EVAL_FALLBACK_MODEL ?? 'gemini-3.8-flash',
 
     circuitFailureThreshold: parseInt(process.env.AI_CIRCUIT_FAILURE_THRESHOLD ?? '3', 10),
     circuitCooldownMs: parseInt(process.env.AI_CIRCUIT_COOLDOWN_MS ?? '30000', 10),
-    liveTimeoutMs: parseInt(process.env.AI_LIVE_TIMEOUT_MS ?? '8000', 10),
+    liveTimeoutMs: parseInt(process.env.AI_LIVE_TIMEOUT_MS ?? '15000', 10),
     evalTimeoutMs: parseInt(process.env.AI_EVAL_TIMEOUT_MS ?? '60000', 10),
   },
 } as const;

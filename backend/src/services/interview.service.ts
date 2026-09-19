@@ -86,7 +86,7 @@ export class InterviewService {
       role,
       skills = [],
       experience,
-      questionCount = 5,
+      questionCount = 10,
     } = params;
 
     if (!role?.trim()) {
@@ -104,12 +104,16 @@ export class InterviewService {
       )
       .map((skill) => skill.trim());
 
+    const effectiveQuestionCount = Math.max(1, Math.min(20, questionCount || 10));
+    const totalTopics = effectiveQuestionCount;
+    const maxTurns = effectiveQuestionCount;
+
     const plan =
       await aiService.generateInterviewPlan({
         role: role.trim(),
         skills: normalizedSkills,
         experience,
-        questionCount,
+        questionCount: effectiveQuestionCount,
       });
 
     const placeholderTopics: InterviewTopic[] = [
@@ -121,9 +125,6 @@ export class InterviewService {
     ];
 
     const sessionId = randomUUID();
-
-    const totalTopics = Math.max(3, Math.min(10, questionCount));
-    const maxTurns = totalTopics * 2;
 
     const session: ActiveConversationalSession = {
       id: sessionId,
@@ -459,6 +460,10 @@ export class InterviewService {
 
     // Add the next interviewer question.
     session.totalTurns++;
+    session.currentTopicIndex = Math.min(
+      session.totalTopics - 1,
+      session.totalTurns - 1,
+    );
 
     session.interactions.push({
       question: nextQuestion,
@@ -540,7 +545,7 @@ export class InterviewService {
       acknowledgement: 'Thank you.',
       action: 'end_interview',
       nextQuestion:
-        'That covers the interview. Thank you for your time!',
+        'That concludes our interview! Great job completing all the questions. You can now review your performance evaluation.',
       nextTopic: topic,
       currentTopicIndex:
         session.currentTopicIndex,

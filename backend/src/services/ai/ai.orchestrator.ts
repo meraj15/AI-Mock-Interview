@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { config } from '../../config';
+import { AppError } from '../../errors/AppError';
 import {
   AIOperation,
   AIExecutionMetadata,
@@ -92,16 +93,18 @@ export class AIOrchestrator {
     }
   }
 
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   // ==========================================================
-  // TIER ROUTING WITH RESILIENT FALLBACK
+  // GEMINI EXECUTION WITH EXPONENTIAL BACKOFF RETRIES
   // ==========================================================
 
   private async executeTier<T>(options: {
     operation: AIOperation;
     primaryProviderId: string;
     primaryModel: string;
-    fallbackProviderId: string;
-    fallbackModel: string;
     timeoutMs: number;
     prompt: string;
     geminiSchema?: any;
@@ -114,8 +117,6 @@ export class AIOrchestrator {
       operation,
       primaryProviderId,
       primaryModel,
-      fallbackProviderId,
-      fallbackModel,
       timeoutMs,
       prompt,
       geminiSchema,
@@ -128,20 +129,25 @@ export class AIOrchestrator {
     const requestId = randomUUID();
     const primaryProvider = this.providers.get(primaryProviderId);
     const primaryBreaker = this.circuitBreakers.get(primaryProviderId);
-    const fallbackProvider = this.providers.get(fallbackProviderId);
-    const fallbackBreaker = this.circuitBreakers.get(fallbackProviderId);
+
+    if (!primaryProvider || !primaryProvider.isConfigured()) {
+      throw new AppError(
+        'Gemini API key is not configured. Please set GEMINI_API_KEY in your backend .env file.',
+        500,
+        'GEMINI_NOT_CONFIGURED',
+      );
+    }
 
     const startTime = Date.now();
-    let primaryError: any = null;
+    const maxRetries = 3; // 1 initial attempt + 3 retries = 4 attempts total
+    const backoffDelays = [1000, 2000, 4000]; // 1s, 2s, 4s
 
-    // Check if primary is available and circuit is closed/half-open
-    const canUsePrimary =
-      primaryProvider?.isConfigured() && primaryBreaker?.canExecute();
+    let lastError: any = null;
 
-    if (canUsePrimary && primaryProvider) {
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       try {
         console.log(
-          `[AIOrchestrator] requestId=${requestId} operation=${operation} provider=${primaryProviderId} model=${primaryModel}`,
+          `[AIOrchestrator] requestId=${requestId} operation=${operation} provider=${primaryProviderId} model=${primaryModel} (attempt ${attempt}/${maxRetries + 1})`,
         );
 
         const data = await this.executeWithTimeout(
@@ -171,100 +177,49 @@ export class AIOrchestrator {
           circuitState: primaryBreaker?.getHealth().circuitState || 'CLOSED',
           latencyMs: Date.now() - startTime,
           fallbackUsed: false,
-          attemptCount: 1,
+          attemptCount: attempt,
         };
 
         return { data, metadata };
       } catch (err: any) {
-        primaryError = err;
+        lastError = err;
         const isTransient = isTransientError(err);
         primaryBreaker?.recordFailure(err);
 
         console.warn(
-          `[AIOrchestrator] requestId=${requestId} Primary provider ${primaryProviderId} failed on ${operation} (transient=${isTransient}): ${err?.message || 'Unknown error'}`,
+          `[AIOrchestrator] requestId=${requestId} ${primaryProviderId} failed on ${operation} (attempt ${attempt}/${maxRetries + 1}, transient=${isTransient}): ${err?.message || 'Unknown error'}`,
         );
 
-        // Fail-fast on permanent non-transient errors (e.g. 400 bad request, 401 unauthorized)
+        // Fail-fast on permanent non-transient errors (e.g. 400 Bad Request, 401 Unauthorized, 404 Model Not Found)
         if (!isTransient) {
-          throw new Error(
-            `[AIOrchestrator] Permanent error from ${primaryProviderId}: ${err?.message || 'Client/Auth error'}`,
+          throw new AppError(
+            `Gemini service error: ${err?.message || 'Permanent client/auth error'}`,
+            400,
+            'AI_PERMANENT_ERROR',
           );
         }
+
+        // If we still have retries remaining, wait with exponential backoff
+        if (attempt <= maxRetries) {
+          const delayMs = backoffDelays[attempt - 1] || 4000;
+          console.log(
+            `[AIOrchestrator] requestId=${requestId} Retrying ${operation} with ${primaryProviderId} in ${delayMs}ms (transient failure)...`,
+          );
+          await this.sleep(delayMs);
+        }
       }
-    } else {
-      const reason = !primaryProvider?.isConfigured()
-        ? 'Not configured / missing API key'
-        : 'Circuit breaker is OPEN (cooling down)';
-      console.warn(
-        `[AIOrchestrator] requestId=${requestId} Skipping primary provider ${primaryProviderId} for ${operation}: ${reason}`,
-      );
-      primaryError = new Error(`Primary provider skipped: ${reason}`);
     }
 
-    // ----------------------------------------------------------
-    // FALLBACK EXECUTION
-    // ----------------------------------------------------------
-
-    if (!fallbackProvider || !fallbackProvider.isConfigured()) {
-      throw new Error(
-        `[AIOrchestrator] Primary provider ${primaryProviderId} failed (${primaryError?.message}) and fallback provider ${fallbackProviderId} is not configured.`,
-      );
-    }
-
-    if (!fallbackBreaker?.canExecute()) {
-      throw new Error(
-        `[AIOrchestrator] Both primary (${primaryProviderId}) and fallback (${fallbackProviderId}) are currently unavailable / circuit open.`,
-      );
-    }
-
-    console.log(
-      `[AIOrchestrator] requestId=${requestId} Triggering FALLBACK to ${fallbackProviderId} (${fallbackModel}) for ${operation}`,
+    // All retries exhausted
+    console.error(
+      `[AIOrchestrator] requestId=${requestId} All ${maxRetries + 1} attempts failed for ${operation}: ${lastError?.message || 'Unavailable'}`,
     );
 
-    const fallbackStartTime = Date.now();
-    try {
-      const data = await this.executeWithTimeout(
-        (signal) =>
-          fallbackProvider.executeStructured<T>({
-            model: fallbackModel,
-            prompt,
-            geminiSchema,
-            openAISchema,
-            schemaName,
-            temperature,
-            thinkingLevel,
-            timeoutMs,
-            abortSignal: signal,
-          }),
-        timeoutMs,
-        `${operation}:${fallbackProviderId}`,
-      );
-
-      fallbackBreaker.recordSuccess();
-
-      const metadata: AIExecutionMetadata = {
-        requestId,
-        operation,
-        provider: fallbackProviderId,
-        model: fallbackModel,
-        circuitState: primaryBreaker?.getHealth().circuitState || fallbackBreaker.getHealth().circuitState,
-        latencyMs: Date.now() - fallbackStartTime,
-        fallbackUsed: true,
-        fallbackReason: primaryError?.message || 'Primary unavailable',
-        attemptCount: 2,
-      };
-
-      return { data, metadata };
-    } catch (fallbackErr: any) {
-      fallbackBreaker.recordFailure(fallbackErr);
-      console.error(
-        `[AIOrchestrator] requestId=${requestId} Fallback provider ${fallbackProviderId} also failed on ${operation}: ${fallbackErr?.message || 'Unknown error'}`,
-      );
-
-      throw new Error(
-        `[AIOrchestrator] All providers failed for ${operation}. Primary: ${primaryError?.message} | Fallback: ${fallbackErr?.message}`,
-      );
-    }
+    throw new AppError(
+      'The AI interview service is currently experiencing high demand. Please try again in a moment.',
+      503,
+      'AI_SERVICE_UNAVAILABLE',
+    );
   }
 
   // ==========================================================
@@ -324,8 +279,6 @@ export class AIOrchestrator {
       operation: 'plan',
       primaryProviderId: config.ai.livePrimaryProvider,
       primaryModel: config.ai.livePrimaryModel,
-      fallbackProviderId: config.ai.liveFallbackProvider,
-      fallbackModel: config.ai.liveFallbackModel,
       timeoutMs: config.ai.liveTimeoutMs,
       prompt,
       geminiSchema: interviewPlanGeminiSchema,
@@ -365,8 +318,6 @@ export class AIOrchestrator {
       operation: 'live_turn',
       primaryProviderId: config.ai.livePrimaryProvider,
       primaryModel: config.ai.livePrimaryModel,
-      fallbackProviderId: config.ai.liveFallbackProvider,
-      fallbackModel: config.ai.liveFallbackModel,
       timeoutMs: config.ai.liveTimeoutMs,
       prompt,
       geminiSchema: conversationalTurnGeminiSchema,
@@ -389,7 +340,7 @@ export class AIOrchestrator {
     let action = raw.action;
     if (isFinalClosingTurn) {
       action = 'end_interview';
-    } else if (action === 'end_interview' && !isPenultimateTurn && currentTurn < totalMaxTurns - 2) {
+    } else if (action === 'end_interview' && currentTurn < totalMaxTurns) {
       action = 'new_topic';
     }
 
@@ -440,8 +391,6 @@ export class AIOrchestrator {
       operation: 'final_evaluation',
       primaryProviderId: config.ai.evalPrimaryProvider,
       primaryModel: config.ai.evalPrimaryModel,
-      fallbackProviderId: config.ai.evalFallbackProvider,
-      fallbackModel: config.ai.evalFallbackModel,
       timeoutMs: config.ai.evalTimeoutMs,
       prompt,
       geminiSchema: finalEvaluationGeminiSchema,

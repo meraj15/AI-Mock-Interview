@@ -30,7 +30,7 @@ class LiveCaptionCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 14),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 76, maxHeight: 320),
+        constraints: const BoxConstraints(minHeight: 76),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: colors.card,
@@ -87,7 +87,8 @@ class LiveCaptionCard extends StatelessWidget {
             const SizedBox(height: 10),
 
             // Scrollable text content dynamically adjusting to user speech length
-            Flexible(
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
               child: Scrollbar(
                 controller: scrollController,
                 thumbVisibility: hasWords,
@@ -143,7 +144,7 @@ class AnswerEditorCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 14),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 90, maxHeight: 320),
+        constraints: const BoxConstraints(minHeight: 90),
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         decoration: BoxDecoration(
           color: colors.card,
@@ -190,7 +191,8 @@ class AnswerEditorCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Flexible(
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
               child: Scrollbar(
                 controller: scrollController,
                 thumbVisibility: true,

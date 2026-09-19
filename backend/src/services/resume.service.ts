@@ -8,6 +8,7 @@ const pdfParse = require('pdf-parse') as (
 }>;
 
 import { GoogleGenAI, Type } from '@google/genai';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 // ── Structured profile shape returned to Flutter ──────────────────────────────
@@ -182,7 +183,7 @@ export class ResumeService {
     try {
       const response =
         await this.client!.models.generateContent({
-          model: 'gemini-3.7-flash',
+          model: config.ai.livePrimaryModel,
 
           contents: `
 ${SYSTEM_PROMPT}
