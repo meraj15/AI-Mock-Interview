@@ -2,14 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../error/exceptions.dart';
 import '../storage/token_storage.dart';
-
-/// SharedPreferences key used to persist the resolved backend host across
-/// app restarts so host-discovery only runs once.
-const _kResolvedHostKey = 'ic_resolved_backend_host';
 
 class ApiResponse {
   final int statusCode;
@@ -123,13 +118,6 @@ class ApiClient {
     );
   }
 
-  // ── Candidate Host Fallback ───────────────────────────────────────────────
-  //
-  // In development mode the client tries all 3 candidate hosts sequentially
-  // until one responds. After the first success the working host is saved to
-  // SharedPreferences so subsequent cold-starts skip the discovery loop and
-  // go directly to the known-good host.
-
   Future<ApiResponse> _sendRequestWithFallback({
     required String method,
     required String path,
@@ -140,100 +128,17 @@ class ApiClient {
     bool autoRefresh = true,
     Duration? customTimeout,
   }) async {
-    if (ApiConfig.isProduction) {
-      return _sendSingleRequest(
-        baseUrl: ApiConfig.baseUrl,
-        method: method,
-        path: path,
-        body: body,
-        headers: headers,
-        queryParameters: queryParameters,
-        requiresAuth: requiresAuth,
-        autoRefresh: autoRefresh,
-        customTimeout: customTimeout,
-      );
-    }
-
-    if (ApiConfig.isResolved) {
-      try {
-        return await _sendSingleRequest(
-          baseUrl: ApiConfig.baseUrl,
-          method: method,
-          path: path,
-          body: body,
-          headers: headers,
-          queryParameters: queryParameters,
-          requiresAuth: requiresAuth,
-          autoRefresh: autoRefresh,
-          customTimeout: customTimeout,
-        );
-      } on NetworkException {
-        ApiConfig.clearResolvedBaseUrl();
-      } on SocketException {
-        ApiConfig.clearResolvedBaseUrl();
-      } on TimeoutException {
-        ApiConfig.clearResolvedBaseUrl();
-      }
-    }
-
-    // Build candidate list — resolved host (if known) goes first so we skip
-    // trying unreachable addresses on subsequent requests.
-    final candidateHosts = [
-      ApiConfig.baseUrl,
-      ...ApiConfig.developmentCandidates.where((u) => u != ApiConfig.baseUrl),
-    ];
-
-    Exception? lastException;
-
-    // During host discovery, use a short probe timeout so we fail-fast on
-    // unreachable hosts. Once a host is confirmed, the real (possibly longer)
-    // customTimeout is used by the resolved path above on future requests.
-    final discoveryTimeout = ApiConfig.connectTimeout;
-
-    for (final host in candidateHosts) {
-      try {
-        final res = await _sendSingleRequest(
-          baseUrl: host,
-          method: method,
-          path: path,
-          body: body,
-          headers: headers,
-          queryParameters: queryParameters,
-          requiresAuth: requiresAuth,
-          autoRefresh: autoRefresh,
-          customTimeout: customTimeout ?? discoveryTimeout,
-        );
-        // Host is reachable — remember it in memory and persist it so the
-        // next cold-start skips the discovery loop entirely.
-        ApiConfig.setResolvedBaseUrl(host);
-        _persistResolvedHost(host);
-        return res;
-      } on NetworkException catch (e) {
-        lastException = e;
-        continue;
-      } on SocketException catch (e) {
-        lastException = NetworkException(e.message);
-        continue;
-      } on TimeoutException catch (e) {
-        lastException = NetworkException(e.message ?? 'Request timed out');
-        continue;
-      } catch (e) {
-        if (e is Exception &&
-            (e is AuthException ||
-                e is ValidationException ||
-                e is ServerException)) {
-          // Server responded with an application-level error → host is reachable.
-          ApiConfig.setResolvedBaseUrl(host);
-          _persistResolvedHost(host);
-          rethrow;
-        }
-        lastException = NetworkException(e.toString());
-      }
-    }
-
-    throw lastException ??
-        NetworkException(
-            'Unable to reach backend server. Please make sure the server is running.');
+    return _sendSingleRequest(
+      baseUrl: ApiConfig.baseUrl,
+      method: method,
+      path: path,
+      body: body,
+      headers: headers,
+      queryParameters: queryParameters,
+      requiresAuth: requiresAuth,
+      autoRefresh: autoRefresh,
+      customTimeout: customTimeout,
+    );
   }
 
 
@@ -356,15 +261,6 @@ class ApiClient {
     }
   }
 
-  // ── Persist resolved host ─────────────────────────────────────────────────
-
-  /// Fire-and-forget: saves the working host to SharedPreferences so the next
-  /// cold-start restores it and skips the 3-candidate discovery loop.
-  void _persistResolvedHost(String host) {
-    SharedPreferences.getInstance().then(
-      (prefs) => prefs.setString(_kResolvedHostKey, host),
-    );
-  }
 
   // ── URI & Headers Helpers ─────────────────────────────────────────────────
 

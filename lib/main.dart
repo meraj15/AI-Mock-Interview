@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'core/config/api_config.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
@@ -24,14 +23,6 @@ import 'features/splash/presentation/pages/splash_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
-
-  // ── Restore previously-discovered backend host ────────────────────────────
-  // This prevents the 3-candidate host-discovery loop from firing on every
-  // cold-start. After the first successful connection, the working host is
-  // persisted and reloaded here.
-  const resolvedHostKey = 'ic_resolved_backend_host';
-  final savedHost = sharedPreferences.getString(resolvedHostKey);
-  ApiConfig.restoreResolvedBaseUrl(savedHost);
 
   // Storage & Network
   final tokenStorage = TokenStorageImpl(sharedPreferences: sharedPreferences);

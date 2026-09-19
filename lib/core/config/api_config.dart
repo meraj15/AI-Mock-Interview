@@ -17,7 +17,7 @@ class ApiConfig {
   /// Or override via CLI:
   ///   flutter run --dart-define=IS_PRODUCTION=true
   static bool _isProduction =
-      const bool.fromEnvironment('IS_PRODUCTION', defaultValue: true);
+      const bool.fromEnvironment('IS_PRODUCTION', defaultValue: false);
 
   static bool get isProduction => _isProduction;
 
@@ -31,14 +31,15 @@ class ApiConfig {
       'https://ai-mock-interview-production-09fa.up.railway.app';
 
   /// Local / UAT Base URL
-  /// Change this to your local backend IP or UAT server.
+  /// Connected to your local development machine IP (192.168.0.112:3000)
+  /// so physical mobile devices on the Wi-Fi network and emulators can reach the backend.
   static String uatBaseUrl = const String.fromEnvironment('UAT_BASE_URL',
           defaultValue: '')
       .isNotEmpty
       ? const String.fromEnvironment('UAT_BASE_URL')
       : (defaultTargetPlatform == TargetPlatform.android
-          ? 'http://192.168.0.113:3000'
-          : 'http://localhost:3000');
+          ? 'http://192.168.0.112:3000'
+          : 'http://192.168.0.112:3000');
 
   /// Convenient alias for uatBaseUrl
   static String get localBaseUrl => uatBaseUrl;
@@ -84,54 +85,9 @@ class ApiConfig {
   static String? customBaseUrl =
       _baseUrlDefine.isNotEmpty ? _baseUrlDefine : null;
 
-  /// Candidate local endpoints (tested in order of priority when running locally).
-  ///
-  /// • 192.168.0.113 — current LAN IP of the dev machine (update if your IP changes)
-  /// • 192.168.0.118 — alternate LAN IP of the dev machine
-  /// • 10.0.2.2      — Android emulator alias for host localhost
-  /// • localhost     — Windows / web / desktop runner
-  static const List<String> localCandidates = [
-    'http://192.168.0.113:3000',
-    'http://192.168.0.118:3000',
-    'http://10.0.2.2:3000',
-    'http://localhost:3000',
-  ];
-
-  /// Backward-compatible alias for localCandidates
-  static List<String> get developmentCandidates => localCandidates;
-
-  /// Currently active discovered base URL — set after first successful request.
-  static String? _resolvedBaseUrl;
-
-  static void setResolvedBaseUrl(String url) {
-    _resolvedBaseUrl = url.isEmpty ? null : url;
-  }
-
-  static void clearResolvedBaseUrl() {
-    _resolvedBaseUrl = null;
-  }
-
-  /// Restore the previously discovered host on app startup.
-  /// Call this in main() after reading SharedPreferences.
-  static void restoreResolvedBaseUrl(String? url) {
-    // Only active in local / UAT mode.
-    if (isProduction) return;
-
-    if (url != null && url.isNotEmpty) {
-      final isStillValid = localCandidates.contains(url);
-      if (isStillValid) {
-        _resolvedBaseUrl = url;
-      }
-    }
-  }
-
-  static bool get isResolved =>
-      isProduction ||
-      (_resolvedBaseUrl != null && _resolvedBaseUrl!.isNotEmpty);
-
   /// Returns the base URL according to the boolean toggle:
   ///   - true  => productionBaseUrl
-  ///   - false => uatBaseUrl (or local resolved URL)
+  ///   - false => uatBaseUrl
   static String get baseUrl {
     if (customBaseUrl != null && customBaseUrl!.isNotEmpty) {
       return customBaseUrl!;
@@ -139,10 +95,6 @@ class ApiConfig {
 
     if (isProduction || currentEnvironment == Environment.production) {
       return productionBaseUrl;
-    }
-
-    if (_resolvedBaseUrl != null && _resolvedBaseUrl!.isNotEmpty) {
-      return _resolvedBaseUrl!;
     }
 
     return uatBaseUrl;
