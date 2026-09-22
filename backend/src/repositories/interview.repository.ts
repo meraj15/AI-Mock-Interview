@@ -64,6 +64,14 @@ export interface InterviewStats {
   overallChange: number;
 }
 
+export interface HistoricalQuestionRecord {
+  question: string;
+  topic: string | null;
+  type: string | null;
+  role: string;
+  createdAt: Date;
+}
+
 // Re-export for consumers
 export type { InterviewSession, InterviewQuestion };
 
@@ -201,6 +209,64 @@ export class InterviewRepository {
         },
       },
     });
+  }
+
+  /**
+   * Retrieves recent interview questions for a user across previous sessions.
+   * Single indexed query hitting @@index([userId, createdAt]).
+   * Results are role-prioritized and recency-ordered.
+   */
+  async findRecentQuestionsByUserId(
+    userId: string,
+    options?: {
+      role?: string;
+      limitSessions?: number;
+    },
+  ): Promise<HistoricalQuestionRecord[]> {
+    const limitSessions = Math.min(options?.limitSessions ?? 10, 20);
+    const sessions = await prisma.interviewSession.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limitSessions,
+      select: {
+        role: true,
+        createdAt: true,
+        questions: {
+          select: {
+            question: true,
+            topic: true,
+            type: true,
+            createdAt: true,
+          },
+          orderBy: { questionNumber: 'asc' },
+        },
+      },
+    });
+
+    const targetRoleLower = options?.role?.trim().toLowerCase();
+    const sameRoleRecords: HistoricalQuestionRecord[] = [];
+    const otherRoleRecords: HistoricalQuestionRecord[] = [];
+
+    for (const s of sessions) {
+      const isSameRole = targetRoleLower && s.role.trim().toLowerCase() === targetRoleLower;
+      for (const q of s.questions) {
+        const record: HistoricalQuestionRecord = {
+          question: q.question,
+          topic: q.topic,
+          type: q.type,
+          role: s.role,
+          createdAt: q.createdAt,
+        };
+        if (isSameRole) {
+          sameRoleRecords.push(record);
+        } else {
+          otherRoleRecords.push(record);
+        }
+      }
+    }
+
+    // Role-prioritized: same role questions first, then other roles, maintaining recency
+    return [...sameRoleRecords, ...otherRoleRecords];
   }
 
   /**

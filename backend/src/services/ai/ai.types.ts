@@ -60,6 +60,7 @@ export interface InterviewPlanParams {
   experience?: string;
   skills?: string[];
   questionCount?: number;
+  previousQuestions?: string[];
 }
 
 export interface ConversationalTurnParams {
@@ -72,8 +73,11 @@ export interface ConversationalTurnParams {
   areasExplored: string[];
   followUpsUsed: number;
   recentQuestions?: string[];
+  currentSessionQuestions?: string[];
   turnNumber?: number;
   maxTurns?: number;
+  previousQuestions?: string[];
+  previouslyCoveredTopics?: string[];
 }
 
 export interface FinalEvaluationParams {
@@ -137,6 +141,14 @@ export interface LatencyTelemetry {
   tokenUsage?: TokenUsage;
   /** Number of retries beyond the first attempt. */
   retryCount?: number;
+  /** Total previous questions known for user. */
+  questionHistoryCount?: number;
+  /** Previous questions/topics included in prompt context. */
+  questionHistoryContextCount?: number;
+  /** ms taken to query question history. */
+  questionHistoryQueryMs?: number;
+  /** True when a duplicate question was avoided. */
+  duplicateAvoided?: boolean;
 }
 
 export interface AIExecutionMetadata {

@@ -5,6 +5,7 @@ import {
   InterviewStats,
   InterviewSession,
   InterviewSessionWithQuestions,
+  HistoricalQuestionRecord,
 } from '../repositories/interview.repository';
 import {
   aiService,
@@ -14,6 +15,11 @@ import {
 } from './ai.service';
 import { logger } from '../utils/logger';
 import { config } from '../config';
+import {
+  normalizeQuestion,
+  isObviousDuplicate,
+  isIntroductoryQuestion,
+} from '../utils/question-normalizer';
 
 export interface ActiveConversationalSession {
   id: string;
@@ -33,6 +39,10 @@ export interface ActiveConversationalSession {
 
   conversationSummary: string;
   interactions: TranscriptEntry[];
+
+  // Bounded question rotation history loaded at start and maintained in memory
+  questionHistory: string[];
+  coveredTopics: string[];
 
   status: 'in_progress' | 'completed';
   finalEvaluation?: FinalInterviewEvaluation;
@@ -109,6 +119,54 @@ export class InterviewService {
     const totalTopics = effectiveQuestionCount;
     const maxTurns = effectiveQuestionCount;
 
+    // Retrieve user's previous interview questions for rotation context
+    const historyStart = Date.now();
+    let historicalRecords: HistoricalQuestionRecord[] = [];
+    try {
+      historicalRecords = await interviewRepository.findRecentQuestionsByUserId(
+        userId,
+        { role: role.trim(), limitSessions: 10 },
+      );
+    } catch (err) {
+      logger.warn(`[InterviewService] Failed to load question history for user=${userId}:`, err);
+    }
+    const questionHistoryQueryMs = Date.now() - historyStart;
+
+    // Filter, deduplicate, and bound historical questions and topics
+    const uniqueQuestions: string[] = [];
+    const seenNormQuestions = new Set<string>();
+    const uniqueTopics: string[] = [];
+    const seenNormTopics = new Set<string>();
+
+    for (const rec of historicalRecords) {
+      const qText = rec.question?.trim();
+      if (qText && !isIntroductoryQuestion(qText)) {
+        const norm = normalizeQuestion(qText);
+        if (norm && !seenNormQuestions.has(norm)) {
+          seenNormQuestions.add(norm);
+          uniqueQuestions.push(qText);
+        }
+      }
+      const topicText = rec.topic?.trim();
+      const roleLower = role.trim().toLowerCase();
+      if (
+        topicText &&
+        topicText.toLowerCase() !== 'introduction' &&
+        topicText.toLowerCase() !== 'general' &&
+        topicText.toLowerCase() !== roleLower
+      ) {
+        const normTopic = topicText.toLowerCase();
+        if (!seenNormTopics.has(normTopic)) {
+          seenNormTopics.add(normTopic);
+          uniqueTopics.push(topicText);
+        }
+      }
+    }
+
+    const boundedQuestions = uniqueQuestions.slice(0, 20);
+    const promptQuestions = boundedQuestions.slice(0, 15);
+    const boundedTopics = uniqueTopics.slice(0, 8);
+
     const planStart = Date.now();
     const plan =
       await aiService.generateInterviewPlan({
@@ -116,6 +174,7 @@ export class InterviewService {
         skills: normalizedSkills,
         experience,
         questionCount: effectiveQuestionCount,
+        previousQuestions: promptQuestions,
       });
     const planLatencyMs = Date.now() - planStart;
 
@@ -146,6 +205,8 @@ export class InterviewService {
       maxTurns,
 
       conversationSummary: '',
+      questionHistory: boundedQuestions,
+      coveredTopics: boundedTopics,
 
       interactions: [
         {
@@ -169,7 +230,27 @@ export class InterviewService {
 
     if (config.ai.enableTelemetry) {
       logger.info(
-        `[TELEMETRY] ${JSON.stringify({ operation: 'plan', sessionId, role: role.trim(), aiLatencyMs: planLatencyMs, cacheHit: false })}`,
+        `[QUESTION_ROTATION] ${JSON.stringify({
+          sessionId,
+          role: role.trim(),
+          historyCount: historicalRecords.length,
+          historyContextCount: promptQuestions.length,
+          topicContextCount: boundedTopics.length,
+          questionHistoryQueryMs,
+          duplicateDetected: false,
+        })}`,
+      );
+      logger.info(
+        `[TELEMETRY] ${JSON.stringify({
+          operation: 'plan',
+          sessionId,
+          role: role.trim(),
+          aiLatencyMs: planLatencyMs,
+          cacheHit: false,
+          questionHistoryCount: historicalRecords.length,
+          questionHistoryContextCount: promptQuestions.length,
+          questionHistoryQueryMs,
+        })}`,
       );
     }
 
@@ -339,9 +420,9 @@ export class InterviewService {
       );
     }
 
-    const recentQuestions =
+    // Extract all questions asked in the current session (for same-interview duplicate prevention)
+    const currentSessionQuestions =
       session.interactions
-        .slice(-5)
         .map((interaction) =>
           interaction.question?.trim(),
         )
@@ -373,10 +454,14 @@ export class InterviewService {
         followUpsUsed:
           session.followUpsUsedForCurrentTopic,
 
-        recentQuestions,
+        recentQuestions: currentSessionQuestions,
+        currentSessionQuestions,
 
         turnNumber: session.totalTurns,
         maxTurns: session.maxTurns,
+        // Pass bounded historical questions and topics for rotation
+        previousQuestions: session.questionHistory,
+        previouslyCoveredTopics: session.coveredTopics,
         // Pass sessionId so the orchestrator can correlate telemetry logs
         sessionId,
       });
@@ -402,6 +487,64 @@ export class InterviewService {
 
     let nextTopic =
       turn.nextTopic.trim();
+
+    // ----------------------------------------------------------
+    // Backend safety guardrail: Conservative duplicate detection.
+    // Only rejects obvious near-identical or exact duplicates.
+    // ----------------------------------------------------------
+    let duplicateDetected = false;
+    if (finalAction !== 'end_interview' && !isIntroductoryQuestion(nextQuestion)) {
+      const currentSessionQuestions = session.interactions
+        .map((it) => it.question?.trim())
+        .filter((q): q is string => Boolean(q));
+
+      const isDuplicateOfCurrent = currentSessionQuestions.some((q) =>
+        isObviousDuplicate(q, nextQuestion),
+      );
+
+      const isDuplicateOfRecentHistory = session.questionHistory
+        .slice(0, 5)
+        .some((q) => isObviousDuplicate(q, nextQuestion));
+
+      if (isDuplicateOfCurrent || isDuplicateOfRecentHistory) {
+        duplicateDetected = true;
+        logger.warn(
+          `[InterviewService] Obvious duplicate question detected for sessionId=${sessionId}: "${nextQuestion}". Applying safe rotation fallback.`,
+        );
+
+        if (finalAction === 'new_topic') {
+          const unusedTopic =
+            session.topics.find(
+              (t) => !session.areasExplored.includes(t.name) && t.name !== 'Introduction',
+            )?.name || 'System Architecture & Design';
+          nextTopic = unusedTopic;
+          nextQuestion = `Could you share your experience and approach when dealing with ${nextTopic} for a ${session.role}?`;
+        } else {
+          nextQuestion = `What were the key challenges or trade-offs you encountered when implementing that?`;
+        }
+      }
+    }
+
+    if (config.ai.enableTelemetry) {
+      logger.info(
+        `[TELEMETRY] ${JSON.stringify({
+          operation: 'live_turn',
+          sessionId,
+          turnNumber: session.totalTurns,
+          aiLatencyMs: turnLatencyMs,
+          cacheHit: false,
+          duplicateAvoided: duplicateDetected,
+        })}`,
+      );
+    }
+
+    // Update in-memory question history so subsequent turns know about it
+    if (nextQuestion && !session.questionHistory.includes(nextQuestion)) {
+      session.questionHistory.unshift(nextQuestion);
+      if (session.questionHistory.length > 25) {
+        session.questionHistory.pop();
+      }
+    }
 
     // ----------------------------------------------------------
     // Backend safety rule:
