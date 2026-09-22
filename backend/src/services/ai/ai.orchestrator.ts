@@ -408,10 +408,10 @@ export class AIOrchestrator {
       skillPerformance[key] = this.clamp(value);
     }
     if (
-      skillPerformance['Flutter/Dart Role Mastery'] !== undefined &&
-      skillPerformance['Role Mastery'] === undefined
+      skillPerformance['Role Mastery'] === undefined &&
+      skillPerformance['Technical Knowledge'] !== undefined
     ) {
-      skillPerformance['Role Mastery'] = skillPerformance['Flutter/Dart Role Mastery'];
+      skillPerformance['Role Mastery'] = skillPerformance['Technical Knowledge'];
     }
 
     // Normalize question reviews

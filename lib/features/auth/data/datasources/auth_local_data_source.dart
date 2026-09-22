@@ -24,7 +24,7 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   Future<UserModel> getCachedUser() async {
     final name = sharedPreferences.getString(keyUserName) ?? 'Meraj Khan';
     final email = sharedPreferences.getString(keyUserEmail) ?? 'meraj.khan@email.com';
-    final role = sharedPreferences.getString(keyUserRole) ?? 'Flutter Developer';
+    final role = sharedPreferences.getString(keyUserRole) ?? 'Software Engineer';
 
     return UserModel(
       id: 'usr_1',

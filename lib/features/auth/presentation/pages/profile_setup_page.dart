@@ -14,11 +14,10 @@ import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
 import '../controllers/auth_controller.dart';
 
-/// Compact, job-portal style Profile Setup screen.
+/// Modern, job-portal style Profile Setup screen (like Naukri / Indeed).
 ///
-/// Designed to minimize scrolling, maximize visual clarity, and provide
-/// a first-class experience for entering Target Role(s), adding Skills via
-/// authentic removable chips, and setting Experience Level.
+/// Provides typeahead search-as-you-type autocomplete for Target Roles and
+/// Skills without static clutter.
 class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({super.key});
 
@@ -31,7 +30,13 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   final _skillInputCtrl = TextEditingController();
   final _educationCtrl = TextEditingController();
   final _projectsCtrl = TextEditingController();
+
+  final _roleFocusNode = FocusNode();
   final _skillFocusNode = FocusNode();
+
+  final _scrollCtrl = ScrollController();
+  final _roleKey = GlobalKey();
+  final _skillKey = GlobalKey();
 
   final List<String> _skills = [];
   String _selectedExpLabel = '1–3 yrs';
@@ -40,56 +45,203 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   bool _isUploadingResume = false;
   String? _errorMessage;
 
-  static const List<String> _popularRoles = [
-    'Flutter Developer',
-    'Frontend Engineer',
-    'Backend Engineer',
+  static const List<String> _allRolesCatalog = [
+    'Software Engineer',
+    'Senior Software Engineer',
     'Full Stack Developer',
+    'Backend Engineer',
+    'Frontend Engineer',
     'Mobile Developer',
+    'Android Developer',
+    'Flutter developer',
+    'iOS Developer',
     'DevOps Engineer',
-    'AI / ML Engineer',
-    'Product Manager',
+    'Cloud Solutions Architect',
+    'Site Reliability Engineer (SRE)',
+    'AI / Machine Learning Engineer',
     'Data Scientist',
-    'QA Engineer',
+    'Data Engineer',
+    'System Architect',
+    'Database Administrator (DBA)',
+    'Cyber Security Engineer',
+    'QA Automation Engineer',
+    'Software Development Engineer in Test (SDET)',
+    'Product Manager',
+    'Technical Program Manager',
+    'Solutions Architect',
+    'Engineering Manager',
+    'UI/UX Developer',
+    'Systems Engineer',
+    'Embedded Systems Engineer',
+    'Network Engineer',
+    'Blockchain Developer',
+    'Game Developer',
+    'Microservices Architect',
+    'Big Data Engineer',
+    'Security Analyst',
   ];
 
-  static const List<String> _suggestedSkills = [
-    'Flutter',
-    'Dart',
-    'React',
-    'Node.js',
+  static const List<String> _allSkillsCatalog = [
     'Python',
+    'Java',
+    'JavaScript',
     'TypeScript',
-    'PostgreSQL',
-    'Docker',
-    'AWS',
-    'REST APIs',
-    'System Design',
-    'Git',
+    'C++',
+    'C#',
+    'Go',
+    'Rust',
+    'Kotlin',
+    'Swift',
+    'PHP',
+    'Ruby',
     'SQL',
+    'HTML / CSS',
+    'React',
+    'React Native',
+    'Angular',
+    'Vue.js',
+    'Next.js',
+    'Node.js',
+    'Express.js',
+    'NestJS',
+    'Spring Boot',
+    'Django',
+    'FastAPI',
+    'Flask',
+    'ASP.NET Core',
+    'Laravel',
+    'PostgreSQL',
+    'MySQL',
     'MongoDB',
+    'Redis',
+    'SQLite',
+    'Cassandra',
+    'Elasticsearch',
+    'DynamoDB',
+    'Oracle',
+    'Firebase',
+    'Docker',
+    'Kubernetes',
+    'AWS',
+    'Google Cloud (GCP)',
+    'Microsoft Azure',
+    'Terraform',
+    'Ansible',
+    'Jenkins',
+    'GitHub Actions',
+    'GitLab CI',
+    'Linux',
+    'Bash / Shell Scripting',
+    'REST APIs',
     'GraphQL',
+    'gRPC',
+    'WebSockets',
+    'Microservices',
+    'System Design',
+    'Distributed Systems',
+    'Event-Driven Architecture',
+    'Kafka',
+    'RabbitMQ',
+    'Git',
+    'CI/CD',
+    'Unit Testing',
+    'Integration Testing',
+    'Jest',
+    'PyTest',
+    'Selenium',
+    'Cypress',
+    'Playwright',
+    'OOP',
+    'Data Structures & Algorithms',
+    'Clean Architecture',
+    'Design Patterns',
+    'TensorFlow',
+    'PyTorch',
+    'Scikit-Learn',
+    'Pandas',
+    'NumPy',
+    'Computer Vision',
+    'NLP',
+    'LLMs & Prompt Engineering',
+    'OAuth 2.0',
+    'JWT',
+    'Cyber Security',
+    'Dart',
+    'Flutter',
   ];
 
-  static const List<({String label, double years})> _expOptions = [
-    (label: 'Fresher (< 1y)', years: 0.5),
-    (label: '1–3 yrs', years: 2.0),
-    (label: '3–5 yrs', years: 4.0),
-    (label: '5+ yrs', years: 6.0),
+  static const List<({String label, String sub, double years})> _expOptions = [
+    (label: 'Fresher', sub: 'Core Basics', years: 0.5),
+    (label: '1–3 yrs', sub: 'Hands-on', years: 2.0),
+    (label: '3–5 yrs', sub: 'Mid-Senior', years: 4.0),
+    (label: '5+ yrs', sub: 'Lead / Staff', years: 6.0),
   ];
 
   @override
   void initState() {
     super.initState();
     _loadExistingProfile();
+
+    _roleFocusNode.addListener(() {
+      if (_roleFocusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted && _roleFocusNode.hasFocus) {
+            _scrollToRole();
+          }
+        });
+      }
+      if (mounted) setState(() {});
+    });
+    _skillFocusNode.addListener(() {
+      if (_skillFocusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted && _skillFocusNode.hasFocus) {
+            _scrollToSkill();
+          }
+        });
+      }
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _scrollToRole() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _roleKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.05,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
+  void _scrollToSkill() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _skillKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.05,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
+    _scrollCtrl.dispose();
     _roleCtrl.dispose();
     _skillInputCtrl.dispose();
     _educationCtrl.dispose();
     _projectsCtrl.dispose();
+    _roleFocusNode.dispose();
     _skillFocusNode.dispose();
     super.dispose();
   }
@@ -123,8 +275,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return;
 
-    // Handle comma-separated input gracefully
-    final parts = trimmed.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
+    final parts =
+        trimmed.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
     setState(() {
       for (final part in parts) {
         if (!_skills.any((s) => s.toLowerCase() == part.toLowerCase())) {
@@ -146,11 +298,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
   void _selectRole(String role) {
     setState(() {
-      if (_roleCtrl.text.trim().toLowerCase() == role.toLowerCase()) {
-        _roleCtrl.clear();
-      } else {
-        _roleCtrl.text = role;
-      }
+      _roleCtrl.text = role;
+      _roleFocusNode.unfocus();
       _errorMessage = null;
     });
   }
@@ -171,19 +320,18 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
       setState(() => _isUploadingResume = true);
 
-      final resumeEntity = await context.read<ResumeController>().uploadFromFilePicker(
-            fileName: file.name,
-            filePath: file.path,
-            onProgress: (_) {},
-          );
+      final resumeEntity =
+          await context.read<ResumeController>().uploadFromFilePicker(
+                fileName: file.name,
+                filePath: file.path,
+                onProgress: (_) {},
+              );
 
       if (!mounted) return;
 
-      // Populate extracted resume data directly into our form
       setState(() {
         _isUploadingResume = false;
 
-        // Populate role if empty or overwrite with resume role
         final extractedRole = resumeEntity.workExperiences.isNotEmpty &&
                 resumeEntity.workExperiences.first.role.trim().isNotEmpty
             ? resumeEntity.workExperiences.first.role.trim()
@@ -195,24 +343,22 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
           _roleCtrl.text = extractedRole;
         }
 
-        // Add extracted skills
         for (final skill in resumeEntity.skills) {
           if (!_skills.any((s) => s.toLowerCase() == skill.toLowerCase())) {
             _skills.add(skill);
           }
         }
 
-        // Populate education if present
         if (resumeEntity.education.isNotEmpty && _educationCtrl.text.isEmpty) {
           _educationCtrl.text = resumeEntity.education;
         }
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Resume parsed! Extracted skills & role applied.'),
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
+          duration: Duration(seconds: 3),
         ),
       );
     } on NetworkException catch (e) {
@@ -225,7 +371,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       if (!mounted) return;
       setState(() {
         _isUploadingResume = false;
-        _errorMessage = 'Could not parse resume. You can enter details manually.';
+        _errorMessage =
+            'Could not parse resume. You can enter details manually.';
       });
     }
   }
@@ -238,7 +385,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     }
 
     if (_skills.isEmpty) {
-      setState(() => _errorMessage = 'Please add at least one key skill.');
+      setState(() => _errorMessage = 'Please add at least one core skill.');
       return;
     }
 
@@ -281,9 +428,31 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     final colors = AppColorScheme.of(context);
     final isSaving = context.watch<ProfileController>().isSaving;
 
-    final unselectedSkills = _suggestedSkills
-        .where((s) => !_skills.any((item) => item.toLowerCase() == s.toLowerCase()))
-        .toList();
+    // Filter matching roles as user types
+    final roleQuery = _roleCtrl.text.trim().toLowerCase();
+    final matchingRoles = roleQuery.isEmpty
+        ? <String>[]
+        : _allRolesCatalog
+            .where((r) =>
+                r.toLowerCase().contains(roleQuery) &&
+                r.toLowerCase() != roleQuery)
+            .take(5)
+            .toList();
+
+    // Filter matching skills as user types
+    final skillQuery = _skillInputCtrl.text.trim().toLowerCase();
+    final matchingSkills = skillQuery.isEmpty
+        ? <String>[]
+        : _allSkillsCatalog
+            .where((s) =>
+                s.toLowerCase().contains(skillQuery) &&
+                !_skills.any((existing) =>
+                    existing.toLowerCase() == s.toLowerCase()))
+            .take(5)
+            .toList();
+
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = bottomInset > 0;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -291,22 +460,51 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         backgroundColor: colors.background,
         elevation: 0,
         scrolledUnderElevation: 0,
-        centerTitle: false,
-        title: Text(
-          'Profile Setup',
-          style: AppTypography.bold(17, color: colors.foreground),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: colors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(FeatherIcons.target, size: 16, color: colors.primary),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Profile Setup',
+              style: AppTypography.bold(17, color: colors.foreground),
+            ),
+          ],
         ),
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: colors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: colors.primary.withValues(alpha: 0.25),
+              ),
             ),
-            child: Text(
-              'Step 2 of 2',
-              style: AppTypography.bold(11, color: colors.primary),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: colors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Step 2 of 2',
+                  style: AppTypography.bold(11, color: colors.primary),
+                ),
+              ],
             ),
           ),
         ],
@@ -314,364 +512,275 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 4, 18, 16),
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            // Top Step Progress Indicator
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 18),
+              height: 3,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: Row(
                   children: [
-                    // ── Header Headline ──────────────────────────────────────
-                    Text(
-                      'Personalize Your Practice',
-                      style: AppTypography.bold(21, color: colors.foreground),
+                    Expanded(
+                      child: Container(color: colors.primary),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'AI tailors interview questions to your exact stack & level.',
-                      style: AppTypography.regular(12, color: colors.mutedForeground),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Container(color: colors.primary),
                     ),
+                  ],
+                ),
+              ),
+            ),
 
-                    const SizedBox(height: 14),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => FocusScope.of(context).unfocus(),
+                behavior: HitTestBehavior.opaque,
+                child: SingleChildScrollView(
+                  controller: _scrollCtrl,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                      18, 14, 18, isKeyboardOpen ? 320 : 20),
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Header Headline ────────────────────────────────────
+                      Text(
+                        'Personalize Your Practice',
+                        style: AppTypography.bold(22, color: colors.foreground),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Set your target job role and technical skills. AI simulates authentic interviews tailored to your exact background.',
+                        style: AppTypography.regular(12.5,
+                            color: colors.mutedForeground, height: 1.4),
+                      ),
 
-                    // ── Fast-Track Resume Banner ─────────────────────────────
-                    InkWell(
-                      onTap: _isUploadingResume ? null : _pickAndParseResume,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: colors.primary.withValues(alpha: 0.07),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: colors.primary.withValues(alpha: 0.22),
+                      const SizedBox(height: 16),
+
+                      // ── Fast-Track Resume Banner ───────────────────────────
+                      InkWell(
+                        onTap: _isUploadingResume ? null : _pickAndParseResume,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: colors.card,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: colors.primary.withValues(alpha: 0.35),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: colors.primary.withValues(alpha: 0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: colors.primary.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              alignment: Alignment.center,
-                              child: _isUploadingResume
-                                  ? SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation(colors.primary),
-                                      ),
-                                    )
-                                  : Icon(FeatherIcons.zap, size: 16, color: colors.primary),
-                            ),
-                            const SizedBox(width: 11),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _isUploadingResume
-                                        ? 'Parsing resume with AI…'
-                                        : 'Have a resume? Auto-fill profile',
-                                    style: AppTypography.semiBold(12, color: colors.foreground),
-                                  ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    'Upload PDF/DOCX to extract role & skills instantly',
-                                    style: AppTypography.regular(10, color: colors.mutedForeground),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: colors.primary,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                _isUploadingResume ? 'Working' : 'Upload',
-                                style: AppTypography.bold(11, color: colors.primaryForeground),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ── Target Role ──────────────────────────────────────────
-                    Row(
-                      children: [
-                        Icon(FeatherIcons.briefcase, size: 13, color: colors.primary),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Target Role',
-                          style: AppTypography.semiBold(13, color: colors.foreground),
-                        ),
-                        Text(' *', style: AppTypography.bold(13, color: colors.coral)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: colors.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: colors.border),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _roleCtrl,
-                              style: AppTypography.medium(13, color: colors.foreground),
-                              decoration: InputDecoration(
-                                hintText: 'e.g. Flutter Developer, Backend Engineer',
-                                hintStyle: AppTypography.regular(12, color: colors.mutedForeground),
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          if (_roleCtrl.text.isNotEmpty)
-                            GestureDetector(
-                              onTap: () => setState(() => _roleCtrl.clear()),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Icon(FeatherIcons.x, size: 14, color: colors.mutedForeground),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 7),
-
-                    // Role Quick-Pick Pills (Horizontal Scroll)
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      child: Row(
-                        children: _popularRoles.map((role) {
-                          final isSelected = _roleCtrl.text.trim().toLowerCase() == role.toLowerCase();
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: InkWell(
-                              onTap: () => _selectRole(role),
-                              borderRadius: BorderRadius.circular(12),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 140),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
                                 decoration: BoxDecoration(
-                                  color: isSelected ? colors.primary : colors.secondary,
+                                  color: colors.primary.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isSelected ? colors.primary : colors.border,
-                                    width: isSelected ? 1.2 : 1.0,
-                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: _isUploadingResume
+                                    ? SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.2,
+                                          valueColor: AlwaysStoppedAnimation(
+                                              colors.primary),
+                                        ),
+                                      )
+                                    : Icon(FeatherIcons.fileText,
+                                        size: 19, color: colors.primary),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isUploadingResume
+                                          ? 'Parsing resume with AI…'
+                                          : 'Fast-Track with Resume',
+                                      style: AppTypography.bold(13,
+                                          color: colors.foreground),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Upload PDF or DOCX to auto-fill role & skills',
+                                      style: AppTypography.regular(11,
+                                          color: colors.mutedForeground),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: colors.primary,
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
-                                  role,
-                                  style: AppTypography.semiBold(
-                                    11,
-                                    color: isSelected ? colors.primaryForeground : colors.foreground,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // ── Key Skills & Technologies ────────────────────────────
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(FeatherIcons.code, size: 13, color: colors.primary),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Key Skills',
-                              style: AppTypography.semiBold(13, color: colors.foreground),
-                            ),
-                            Text(' *', style: AppTypography.bold(13, color: colors.coral)),
-                          ],
-                        ),
-                        if (_skills.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: colors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${_skills.length} added',
-                              style: AppTypography.bold(10, color: colors.primary),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Authentic Job-Portal Tag Box
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: colors.card,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _skills.isEmpty ? colors.border : colors.primary.withValues(alpha: 0.35),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Selected Skill Chips
-                          if (_skills.isNotEmpty) ...[
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: _skills.map((skill) {
-                                return Container(
-                                  padding: const EdgeInsets.fromLTRB(9, 4, 6, 4),
-                                  decoration: BoxDecoration(
-                                    color: colors.primary.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: colors.primary.withValues(alpha: 0.28),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        skill,
-                                        style: AppTypography.semiBold(11, color: colors.foreground),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      GestureDetector(
-                                        onTap: () => _removeSkill(skill),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(2),
-                                          child: Icon(
-                                            FeatherIcons.x,
-                                            size: 11,
-                                            color: colors.primary,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            const SizedBox(height: 8),
-                            Divider(
-                              height: 1,
-                              color: colors.border.withValues(alpha: 0.6),
-                            ),
-                            const SizedBox(height: 4),
-                          ],
-
-                          // Input line
-                          Row(
-                            children: [
-                              Icon(FeatherIcons.search, size: 13, color: colors.mutedForeground),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: _skillInputCtrl,
-                                  focusNode: _skillFocusNode,
-                                  textInputAction: TextInputAction.done,
-                                  onSubmitted: _addSkill,
-                                  style: AppTypography.medium(12, color: colors.foreground),
-                                  decoration: InputDecoration(
-                                    hintText: _skills.isEmpty
-                                        ? 'Type skill (e.g. Flutter, SQL) & press Enter'
-                                        : 'Add another skill...',
-                                    hintStyle: AppTypography.regular(11, color: colors.mutedForeground),
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                                  ),
-                                ),
-                              ),
-                              InkWell(
-                                onTap: () => _addSkill(_skillInputCtrl.text),
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: colors.primary.withValues(alpha: 0.14),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    '+ Add',
-                                    style: AppTypography.bold(11, color: colors.primary),
-                                  ),
+                                  _isUploadingResume ? 'Working' : 'Upload',
+                                  style: AppTypography.bold(11.5,
+                                      color: colors.primaryForeground),
                                 ),
                               ),
                             ],
                           ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // ── Target Role Section (Typeahead / Autocomplete) ──────
+                      Container(
+                        key: _roleKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                        children: [
+                          Icon(FeatherIcons.briefcase,
+                              size: 14, color: colors.primary),
+                          const SizedBox(width: 7),
+                          Text(
+                            'Target Role',
+                            style: AppTypography.bold(14,
+                                color: colors.foreground),
+                          ),
+                          Text(' *',
+                              style: AppTypography.bold(14,
+                                  color: colors.coral)),
                         ],
                       ),
-                    ),
-
-                    // Quick Suggested Skills (Horizontal Row)
-                    if (unselectedSkills.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Quick add:',
-                            style: AppTypography.semiBold(10, color: colors.mutedForeground),
+
+                      Container(
+                        decoration: BoxDecoration(
+                          color: colors.card,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _roleFocusNode.hasFocus
+                                ? colors.primary
+                                : colors.border,
+                            width: _roleFocusNode.hasFocus ? 1.4 : 1.0,
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 3),
+                        child: Row(
+                          children: [
+                            Icon(FeatherIcons.search,
+                                size: 15, color: colors.mutedForeground),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _roleCtrl,
+                                focusNode: _roleFocusNode,
+                                style: AppTypography.medium(13.5,
+                                    color: colors.foreground),
+                                decoration: InputDecoration(
+                                  hintText: 'Type your target role (e.g. Software Engineer)',
+                                  hintStyle: AppTypography.regular(12.5,
+                                      color: colors.mutedForeground),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding:
+                                      const EdgeInsets.symmetric(vertical: 11),
+                                ),
+                                onChanged: (_) {
+                                  setState(() {});
+                                  if (_roleCtrl.text.trim().isNotEmpty) {
+                                    _scrollToRole();
+                                  }
+                                },
+                              ),
+                            ),
+                            if (_roleCtrl.text.isNotEmpty)
+                              GestureDetector(
+                                onTap: () => setState(() => _roleCtrl.clear()),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(FeatherIcons.xCircle,
+                                      size: 15, color: colors.mutedForeground),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      // Dynamic Role Autocomplete Dropdown (As You Type)
+                      if (matchingRoles.isNotEmpty && _roleFocusNode.hasFocus) ...[
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          decoration: BoxDecoration(
+                            color: colors.card,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: colors.primary.withValues(alpha: 0.35)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
                             child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
                               physics: const BouncingScrollPhysics(),
-                              child: Row(
-                                children: unselectedSkills.take(9).map((skill) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 5),
-                                    child: InkWell(
-                                      onTap: () => _addSkill(skill),
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: colors.secondary,
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(color: colors.border),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(FeatherIcons.plus, size: 9, color: colors.primary),
-                                            const SizedBox(width: 3),
-                                            Text(
-                                              skill,
-                                              style: AppTypography.medium(10, color: colors.foreground),
+                              child: Column(
+                                children: matchingRoles.asMap().entries.map((entry) {
+                                  final idx = entry.key;
+                                  final role = entry.value;
+                                  return InkWell(
+                                    onTap: () => _selectRole(role),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 11),
+                                      decoration: BoxDecoration(
+                                        border: idx < matchingRoles.length - 1
+                                            ? Border(
+                                                bottom: BorderSide(
+                                                    color: colors.border
+                                                        .withValues(alpha: 0.6)))
+                                            : null,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(FeatherIcons.briefcase,
+                                              size: 13, color: colors.primary),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              role,
+                                              style: AppTypography.medium(13,
+                                                  color: colors.foreground),
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                          Icon(FeatherIcons.arrowUpLeft,
+                                              size: 13,
+                                              color: colors.mutedForeground),
+                                        ],
                                       ),
                                     ),
                                   );
@@ -679,156 +788,462 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-
-                    const SizedBox(height: 18),
-
-                    // ── Experience Level ─────────────────────────────────────
-                    Row(
-                      children: [
-                        Icon(FeatherIcons.clock, size: 13, color: colors.primary),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Experience Level',
-                          style: AppTypography.semiBold(13, color: colors.foreground),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: _expOptions.map((opt) {
-                        final isSelected = _selectedExpLabel == opt.label;
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                            child: InkWell(
-                              onTap: () => setState(() {
-                                _selectedExpLabel = opt.label;
-                                _selectedExpYears = opt.years;
-                              }),
-                              borderRadius: BorderRadius.circular(10),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 140),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? colors.primary : colors.secondary,
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 22),
+
+                      // ── Core Skills & Tech Stack Section ───────────────────
+                      Container(
+                        key: _skillKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(FeatherIcons.code,
+                                  size: 14, color: colors.primary),
+                              const SizedBox(width: 7),
+                              Text(
+                                'Core Skills & Technologies',
+                                style: AppTypography.bold(14,
+                                    color: colors.foreground),
+                              ),
+                              Text(' *',
+                                  style: AppTypography.bold(14,
+                                      color: colors.coral)),
+                            ],
+                          ),
+                          if (_skills.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${_skills.length} added',
+                                style: AppTypography.bold(10.5,
+                                    color: colors.primary),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Skill Box with Selected Chips & Inline Search Input
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colors.card,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _skillFocusNode.hasFocus
+                                ? colors.primary
+                                : (_skills.isEmpty
+                                    ? colors.border
+                                    : colors.primary.withValues(alpha: 0.35)),
+                            width: _skillFocusNode.hasFocus ? 1.4 : 1.2,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Selected Skill Chips
+                            if (_skills.isNotEmpty) ...[
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: _skills.map((skill) {
+                                  return Container(
+                                    padding:
+                                        const EdgeInsets.fromLTRB(10, 5, 7, 5),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          colors.primary.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: colors.primary
+                                            .withValues(alpha: 0.28),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          skill,
+                                          style: AppTypography.semiBold(11.5,
+                                              color: colors.foreground),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        GestureDetector(
+                                          onTap: () => _removeSkill(skill),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: BoxDecoration(
+                                              color: colors.primary
+                                                  .withValues(alpha: 0.15),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              FeatherIcons.x,
+                                              size: 10,
+                                              color: colors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 10),
+                              Divider(
+                                height: 1,
+                                color: colors.border.withValues(alpha: 0.6),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+
+                            // Input line
+                            Row(
+                              children: [
+                                Icon(FeatherIcons.plusCircle,
+                                    size: 15, color: colors.mutedForeground),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _skillInputCtrl,
+                                    focusNode: _skillFocusNode,
+                                    textInputAction: TextInputAction.done,
+                                    onSubmitted: _addSkill,
+                                    style: AppTypography.medium(12.5,
+                                        color: colors.foreground),
+                                    decoration: InputDecoration(
+                                      hintText: _skills.isEmpty
+                                          ? 'Type skill (e.g. Python, SQL, React) & press Enter'
+                                          : 'Type next skill...',
+                                      hintStyle: AppTypography.regular(11.5,
+                                          color: colors.mutedForeground),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(vertical: 6),
+                                    ),
+                                    onChanged: (_) {
+                                      setState(() {});
+                                      if (_skillInputCtrl.text.trim().isNotEmpty) {
+                                        _scrollToSkill();
+                                      }
+                                    },
+                                  ),
+                                ),
+                                InkWell(
+                                  onTap: () => _addSkill(_skillInputCtrl.text),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: isSelected ? colors.primary : colors.border,
-                                    width: isSelected ? 1.2 : 1.0,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 11, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          colors.primary.withValues(alpha: 0.14),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '+ Add',
+                                      style: AppTypography.bold(11.5,
+                                          color: colors.primary),
+                                    ),
                                   ),
                                 ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  opt.label,
-                                  style: AppTypography.semiBold(
-                                    10,
-                                    color: isSelected ? colors.primaryForeground : colors.foreground,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Dynamic Skill Autocomplete Dropdown (As You Type)
+                      if (matchingSkills.isNotEmpty && _skillFocusNode.hasFocus) ...[
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          decoration: BoxDecoration(
+                            color: colors.card,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: colors.primary.withValues(alpha: 0.35)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              child: Column(
+                                children: matchingSkills.asMap().entries.map((entry) {
+                                  final idx = entry.key;
+                                  final skill = entry.value;
+                                  return InkWell(
+                                    onTap: () => _addSkill(skill),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        border: idx < matchingSkills.length - 1
+                                            ? Border(
+                                                bottom: BorderSide(
+                                                    color: colors.border
+                                                        .withValues(alpha: 0.6)))
+                                            : null,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(FeatherIcons.plus,
+                                              size: 13, color: colors.primary),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              skill,
+                                              style: AppTypography.medium(13,
+                                                  color: colors.foreground),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 7, vertical: 2.5),
+                                            decoration: BoxDecoration(
+                                              color: colors.primary
+                                                  .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              'Add',
+                                              style: AppTypography.bold(10,
+                                                  color: colors.primary),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ── Collapsible Optional Details (Education & Projects) ──
-                    InkWell(
-                      onTap: () => setState(() => _showAdditional = !_showAdditional),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                        decoration: BoxDecoration(
-                          color: colors.secondary.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: colors.border),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(FeatherIcons.bookOpen, size: 13, color: colors.mutedForeground),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Add Education & Projects (Optional)',
-                                style: AppTypography.semiBold(11, color: colors.foreground),
-                              ),
-                            ),
-                            Icon(
-                              _showAdditional ? FeatherIcons.chevronUp : FeatherIcons.chevronDown,
-                              size: 15,
-                              color: colors.mutedForeground,
-                            ),
+                      ],
                           ],
                         ),
                       ),
-                    ),
 
-                    if (_showAdditional) ...[
-                      const SizedBox(height: 10),
-                      Text('Education', style: AppTypography.medium(11, color: colors.foreground)),
-                      const SizedBox(height: 4),
-                      AppTextField(
-                        controller: _educationCtrl,
-                        placeholder: 'e.g. B.Tech Computer Science, 2024',
+                      const SizedBox(height: 22),
+
+                      // ── Experience Level Section ───────────────────────────
+                      Row(
+                        children: [
+                          Icon(FeatherIcons.clock,
+                              size: 14, color: colors.primary),
+                          const SizedBox(width: 7),
+                          Text(
+                            'Experience Level',
+                            style: AppTypography.bold(14,
+                                color: colors.foreground),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-                      Text('Notable Project', style: AppTypography.medium(11, color: colors.foreground)),
-                      const SizedBox(height: 4),
-                      AppTextField(
-                        controller: _projectsCtrl,
-                        placeholder: 'e.g. Real-time chat app with Flutter & Node.js',
-                      ),
-                    ],
 
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: colors.coral.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: colors.coral.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(FeatherIcons.alertCircle, size: 14, color: colors.coral),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: AppTypography.semiBold(11, color: colors.coral),
+                      Row(
+                        children: _expOptions.map((opt) {
+                          final isSelected = _selectedExpLabel == opt.label;
+                          return Expanded(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 2.5),
+                              child: InkWell(
+                                onTap: () => setState(() {
+                                  _selectedExpLabel = opt.label;
+                                  _selectedExpYears = opt.years;
+                                }),
+                                borderRadius: BorderRadius.circular(12),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 140),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 9),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? colors.primary
+                                        : colors.card,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? colors.primary
+                                          : colors.border,
+                                      width: isSelected ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        opt.label,
+                                        style: AppTypography.bold(
+                                          11,
+                                          color: isSelected
+                                              ? colors.primaryForeground
+                                              : colors.foreground,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        opt.sub,
+                                        style: AppTypography.regular(
+                                          9.5,
+                                          color: isSelected
+                                              ? colors.primaryForeground
+                                                  .withValues(alpha: 0.8)
+                                              : colors.mutedForeground,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                          ],
+                          );
+                        }).toList(),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // ── Collapsible Optional Details (Education & Projects) ─
+                      InkWell(
+                        onTap: () =>
+                            setState(() => _showAdditional = !_showAdditional),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 11),
+                          decoration: BoxDecoration(
+                            color: colors.card,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(FeatherIcons.bookOpen,
+                                  size: 14, color: colors.mutedForeground),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Education & Key Projects (Optional)',
+                                      style: AppTypography.bold(12,
+                                          color: colors.foreground),
+                                    ),
+                                    Text(
+                                      'Helps AI ask in-depth background questions',
+                                      style: AppTypography.regular(10.5,
+                                          color: colors.mutedForeground),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                _showAdditional
+                                    ? FeatherIcons.chevronUp
+                                    : FeatherIcons.chevronDown,
+                                size: 16,
+                                color: colors.mutedForeground,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
+
+                      if (_showAdditional) ...[
+                        const SizedBox(height: 12),
+                        Text('Education',
+                            style: AppTypography.semiBold(12,
+                                color: colors.foreground)),
+                        const SizedBox(height: 5),
+                        AppTextField(
+                          controller: _educationCtrl,
+                          placeholder: 'e.g. B.Tech in Computer Science, 2024',
+                        ),
+                        const SizedBox(height: 10),
+                        Text('Featured Project',
+                            style: AppTypography.semiBold(12,
+                                color: colors.foreground)),
+                        const SizedBox(height: 5),
+                        AppTextField(
+                          controller: _projectsCtrl,
+                          placeholder:
+                              'e.g. Real-time distributed chat platform with WebSockets & Redis',
+                        ),
+                      ],
+
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colors.coral.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: colors.coral.withValues(alpha: 0.35)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(FeatherIcons.alertCircle,
+                                  size: 16, color: colors.coral),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: AppTypography.semiBold(11.5,
+                                      color: colors.coral),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 24),
+
+                      // ── Action Button ────────────────────────────────────
+                      AppButton(
+                        label: 'Save & Start Practicing',
+                        icon: FeatherIcons.arrowRight,
+                        isLoading: isSaving,
+                        onPress: _submitProfile,
+                      ),
+
+                      const SizedBox(height: 16),
                     ],
-
-                    const SizedBox(height: 10),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-
-            // ── Sticky Action Button ───────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
-              decoration: BoxDecoration(
-                color: colors.card,
-                border: Border(top: BorderSide(color: colors.border)),
-              ),
-              child: AppButton(
-                label: 'Save & Start Practicing',
-                icon: FeatherIcons.arrowRight,
-                isLoading: isSaving,
-                onPress: _submitProfile,
               ),
             ),
           ],

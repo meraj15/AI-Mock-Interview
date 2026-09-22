@@ -177,7 +177,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           const SizedBox(height: 8),
           AppTextField(
             controller: _roleController,
-            placeholder: 'e.g. Flutter Developer, Senior Backend',
+            placeholder: 'e.g. Software Engineer, Full Stack Developer',
           ),
 
           const SizedBox(height: 14),
@@ -187,7 +187,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           const SizedBox(height: 8),
           AppTextField(
             controller: _skillsController,
-            placeholder: 'e.g. Flutter, Dart, Firebase, REST APIs',
+            placeholder: 'e.g. Python, React, PostgreSQL, REST APIs',
           ),
 
           const SizedBox(height: 14),
