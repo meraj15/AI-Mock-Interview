@@ -17,6 +17,12 @@ class InterviewController extends ChangeNotifier {
   /// Prevents concurrent answer submissions (double-tap, STT callbacks, widget rebuilds).
   bool _isSubmitting = false;
 
+  /// Prevents concurrent interview start calls.
+  bool _isStarting = false;
+
+  /// Prevents concurrent final evaluation fetches.
+  bool _isFetchingEvaluation = false;
+
   String? _sessionId;
   List<InterviewTopic> _topics = [];
   String _currentQuestion = '';
@@ -118,95 +124,104 @@ class InterviewController extends ChangeNotifier {
     ProfileModel? profile,
     String? targetRole,
   }) async {
-    _interviewActive = true;
-    _sessionStatus = SessionStatus.loading;
-    _errorMessage = null;
-    _currentQuestion = '';
-    _currentAcknowledgement = '';
-    _currentTopic = '';
-    _currentTopicIndex = 0;
-    _totalTopics = _config.questions > 0 ? _config.questions : 10;
-    _isFollowUp = false;
-    _isComplete = false;
-    _topics = [];
-    _sessionHistory.clear();
-
-    // 1. Determine target role with priority: explicit targetRole -> profile -> resume -> existing config
-    String effectiveRole = _config.role;
-    if (targetRole != null && targetRole.trim().isNotEmpty) {
-      effectiveRole = targetRole.trim();
-    } else if (profile != null && profile.targetRole != null && profile.targetRole!.trim().isNotEmpty) {
-      effectiveRole = profile.targetRole!.trim();
-    } else if (resume != null) {
-      if (resume.workExperiences.isNotEmpty && resume.workExperiences.first.role.trim().isNotEmpty) {
-        effectiveRole = resume.workExperiences.first.role.trim();
-      } else if (resume.name.contains('–')) {
-        effectiveRole = resume.name.split('–').last.trim();
-      } else if (resume.skills.isNotEmpty) {
-        effectiveRole = _inferRoleFromSkills(resume.skills);
-      }
-    }
-
-    // 2. Determine skills and experience
-    List<String> effectiveSkills = _config.skills;
-    String effectiveExp = _config.experience;
-
-    if (profile != null) {
-      if (profile.skills.isNotEmpty) effectiveSkills = profile.skills;
-      if (profile.experienceLabel.trim().isNotEmpty) effectiveExp = profile.experienceLabel.trim();
-    } else if (resume != null) {
-      if (resume.skills.isNotEmpty) effectiveSkills = resume.skills;
-      if (resume.experience.isNotEmpty) effectiveExp = resume.experience;
-    }
-
-    _config = _config.copyWith(
-      role: effectiveRole.isNotEmpty ? effectiveRole : 'Software Developer',
-      skills: effectiveSkills,
-      experience: effectiveExp,
-    );
-
-    notifyListeners();
-
-    if (apiClient == null) {
-      const err = 'Backend API client is not configured.';
-      debugPrint('[InterviewController] ERROR: $err');
-      _errorMessage = err;
-      _sessionStatus = SessionStatus.error;
-      _interviewActive = false;
-      notifyListeners();
+    if (_isStarting) {
+      debugPrint('[InterviewController] startInterview: already in-flight, ignoring duplicate call');
       return;
     }
-
-    final ai = GeminiAIInterviewService(apiClient: apiClient!);
+    _isStarting = true;
 
     try {
-      debugPrint('[InterviewController] Starting live conversational interview for "${_config.role}"...');
-      final startResult = await ai.startConversationalInterview(
-        config: _config,
-        resume: resume,
+      _interviewActive = true;
+      _sessionStatus = SessionStatus.loading;
+      _errorMessage = null;
+      _currentQuestion = '';
+      _currentAcknowledgement = '';
+      _currentTopic = '';
+      _currentTopicIndex = 0;
+      _totalTopics = _config.questions > 0 ? _config.questions : 10;
+      _isFollowUp = false;
+      _isComplete = false;
+      _topics = [];
+      _sessionHistory.clear();
+
+      // 1. Determine target role with priority: explicit targetRole -> profile -> resume -> existing config
+      String effectiveRole = _config.role;
+      if (targetRole != null && targetRole.trim().isNotEmpty) {
+        effectiveRole = targetRole.trim();
+      } else if (profile != null && profile.targetRole != null && profile.targetRole!.trim().isNotEmpty) {
+        effectiveRole = profile.targetRole!.trim();
+      } else if (resume != null) {
+        if (resume.workExperiences.isNotEmpty && resume.workExperiences.first.role.trim().isNotEmpty) {
+          effectiveRole = resume.workExperiences.first.role.trim();
+        } else if (resume.name.contains('–')) {
+          effectiveRole = resume.name.split('–').last.trim();
+        } else if (resume.skills.isNotEmpty) {
+          effectiveRole = _inferRoleFromSkills(resume.skills);
+        }
+      }
+
+      // 2. Determine skills and experience
+      List<String> effectiveSkills = _config.skills;
+      String effectiveExp = _config.experience;
+
+      if (profile != null) {
+        if (profile.skills.isNotEmpty) effectiveSkills = profile.skills;
+        if (profile.experienceLabel.trim().isNotEmpty) effectiveExp = profile.experienceLabel.trim();
+      } else if (resume != null) {
+        if (resume.skills.isNotEmpty) effectiveSkills = resume.skills;
+        if (resume.experience.isNotEmpty) effectiveExp = resume.experience;
+      }
+
+      _config = _config.copyWith(
+        role: effectiveRole.isNotEmpty ? effectiveRole : 'Software Developer',
+        skills: effectiveSkills,
+        experience: effectiveExp,
       );
 
-      _sessionId = startResult.sessionId;
-      _topics = startResult.topics;
-      _currentTopic = startResult.currentTopic;
-      _currentTopicIndex = startResult.currentTopicIndex;
-      _totalTopics = startResult.totalTopics;
-      _currentQuestion = startResult.firstQuestion;
-      _currentAcknowledgement = '';
-      _isComplete = false;
-      _sessionStatus = SessionStatus.active;
-      _errorMessage = null;
+      notifyListeners();
 
-      debugPrint('[InterviewController] Session started: $_sessionId, Q1: "$_currentQuestion"');
-    } catch (e, stackTrace) {
-      final cleanError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      debugPrint('[InterviewController] START INTERVIEW FAILED: $cleanError\n$stackTrace');
-      _errorMessage = cleanError;
-      _sessionStatus = SessionStatus.error;
-      _interviewActive = false;
+      if (apiClient == null) {
+        const err = 'Backend API client is not configured.';
+        debugPrint('[InterviewController] ERROR: $err');
+        _errorMessage = err;
+        _sessionStatus = SessionStatus.error;
+        _interviewActive = false;
+        notifyListeners();
+        return;
+      }
+
+      final ai = GeminiAIInterviewService(apiClient: apiClient!);
+
+      try {
+        debugPrint('[InterviewController] Starting live conversational interview for "${_config.role}"...');
+        final startResult = await ai.startConversationalInterview(
+          config: _config,
+          resume: resume,
+        );
+
+        _sessionId = startResult.sessionId;
+        _topics = startResult.topics;
+        _currentTopic = startResult.currentTopic;
+        _currentTopicIndex = startResult.currentTopicIndex;
+        _totalTopics = startResult.totalTopics;
+        _currentQuestion = startResult.firstQuestion;
+        _currentAcknowledgement = '';
+        _isComplete = false;
+        _sessionStatus = SessionStatus.active;
+        _errorMessage = null;
+
+        debugPrint('[InterviewController] Session started: $_sessionId, Q1: "$_currentQuestion"');
+      } catch (e, stackTrace) {
+        final cleanError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        debugPrint('[InterviewController] START INTERVIEW FAILED: $cleanError\n$stackTrace');
+        _errorMessage = cleanError;
+        _sessionStatus = SessionStatus.error;
+        _interviewActive = false;
+      }
+    } finally {
+      _isStarting = false;
+      notifyListeners();
     }
-
-    notifyListeners();
   }
 
   /// STAGE 2: Submit candidate answer and transition conversational turn
@@ -258,7 +273,7 @@ class InterviewController extends ChangeNotifier {
           turn.action == 'end_interview' ||
           _sessionHistory.length >= totalQuestions) {
         _isComplete = true;
-        _sessionStatus = SessionStatus.active;
+        _sessionStatus = SessionStatus.evaluating;
         // Start pre-fetching final evaluation in background
         _fetchFinalEvaluation();
       } else {
@@ -295,6 +310,12 @@ class InterviewController extends ChangeNotifier {
       return;
     }
 
+    if (_isFetchingEvaluation) {
+      debugPrint('[InterviewController] _fetchFinalEvaluation: already in-flight, ignoring duplicate call');
+      return;
+    }
+    _isFetchingEvaluation = true;
+
     _sessionStatus = SessionStatus.evaluating;
     _errorMessage = null;
     notifyListeners();
@@ -313,9 +334,10 @@ class InterviewController extends ChangeNotifier {
       debugPrint('[InterviewController] _fetchFinalEvaluation error: $e\n$stackTrace');
       _errorMessage = _toUserFriendlyError(e);
       _sessionStatus = SessionStatus.error;
+    } finally {
+      _isFetchingEvaluation = false;
+      notifyListeners();
     }
-
-    notifyListeners();
   }
 
   /// Converts a raw exception into a user-friendly message.

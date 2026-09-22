@@ -52,7 +52,9 @@ class _InterviewResultPageState extends State<InterviewResultPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final ic = context.read<InterviewController>();
-      if (ic.lastEvaluation == null && ic.sessionId != null) {
+      if (ic.lastEvaluation == null &&
+          ic.sessionId != null &&
+          ic.sessionStatus != SessionStatus.evaluating) {
         ic.fetchFinalEvaluation();
       }
     });

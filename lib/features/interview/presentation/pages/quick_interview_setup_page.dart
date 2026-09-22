@@ -27,7 +27,12 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
 
   String _timeLimitLabel(int s) => s == 0 ? 'None' : '${s}s';
 
+  bool _isStartingSession = false;
+
   void _startInterview() {
+    if (_isStartingSession) return;
+    setState(() => _isStartingSession = true);
+
     final ic = context.read<InterviewController>();
     final rc = context.read<ResumeController>();
     final pc = context.read<ProfileController>();
@@ -52,7 +57,11 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage> {
     );
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const InterviewSessionPage()),
-    );
+    ).then((_) {
+      if (mounted) {
+        setState(() => _isStartingSession = false);
+      }
+    });
   }
 
   @override

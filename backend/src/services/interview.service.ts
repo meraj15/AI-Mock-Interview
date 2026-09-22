@@ -46,6 +46,7 @@ export interface ActiveConversationalSession {
 
   status: 'in_progress' | 'completed';
   finalEvaluation?: FinalInterviewEvaluation;
+  inFlightEvaluation?: Promise<FinalInterviewEvaluation>;
 
   // Scoped idempotency tracking: key is `${sessionId}:${turnNumber}:${answerId}`
   idempotentTurns?: Map<string, any>;
@@ -763,14 +764,13 @@ export class InterviewService {
       return session.finalEvaluation;
     }
 
-    // Database idempotency check: if session was already persisted with this ID
-    const existingInDb =
-      await interviewRepository.findByIdWithQuestions(sessionId);
-    if (existingInDb) {
-      const evalFromDb = this._toEvaluation(existingInDb);
-      session.finalEvaluation = evalFromDb;
-      session.status = 'completed';
-      return evalFromDb;
+    // In-flight coalescing: if an evaluation is already being generated for this session,
+    // await the in-flight Promise so concurrent requests don't duplicate Gemini calls or DB operations.
+    if (session.inFlightEvaluation) {
+      logger.info(
+        `[InterviewService] In-flight evaluation in progress: coalescing concurrent request for sessionId=${sessionId}`,
+      );
+      return await session.inFlightEvaluation;
     }
 
     const transcript = session.interactions.filter(
@@ -784,90 +784,110 @@ export class InterviewService {
       );
     }
 
-    const evaluation = await aiService.generateFinalEvaluation({
-      role: session.role,
-      experience: session.experience,
-      skills: session.skills,
-      transcript,
-    });
+    const executeEvaluation = async (): Promise<FinalInterviewEvaluation> => {
+      // Database idempotency check: if session was already persisted with this ID
+      const existingInDb =
+        await interviewRepository.findByIdWithQuestions(sessionId);
+      if (existingInDb) {
+        const evalFromDb = this._toEvaluation(existingInDb);
+        session.finalEvaluation = evalFromDb;
+        session.status = 'completed';
+        return evalFromDb;
+      }
 
-    const durationSecs = Math.max(
-      1,
-      Math.round((Date.now() - session.startedAt) / 1000),
-    );
-
-    const hiringBand =
-      evaluation.performanceLevel === 'Excellent'
-        ? 'Strong Hire'
-        : evaluation.performanceLevel === 'Good'
-        ? 'Hire'
-        : evaluation.performanceLevel === 'Average'
-        ? 'Leaning Hire'
-        : 'Needs Practice';
-
-    // Map question reviews with transcript topic and type matching
-    const questionsToPersist = (evaluation.questionReviews || []).map(
-      (review, idx) => {
-        const match = transcript.find(
-          (t) =>
-            t.question.trim().toLowerCase() ===
-            review.question.trim().toLowerCase(),
-        );
-
-        return {
-          questionNumber: idx + 1,
-          question: review.question,
-          candidateAnswer: review.answer,
-          expectedAnswer: review.expectedAnswer ?? '',
-          feedback: review.feedback,
-          score: review.score,
-          topic:
-            match?.topic ??
-            (idx < transcript.length ? transcript[idx].topic : null) ??
-            null,
-          type:
-            match?.type ??
-            (idx < transcript.length ? transcript[idx].type : null) ??
-            null,
-        };
-      },
-    );
-
-    try {
-      await interviewRepository.createWithQuestions({
-        id: sessionId,
-        userId,
+      const evaluation = await aiService.generateFinalEvaluation({
         role: session.role,
-        type: 'technical',
-        questionCount: transcript.length,
-        score: evaluation.overallScore,
-        hiringBand,
-        summary: evaluation.summary,
-        strengths: evaluation.strengths,
-        areasToImprove: evaluation.areasToImprove,
-        skillScores: evaluation.skillPerformance ?? {},
-        durationSecs,
-        questions: questionsToPersist,
+        experience: session.experience,
+        skills: session.skills,
+        transcript,
       });
 
-      session.finalEvaluation = evaluation;
-      session.status = 'completed';
+      const durationSecs = Math.max(
+        1,
+        Math.round((Date.now() - session.startedAt) / 1000),
+      );
 
-      logger.info(
-        `[InterviewService] Saved interview ${sessionId} with ${questionsToPersist.length} questions into database for user=${userId}`,
+      const hiringBand =
+        evaluation.performanceLevel === 'Excellent'
+          ? 'Strong Hire'
+          : evaluation.performanceLevel === 'Good'
+          ? 'Hire'
+          : evaluation.performanceLevel === 'Average'
+          ? 'Leaning Hire'
+          : 'Needs Practice';
+
+      // Map question reviews with transcript topic and type matching
+      const questionsToPersist = (evaluation.questionReviews || []).map(
+        (review, idx) => {
+          const match = transcript.find(
+            (t) =>
+              t.question.trim().toLowerCase() ===
+              review.question.trim().toLowerCase(),
+          );
+
+          return {
+            questionNumber: idx + 1,
+            question: review.question,
+            candidateAnswer: review.answer,
+            expectedAnswer: review.expectedAnswer ?? '',
+            feedback: review.feedback,
+            score: review.score,
+            topic:
+              match?.topic ??
+              (idx < transcript.length ? transcript[idx].topic : null) ??
+              null,
+            type:
+              match?.type ??
+              (idx < transcript.length ? transcript[idx].type : null) ??
+              null,
+          };
+        },
       );
-    } catch (dbErr) {
-      logger.error(
-        `[InterviewService] Failed to persist interview ${sessionId} with questions to DB:`,
-        dbErr,
-      );
-      throw Object.assign(
-        new Error('Failed to persist interview question reviews to database'),
-        { statusCode: 500, cause: dbErr },
-      );
+
+      try {
+        await interviewRepository.createWithQuestions({
+          id: sessionId,
+          userId,
+          role: session.role,
+          type: 'technical',
+          questionCount: transcript.length,
+          score: evaluation.overallScore,
+          hiringBand,
+          summary: evaluation.summary,
+          strengths: evaluation.strengths,
+          areasToImprove: evaluation.areasToImprove,
+          skillScores: evaluation.skillPerformance ?? {},
+          durationSecs,
+          questions: questionsToPersist,
+        });
+
+        session.finalEvaluation = evaluation;
+        session.status = 'completed';
+
+        logger.info(
+          `[InterviewService] Saved interview ${sessionId} with ${questionsToPersist.length} questions into database for user=${userId}`,
+        );
+      } catch (dbErr) {
+        logger.error(
+          `[InterviewService] Failed to persist interview ${sessionId} with questions to DB:`,
+          dbErr,
+        );
+        throw Object.assign(
+          new Error('Failed to persist interview question reviews to database'),
+          { statusCode: 500, cause: dbErr },
+        );
+      }
+
+      return evaluation;
+    };
+
+    session.inFlightEvaluation = executeEvaluation();
+
+    try {
+      return await session.inFlightEvaluation;
+    } finally {
+      session.inFlightEvaluation = undefined;
     }
-
-    return session.finalEvaluation;
   }
 
   /**
