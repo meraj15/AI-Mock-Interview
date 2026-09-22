@@ -190,12 +190,8 @@ class AIEvaluationResult {
       hiringBand: hiringBand,
       benchmark: benchmark,
       skillScores: skillScores,
-      strengths: rawStrengths.isNotEmpty
-          ? rawStrengths
-          : ['Demonstrated clear domain concepts and structured answers.'],
-      areasToImprove: rawAreas.isNotEmpty
-          ? rawAreas
-          : ['Add more quantified metrics and explore edge cases.'],
+      strengths: rawStrengths,
+      areasToImprove: rawAreas,
       recommendedTopics: rawRecs,
       questionReviews: rawReviews
           .whereType<Map<String, dynamic>>()

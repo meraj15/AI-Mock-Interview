@@ -264,8 +264,19 @@ class InterviewController extends ChangeNotifier {
   }
 
   /// STAGE 3: Final evaluation retrieval
+  Future<void> fetchFinalEvaluation() => _fetchFinalEvaluation();
+
   Future<void> _fetchFinalEvaluation() async {
     if (_sessionId == null || apiClient == null) return;
+    if (_lastEvaluation != null) {
+      _sessionStatus = SessionStatus.complete;
+      notifyListeners();
+      return;
+    }
+
+    _sessionStatus = SessionStatus.evaluating;
+    _errorMessage = null;
+    notifyListeners();
 
     final ai = GeminiAIInterviewService(apiClient: apiClient!);
 

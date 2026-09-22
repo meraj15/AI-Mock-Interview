@@ -9,6 +9,7 @@ import '../../../../core/services/ai_interview_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_shimmer.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
 import '../controllers/interview_controller.dart';
 import 'question_review_page.dart';
@@ -28,7 +29,8 @@ class _InterviewResultPageState extends State<InterviewResultPage>
   late final AnimationController _contentCtrl;
   late final Animation<double> _contentAnim;
 
-  int _selectedTab = 0; // 0: Overview, 1: Q&A Analysis, 2: Roadmap
+  int _selectedTab = 0; // 0: Overview, 1: Q&A Breakdown, 2: Roadmap
+  bool _hasStartedAnimation = false;
 
   @override
   void initState() {
@@ -36,20 +38,33 @@ class _InterviewResultPageState extends State<InterviewResultPage>
 
     _ringCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1100),
     );
     _ringAnim = CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOutCubic);
 
     _contentCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 500),
     );
     _contentAnim =
         CurvedAnimation(parent: _contentCtrl, curve: Curves.easeOut);
 
-    _ringCtrl.forward().then((_) {
-      if (mounted) _contentCtrl.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ic = context.read<InterviewController>();
+      if (ic.lastEvaluation == null && ic.sessionId != null) {
+        ic.fetchFinalEvaluation();
+      }
     });
+  }
+
+  void _triggerScoreAnimation() {
+    if (!_hasStartedAnimation && mounted) {
+      _hasStartedAnimation = true;
+      _ringCtrl.forward().then((_) {
+        if (mounted) _contentCtrl.forward();
+      });
+    }
   }
 
   @override
@@ -65,10 +80,10 @@ class _InterviewResultPageState extends State<InterviewResultPage>
     String band,
     String role,
   ) {
-    final text = 'Interview Coach Report\n'
+    final text = 'Interview Coach Assessment Report\n'
         'Role: $role\n'
-        'Overall Score: $score/100 ($band)\n\n'
-        'Executive Summary:\n$summary';
+        'Score: $score/100 ($band)\n\n'
+        'Summary:\n$summary';
 
     Clipboard.setData(ClipboardData(text: text));
     Fluttertoast.showToast(
@@ -85,53 +100,47 @@ class _InterviewResultPageState extends State<InterviewResultPage>
     final eval = ic.lastEvaluation;
     final config = ic.config;
 
-    final score = eval?.overallScore ?? 84;
-    final band = eval?.hiringBand ?? 'Strong Hire';
-    final label = eval?.performanceLabel ?? 'Strong Candidate';
+    void navigateHome() {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainNavPage()),
+        (_) => false,
+      );
+    }
 
-    final summary = (eval?.summary.isNotEmpty == true)
-        ? eval!.summary
-        : 'The candidate demonstrated a solid command of technical concepts, structured reasoning, and clear communication throughout the interview session.';
-
-    final strengths = (eval?.strengths.isNotEmpty == true)
-        ? eval!.strengths
-        : [
-            'Strong architectural intuition and clear mental models.',
-            'Structured communication when explaining engineering trade-offs.',
-            'Effective problem-solving methodology with practical examples.',
-          ];
-
-    final improvements = (eval?.areasToImprove.isNotEmpty == true)
-        ? eval!.areasToImprove
-        : [
-            'Quantify project outcomes with measurable performance metrics.',
-            'Deepen edge-case exploration during system considerations.',
-            'Structure answers more concisely using the STAR framework.',
-          ];
-
-    final recommendations = (eval?.recommendedTopics.isNotEmpty == true)
-        ? eval!.recommendedTopics
-        : [
-            'Advanced Asynchronous Patterns & Concurrency Control',
-            'Scalable Architecture & Clean Component Isolation',
-            'Application Profiling, Memory Optimization & Performance Tuning',
-          ];
-
-    final questionReviews = (eval?.questionReviews.isNotEmpty == true)
-        ? eval!.questionReviews
-        : _buildFallbackReviews(ic.sessionHistory);
-
-    final benchmark = eval?.benchmark ??
-        RoleBenchmark(
-          percentile: score >= 85 ? 92 : score >= 75 ? 84 : 68,
-          industryAverageScore: 72,
-          readinessLevel: label,
-          companyCultureAlignment: config.company.isNotEmpty
-              ? 'High alignment with ${config.company} core engineering competencies.'
-              : 'Strong readiness for modern engineering team standards.',
+    // ── 1. Loading / Evaluating State -> Show Shimmer Skeleton ────────────────
+    if (eval == null) {
+      if (ic.sessionStatus == SessionStatus.error) {
+        return _ResultErrorView(
+          colors: colors,
+          errorMessage: ic.errorMessage,
+          onRetry: () => ic.fetchFinalEvaluation(),
+          onClose: navigateHome,
         );
+      }
 
-    // Dynamic color palettes matching score & band
+      return _ResultShimmerLoadingView(
+        colors: colors,
+        role: config.role.isNotEmpty ? config.role : 'Interview Candidate',
+        questionCount: ic.totalQuestions,
+        onClose: navigateHome,
+      );
+    }
+
+    // ── 2. Real Evaluation Ready -> Smoothly Animate Real Score ───────────────
+    _triggerScoreAnimation();
+
+    final score = eval.overallScore;
+    final band = eval.hiringBand.isNotEmpty ? eval.hiringBand : 'Hire';
+    final label = eval.performanceLabel.isNotEmpty ? eval.performanceLabel : 'Strong Candidate';
+    final summary = eval.summary;
+    final strengths = eval.strengths;
+    final improvements = eval.areasToImprove;
+    final recommendations = eval.recommendedTopics;
+    final questionReviews = eval.questionReviews;
+
+    final benchmark = eval.benchmark;
+
+    // Score-based dynamic colors
     final scoreColor = score >= 85
         ? colors.mint
         : score >= 70
@@ -162,37 +171,35 @@ class _InterviewResultPageState extends State<InterviewResultPage>
       backgroundColor: colors.background,
       body: Column(
         children: [
-          // ── Hero Section ──────────────────────────────────────────────────
+          // ── Hero Section (Airy, Compact & Clean) ───────────────────────────
           _ExecutiveHeroSection(
             score: score,
             band: band,
             bandColor: bandColor,
             bandIcon: bandIcon,
             label: label,
-            role: config.role.isNotEmpty ? config.role : 'Technical Role',
+            role: config.role.isNotEmpty ? config.role : 'Candidate',
             company: config.company,
-            experience: config.experience,
             scoreColor: scoreColor,
             ringAnim: _ringAnim,
             totalQuestions: questionReviews.isNotEmpty
                 ? questionReviews.length
-                : config.questions,
+                : (ic.sessionHistory.isNotEmpty
+                    ? ic.sessionHistory.length
+                    : config.questions),
             benchmark: benchmark,
             isDark: isDark,
             colors: colors,
-            onClose: () => Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const MainNavPage()),
-              (_) => false,
-            ),
+            onClose: navigateHome,
             onShare: () => _copySummaryToClipboard(
               summary,
               score,
               band,
-              config.role.isNotEmpty ? config.role : 'Flutter Developer',
+              config.role.isNotEmpty ? config.role : 'Candidate',
             ),
           ),
 
-          // ── Segmented Tab Selector ────────────────────────────────────────
+          // ── Segmented Tab Selector ─────────────────────────────────────────
           _SegmentedTabBar(
             selectedIndex: _selectedTab,
             onTabSelected: (index) => setState(() => _selectedTab = index),
@@ -200,86 +207,60 @@ class _InterviewResultPageState extends State<InterviewResultPage>
             questionCount: questionReviews.length,
           ),
 
-          // ── Scrollable Tab Content ────────────────────────────────────────
+          // ── Scrollable Tab Content ─────────────────────────────────────────
           Expanded(
             child: FadeTransition(
               opacity: _contentAnim,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.04),
-                  end: Offset.zero,
-                ).animate(_contentAnim),
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_selectedTab == 0) ...[
-                        // ── Tab 0: Overview & Executive Briefing ───────────
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_selectedTab == 0) ...[
+                      // ── Tab 0: Overview & Key Takeaways ────────────────────
+                      if (summary.isNotEmpty) ...[
                         _SummaryBriefingCard(
                           summary: summary,
                           colors: colors,
                         ),
                         const SizedBox(height: 14),
-
-                        _BenchmarkComparisonCard(
-                          score: score,
-                          benchmark: benchmark,
-                          colors: colors,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Strengths & Growth Areas
-                        _FeedbackSection(
-                          title: 'Demonstrated Strengths',
-                          subtitle: 'Key technical competencies confirmed',
-                          icon: FeatherIcons.checkCircle,
-                          accentColor: colors.success,
-                          items: strengths,
-                          colors: colors,
-                        ),
-                        const SizedBox(height: 14),
-
-                        _FeedbackSection(
-                          title: 'Areas for Growth',
-                          subtitle: 'Targeted actions to elevate your score',
-                          icon: FeatherIcons.target,
-                          accentColor: colors.coral,
-                          items: improvements,
-                          colors: colors,
-                        ),
-                      ] else if (_selectedTab == 1) ...[
-                        // ── Tab 1: Q&A Analysis ───────────────────────────
-                        _QuestionAnalysisTab(
-                          reviews: questionReviews,
-                          colors: colors,
-                          onOpenDeepDive: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const QuestionReviewPage(),
-                            ),
-                          ),
-                        ),
-                      ] else ...[
-                        // ── Tab 2: Learning Roadmap ───────────────────────
-                        _RoadmapTab(
-                          recommendations: recommendations,
-                          role: config.role.isNotEmpty
-                              ? config.role
-                              : 'Flutter Developer',
-                          colors: colors,
-                        ),
                       ],
 
-                      const SizedBox(height: 16),
+                      _KeyTakeawaysCard(
+                        strengths: strengths,
+                        improvements: improvements,
+                        colors: colors,
+                      ),
+                    ] else if (_selectedTab == 1) ...[
+                      // ── Tab 1: Q&A Analysis ────────────────────────────────
+                      _QuestionAnalysisTab(
+                        reviews: questionReviews,
+                        colors: colors,
+                        onOpenDeepDive: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const QuestionReviewPage(),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      // ── Tab 2: Learning Roadmap ────────────────────────────
+                      _RoadmapTab(
+                        recommendations: recommendations,
+                        role: config.role.isNotEmpty
+                            ? config.role
+                            : 'Candidate',
+                        colors: colors,
+                      ),
                     ],
-                  ),
+                    const SizedBox(height: 12),
+                  ],
                 ),
               ),
             ),
           ),
 
-          // ── Bottom Fixed Action Bar ───────────────────────────────────────
+          // ── Bottom Fixed Action Bar ────────────────────────────────────────
           _BottomActionBar(
             colors: colors,
             onReviewAnswers: () => Navigator.of(context).push(
@@ -295,53 +276,294 @@ class _InterviewResultPageState extends State<InterviewResultPage>
       ),
     );
   }
+}
 
-  static List<QuestionReview> _buildFallbackReviews(
-    List<Map<String, String>> sessionHistory,
-  ) {
-    if (sessionHistory.isNotEmpty) {
-      return sessionHistory.map((item) {
-        return QuestionReview(
-          question: item['question'] ?? 'Technical Question',
-          answer: item['answer'] ?? 'Answer captured during session.',
-          expectedAnswer:
-              'A great answer explains the core idea in plain English first, followed by a concrete real-world example from your development experience.',
-          feedback:
-              'Demonstrated sound technical understanding and structured reasoning.',
-          score: 82,
-        );
-      }).toList();
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// SHIMMER LOADING SKELETON (SHOWN WHILE EVALUATING)
+// ─────────────────────────────────────────────────────────────────────────────
 
-    return const [
-      QuestionReview(
-        question:
-            'What is dependency injection, and why do we use it in Flutter?',
-        answer:
-            'I think dependency injection means we don\'t create the object directly inside the class. We pass it from outside, so it is easier to manage and test.',
-        expectedAnswer:
-            'Dependency injection means giving a class the things it needs instead of creating them inside the class. For example, if my service needs a database or API client, I pass it in through the constructor. This makes the code much easier to test and change later.',
-        feedback:
-            'Solid core explanation. Clear and easy to follow.',
-        score: 88,
+class _ResultShimmerLoadingView extends StatelessWidget {
+  final AppColorScheme colors;
+  final String role;
+  final int questionCount;
+  final VoidCallback onClose;
+
+  const _ResultShimmerLoadingView({
+    required this.colors,
+    required this.role,
+    required this.questionCount,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final bgGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: isDark
+          ? [
+              const Color(0xFF091122),
+              const Color(0xFF0E1A34),
+              const Color(0xFF132347),
+            ]
+          : [
+              const Color(0xFF122244),
+              const Color(0xFF172C58),
+              const Color(0xFF1E3668),
+            ],
+    );
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: AppShimmer(
+        child: Column(
+          children: [
+            // Shimmer Hero
+            Container(
+              decoration: BoxDecoration(gradient: bgGradient),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          ShimmerBox(width: 34, height: 34, borderRadius: 10),
+                          ShimmerBox(width: 140, height: 16, borderRadius: 6),
+                          ShimmerBox(width: 34, height: 34, borderRadius: 10),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Score Dial + Verdict Meta
+                      Row(
+                        children: [
+                          const ShimmerBox.circle(size: 104),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                ShimmerBox(width: 130, height: 18, borderRadius: 6),
+                                SizedBox(height: 10),
+                                ShimmerBox(width: 95, height: 26, borderRadius: 8),
+                                SizedBox(height: 8),
+                                ShimmerBox(width: 150, height: 14, borderRadius: 6),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Stats Strip
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: const [
+                            ShimmerBox(width: 70, height: 18, borderRadius: 6),
+                            ShimmerBox(width: 70, height: 18, borderRadius: 6),
+                            ShimmerBox(width: 70, height: 18, borderRadius: 6),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Shimmer Tab Bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: colors.border),
+                ),
+                child: Row(
+                  children: const [
+                    Expanded(child: ShimmerBox(height: 34, borderRadius: 10)),
+                    SizedBox(width: 6),
+                    Expanded(child: ShimmerBox(height: 34, borderRadius: 10)),
+                    SizedBox(width: 6),
+                    Expanded(child: ShimmerBox(height: 34, borderRadius: 10)),
+                  ],
+                ),
+              ),
+            ),
+
+            // Shimmer Cards in Body
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Column(
+                  children: [
+                    // Summary card shimmer
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colors.card,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          ShimmerBox(width: 160, height: 16, borderRadius: 6),
+                          SizedBox(height: 12),
+                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
+                          SizedBox(height: 7),
+                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
+                          SizedBox(height: 7),
+                          ShimmerBox(width: 220, height: 13, borderRadius: 4),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Key Takeaways shimmer
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colors.card,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          ShimmerBox(width: 140, height: 15, borderRadius: 6),
+                          SizedBox(height: 10),
+                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
+                          SizedBox(height: 6),
+                          ShimmerBox(width: 260, height: 13, borderRadius: 4),
+                          SizedBox(height: 14),
+                          ShimmerBox(width: 130, height: 15, borderRadius: 6),
+                          SizedBox(height: 10),
+                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Bottom Status indicator
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Generating AI evaluation scorecard…',
+                    style: AppTypography.medium(12, color: colors.mutedForeground),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      QuestionReview(
-        question:
-            'What is the difference between Future and Stream in Dart?',
-        answer:
-            'A Future gives one value in the future like an API call. A Stream gives multiple values over time like events.',
-        expectedAnswer:
-            'A Future delivers a single value or an error once, like waiting for an HTTP API response. A Stream delivers multiple values over time, like listening to continuous user location updates or websocket chat messages.',
-        feedback:
-            'Accurate and concise explanation with everyday examples.',
-        score: 92,
-      ),
-    ];
+    );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HERO SECTION
+// ERROR VIEW (WHEN EVALUATION FAILS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ResultErrorView extends StatelessWidget {
+  final AppColorScheme colors;
+  final String? errorMessage;
+  final VoidCallback onRetry;
+  final VoidCallback onClose;
+
+  const _ResultErrorView({
+    required this.colors,
+    this.errorMessage,
+    required this.onRetry,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: colors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.close, color: colors.foreground),
+          onPressed: onClose,
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: colors.coral.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(FeatherIcons.alertCircle, size: 26, color: colors.coral),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Evaluation Not Ready',
+                style: AppTypography.bold(17, color: colors.foreground),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                errorMessage ?? 'We could not generate the scorecard right now. Please try again.',
+                textAlign: TextAlign.center,
+                style: AppTypography.regular(13, color: colors.mutedForeground, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              AppButton(
+                label: 'Retry Evaluation',
+                icon: FeatherIcons.refreshCw,
+                onPress: onRetry,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXECUTIVE HERO SECTION (SPACIOUS & ELEGANT)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ExecutiveHeroSection extends StatelessWidget {
@@ -352,7 +574,6 @@ class _ExecutiveHeroSection extends StatelessWidget {
   final String label;
   final String role;
   final String company;
-  final String experience;
   final Color scoreColor;
   final Animation<double> ringAnim;
   final int totalQuestions;
@@ -370,7 +591,6 @@ class _ExecutiveHeroSection extends StatelessWidget {
     required this.label,
     required this.role,
     required this.company,
-    required this.experience,
     required this.scoreColor,
     required this.ringAnim,
     required this.totalQuestions,
@@ -404,92 +624,65 @@ class _ExecutiveHeroSection extends StatelessWidget {
         gradient: bgGradient,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 18,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 14,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Top Action Row
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   InkWell(
                     onTap: onClose,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.12),
                         ),
                       ),
                       child: const Icon(
                         FeatherIcons.x,
-                        size: 17,
+                        size: 16,
                         color: Colors.white,
                       ),
                     ),
                   ),
-                  const Spacer(),
-                  Column(
-                    children: [
-                      Text(
-                        'EVALUATION REPORT',
-                        style: AppTypography.bold(
-                          12,
-                          color: Colors.white.withValues(alpha: 0.85),
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: colors.mint,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'AI Assessment Verified',
-                            style: AppTypography.regular(
-                              10,
-                              color: const Color(0xFF9FB2D8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  Text(
+                    'EVALUATION SCORECARD',
+                    style: AppTypography.bold(
+                      12,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      letterSpacing: 1.0,
+                    ),
                   ),
-                  const Spacer(),
                   InkWell(
                     onTap: onShare,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.12),
                         ),
                       ),
                       child: const Icon(
                         FeatherIcons.share2,
-                        size: 16,
+                        size: 15,
                         color: Colors.white,
                       ),
                     ),
@@ -499,62 +692,11 @@ class _ExecutiveHeroSection extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // Candidate & Role Pill Banner
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      FeatherIcons.briefcase,
-                      size: 13,
-                      color: colors.tint,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      role,
-                      style: AppTypography.semiBold(
-                        12,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (company.isNotEmpty) ...[
-                      Text(
-                        ' • $company',
-                        style: AppTypography.medium(
-                          12,
-                          color: const Color(0xFFB1C4E8),
-                        ),
-                      ),
-                    ],
-                    if (experience.isNotEmpty) ...[
-                      Text(
-                        ' • $experience',
-                        style: AppTypography.regular(
-                          11,
-                          color: const Color(0xFF8FA5CF),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
               // Score Dial + Verdict Meta
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Animated Radial Gauge
+                  // Animated Radial Gauge (Compact 104px)
                   AnimatedBuilder(
                     animation: ringAnim,
                     builder: (context, child) {
@@ -562,17 +704,17 @@ class _ExecutiveHeroSection extends StatelessWidget {
                         alignment: Alignment.center,
                         children: [
                           Container(
-                            width: 132,
-                            height: 132,
+                            width: 104,
+                            height: 104,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
                                   color: scoreColor.withValues(
-                                    alpha: 0.32 * ringAnim.value,
+                                    alpha: 0.28 * ringAnim.value,
                                   ),
-                                  blurRadius: 36,
-                                  spreadRadius: 6,
+                                  blurRadius: 28,
+                                  spreadRadius: 4,
                                 ),
                               ],
                             ),
@@ -589,16 +731,39 @@ class _ExecutiveHeroSection extends StatelessWidget {
 
                   const SizedBox(width: 18),
 
-                  // Verdict Info
+                  // Role & Band Meta
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Role Title
+                        Text(
+                          role,
+                          style: AppTypography.bold(
+                            16,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (company.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            company,
+                            style: AppTypography.regular(
+                              12,
+                              color: const Color(0xFFB1C4E8),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+
                         // Hiring Band Tag
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
+                            horizontal: 9,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
                             color: bandColor.withValues(alpha: 0.18),
@@ -611,11 +776,11 @@ class _ExecutiveHeroSection extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(bandIcon, size: 12, color: bandColor),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 5),
                               Text(
                                 band.toUpperCase(),
                                 style: AppTypography.bold(
-                                  11,
+                                  10.5,
                                   color: bandColor,
                                   letterSpacing: 0.5,
                                 ),
@@ -623,48 +788,14 @@ class _ExecutiveHeroSection extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-
-                        // Performance Label
-                        Text(
-                          label,
-                          style: AppTypography.bold(
-                            18,
-                            color: Colors.white,
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
                         const SizedBox(height: 6),
 
-                        // Percentile Pill
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.07),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                FeatherIcons.trendingUp,
-                                size: 11,
-                                color: colors.mint,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                'Top ${100 - benchmark.percentile}% of Candidates',
-                                style: AppTypography.semiBold(
-                                  11,
-                                  color: colors.mint,
-                                ),
-                              ),
-                            ],
+                        // Performance Subtitle
+                        Text(
+                          label,
+                          style: AppTypography.medium(
+                            12,
+                            color: const Color(0xFFC0D2F4),
                           ),
                         ),
                       ],
@@ -673,25 +804,25 @@ class _ExecutiveHeroSection extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
 
-              // Quick Benchmark Metrics Strip
+              // Quick Stats Strip (Spacious & Minimal)
               Container(
                 padding:
-                    const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+                    const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.09),
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
                 child: Row(
                   children: [
                     _HeroMetric(
                       icon: FeatherIcons.helpCircle,
-                      value: '$totalQuestions',
-                      label: 'Questions',
+                      value: '$totalQuestions Qs',
+                      label: 'Completed',
                     ),
                     _HeroDivider(),
                     _HeroMetric(
@@ -701,13 +832,10 @@ class _ExecutiveHeroSection extends StatelessWidget {
                     ),
                     _HeroDivider(),
                     _HeroMetric(
-                      icon: FeatherIcons.barChart2,
-                      value:
-                          '${score >= benchmark.industryAverageScore ? "+" : ""}${score - benchmark.industryAverageScore} pts',
-                      label: 'vs Industry Avg',
-                      valueColor: score >= benchmark.industryAverageScore
-                          ? colors.mint
-                          : colors.coral,
+                      icon: FeatherIcons.award,
+                      value: 'Top ${100 - benchmark.percentile}%',
+                      label: 'Percentile',
+                      valueColor: colors.mint,
                     ),
                   ],
                 ),
@@ -741,12 +869,12 @@ class _HeroMetric extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 12, color: const Color(0xFF9BB2DD)),
+              Icon(icon, size: 11, color: const Color(0xFF9BB2DD)),
               const SizedBox(width: 4),
               Text(
                 value,
                 style: AppTypography.bold(
-                  13,
+                  12,
                   color: valueColor ?? Colors.white,
                 ),
               ),
@@ -771,14 +899,14 @@ class _HeroDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 1,
-      height: 26,
+      height: 22,
       color: Colors.white.withValues(alpha: 0.12),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCORE RING GAUGE
+// SCORE RING GAUGE (104x104)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ScoreRingGauge extends StatelessWidget {
@@ -797,8 +925,8 @@ class _ScoreRingGauge extends StatelessWidget {
     final displayScore = (score * progress).round();
 
     return SizedBox(
-      width: 132,
-      height: 132,
+      width: 104,
+      height: 104,
       child: CustomPaint(
         painter: _ScorePainter(
           value: (score / 100) * progress,
@@ -812,7 +940,7 @@ class _ScoreRingGauge extends StatelessWidget {
               Text(
                 '$displayScore',
                 style: AppTypography.bold(
-                  38,
+                  30,
                   color: Colors.white,
                   height: 1.05,
                 ),
@@ -820,7 +948,7 @@ class _ScoreRingGauge extends StatelessWidget {
               Text(
                 'OUT OF 100',
                 style: AppTypography.bold(
-                  9,
+                  8.5,
                   color: const Color(0xFF8FA5D1),
                   letterSpacing: 0.8,
                 ),
@@ -848,7 +976,7 @@ class _ScorePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final radius = (size.width - 14) / 2;
+    final radius = (size.width - 12) / 2;
     final rect = Rect.fromCircle(center: Offset(cx, cy), radius: radius);
 
     // Track
@@ -859,7 +987,7 @@ class _ScorePainter extends CustomPainter {
       false,
       Paint()
         ..color = trackColor
-        ..strokeWidth = 9
+        ..strokeWidth = 7.5
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round,
     );
@@ -873,7 +1001,7 @@ class _ScorePainter extends CustomPainter {
         false,
         Paint()
           ..color = ringColor
-          ..strokeWidth = 9
+          ..strokeWidth = 7.5
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round,
       );
@@ -905,7 +1033,7 @@ class _SegmentedTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      margin: const EdgeInsets.fromLTRB(18, 12, 18, 2),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: colors.card,
@@ -963,7 +1091,7 @@ class _TabItem extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
@@ -972,7 +1100,7 @@ class _TabItem extends StatelessWidget {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: colors.primary.withValues(alpha: 0.25),
+                      color: colors.primary.withValues(alpha: 0.22),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -1008,7 +1136,7 @@ class _TabItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 0: OVERVIEW COMPONENTS
+// TAB 0: EXECUTIVE SUMMARY & KEY TAKEAWAYS (CLEAN & SPACIOUS)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SummaryBriefingCard extends StatelessWidget {
@@ -1035,58 +1163,34 @@ class _SummaryBriefingCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(7),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: colors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  FeatherIcons.messageSquare,
+                  FeatherIcons.fileText,
                   size: 14,
                   color: colors.primary,
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'AI Interviewer Briefing',
-                      style: AppTypography.bold(
-                        14,
-                        color: colors.foreground,
-                      ),
-                    ),
-                    Text(
-                      'Executive summary of demonstrated competencies',
-                      style: AppTypography.regular(
-                        11,
-                        color: colors.mutedForeground,
-                      ),
-                    ),
-                  ],
+              Text(
+                'Executive Summary',
+                style: AppTypography.bold(
+                  14,
+                  color: colors.foreground,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colors.muted.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(12),
-              border: Border(
-                left: BorderSide(color: colors.primary, width: 3.5),
-              ),
-            ),
-            child: Text(
-              summary,
-              style: AppTypography.regular(
-                13,
-                color: colors.foreground,
-                height: 1.55,
-              ),
+          Text(
+            summary,
+            style: AppTypography.regular(
+              13,
+              color: colors.foreground,
+              height: 1.55,
             ),
           ),
         ],
@@ -1095,19 +1199,22 @@ class _SummaryBriefingCard extends StatelessWidget {
   }
 }
 
-class _BenchmarkComparisonCard extends StatelessWidget {
-  final int score;
-  final RoleBenchmark benchmark;
+class _KeyTakeawaysCard extends StatelessWidget {
+  final List<String> strengths;
+  final List<String> improvements;
   final AppColorScheme colors;
 
-  const _BenchmarkComparisonCard({
-    required this.score,
-    required this.benchmark,
+  const _KeyTakeawaysCard({
+    required this.strengths,
+    required this.improvements,
     required this.colors,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (strengths.isEmpty && improvements.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1118,220 +1225,108 @@ class _BenchmarkComparisonCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: colors.tint.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  FeatherIcons.sliders,
-                  size: 14,
-                  color: colors.tint,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Role Benchmark & Readiness',
-                style: AppTypography.bold(
-                  14,
-                  color: colors.foreground,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Comparison Bar: Your Score vs Industry
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Candidate Score: $score',
-                style: AppTypography.semiBold(
-                  12,
-                  color: colors.foreground,
-                ),
-              ),
-              Text(
-                'Industry Average: ${benchmark.industryAverageScore}',
-                style: AppTypography.medium(
-                  12,
-                  color: colors.mutedForeground,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Double Progress Bar
-          Stack(
-            children: [
-              // Track
-              Container(
-                height: 8,
-                decoration: BoxDecoration(
-                  color: colors.muted,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              // Candidate Progress
-              FractionallySizedBox(
-                widthFactor: (score / 100).clamp(0.05, 1.0),
-                child: Container(
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: colors.primary,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Alignment Commentary
-          if (benchmark.companyCultureAlignment.isNotEmpty)
+          // ── Strengths ──────────────────────────────────────────────────────
+          if (strengths.isNotEmpty) ...[
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Icon(
-                    FeatherIcons.shield,
-                    size: 12,
-                    color: colors.success,
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: colors.success.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(FeatherIcons.checkCircle, size: 14, color: colors.success),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    benchmark.companyCultureAlignment,
-                    style: AppTypography.regular(
-                      11,
-                      color: colors.mutedForeground,
-                      height: 1.4,
-                    ),
-                  ),
+                const SizedBox(width: 10),
+                Text(
+                  'Key Strengths',
+                  style: AppTypography.bold(14, color: colors.foreground),
                 ),
               ],
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FeedbackSection extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color accentColor;
-  final List<String> items;
-  final AppColorScheme colors;
-
-  const _FeedbackSection({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.accentColor,
-    required this.items,
-    required this.colors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accentColor.withValues(alpha: 0.22)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 14, color: accentColor),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: AppTypography.bold(
-                      14,
-                      color: colors.foreground,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: AppTypography.regular(
-                      11,
-                      color: colors.mutedForeground,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '${items.length} points',
-                  style: AppTypography.semiBold(
-                    10,
-                    color: accentColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          ...items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 5),
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: accentColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      item,
-                      style: AppTypography.regular(
-                        12,
-                        color: colors.foreground,
-                        height: 1.5,
+            const SizedBox(height: 10),
+            ...strengths.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 5),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: colors.success,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: AppTypography.regular(12.5, color: colors.foreground, height: 1.45),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
+
+          if (strengths.isNotEmpty && improvements.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Divider(color: colors.border.withValues(alpha: 0.5)),
+            ),
+          ],
+
+          // ── Areas for Growth ───────────────────────────────────────────────
+          if (improvements.isNotEmpty) ...[
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: colors.coral.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(FeatherIcons.target, size: 14, color: colors.coral),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Areas to Improve',
+                  style: AppTypography.bold(14, color: colors.foreground),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...improvements.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 5),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: colors.coral,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: AppTypography.regular(12.5, color: colors.foreground, height: 1.45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1366,10 +1361,10 @@ class _QuestionAnalysisTab extends StatelessWidget {
                 children: [
                   Text(
                     'Turn-by-Turn Breakdown',
-                    style: AppTypography.bold(15, color: colors.foreground),
+                    style: AppTypography.bold(14, color: colors.foreground),
                   ),
                   Text(
-                    'Review individual question scoring and AI feedback',
+                    'Review individual question scoring and feedback',
                     style: AppTypography.regular(
                       11,
                       color: colors.mutedForeground,
@@ -1389,17 +1384,32 @@ class _QuestionAnalysisTab extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        ...reviews.asMap().entries.map((entry) {
-          final idx = entry.key;
-          final r = entry.value;
-          return _QuestionReviewCard(
-            index: idx + 1,
-            review: r,
-            colors: colors,
-          );
-        }),
+        if (reviews.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colors.border),
+            ),
+            child: Text(
+              'No question reviews available.',
+              style: AppTypography.regular(12, color: colors.mutedForeground),
+            ),
+          )
+        else
+          ...reviews.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final r = entry.value;
+            return _QuestionReviewCard(
+              index: idx + 1,
+              review: r,
+              colors: colors,
+            );
+          }),
       ],
     );
   }
@@ -1435,17 +1445,17 @@ class _QuestionReviewCardState extends State<_QuestionReviewCard> {
                 : widget.colors.coral;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: widget.colors.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: widget.colors.border),
       ),
       child: InkWell(
         onTap: () => setState(() => _expanded = !_expanded),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1454,7 +1464,7 @@ class _QuestionReviewCardState extends State<_QuestionReviewCard> {
                 children: [
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                     decoration: BoxDecoration(
                       color: widget.colors.secondary,
                       borderRadius: BorderRadius.circular(6),
@@ -1470,7 +1480,7 @@ class _QuestionReviewCardState extends State<_QuestionReviewCard> {
                   const Spacer(),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                     decoration: BoxDecoration(
                       color: scoreColor.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(6),
@@ -1481,41 +1491,41 @@ class _QuestionReviewCardState extends State<_QuestionReviewCard> {
                     child: Text(
                       '$score / 100',
                       style: AppTypography.bold(
-                        11,
+                        10.5,
                         color: scoreColor,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Icon(
                     _expanded
                         ? FeatherIcons.chevronUp
                         : FeatherIcons.chevronDown,
-                    size: 14,
+                    size: 13,
                     color: widget.colors.mutedForeground,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 7),
 
               // Question Text
               Text(
                 widget.review.question,
                 style: AppTypography.semiBold(
-                  13,
+                  12.5,
                   color: widget.colors.foreground,
                   height: 1.35,
                 ),
               ),
 
               if (_expanded) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
 
                 // Candidate Answer
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: widget.colors.muted.withValues(alpha: 0.4),
+                    color: widget.colors.muted.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
@@ -1553,16 +1563,16 @@ class _QuestionReviewCardState extends State<_QuestionReviewCard> {
                   ),
                 ),
 
-                // Expected / Ideal Human Answer
-                if (widget.review.expectedAnswer.isNotEmpty) ...[
+                // Feedback
+                if (widget.review.feedback.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: widget.colors.mint.withValues(alpha: 0.10),
+                      color: widget.colors.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: widget.colors.mint.withValues(alpha: 0.35),
+                        color: widget.colors.primary.withValues(alpha: 0.25),
                       ),
                     ),
                     child: Column(
@@ -1570,95 +1580,34 @@ class _QuestionReviewCardState extends State<_QuestionReviewCard> {
                       children: [
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: widget.colors.mint.withValues(alpha: 0.20),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Icon(
-                                FeatherIcons.check,
-                                size: 11,
-                                color: widget.colors.mint,
-                              ),
+                            Icon(
+                              FeatherIcons.messageCircle,
+                              size: 11,
+                              color: widget.colors.primary,
                             ),
-                            const SizedBox(width: 7),
+                            const SizedBox(width: 5),
                             Text(
-                              'Expected / Ideal Answer',
+                              'AI Feedback:',
                               style: AppTypography.bold(
                                 11,
-                                color: widget.colors.mint,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              'Natural & Simple',
-                              style: AppTypography.medium(
-                                10,
-                                color: widget.colors.mutedForeground,
+                                color: widget.colors.primary,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Text(
-                          widget.review.expectedAnswer,
+                          widget.review.feedback,
                           style: AppTypography.regular(
                             12,
                             color: widget.colors.foreground,
-                            height: 1.5,
+                            height: 1.45,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ],
-
-                const SizedBox(height: 8),
-
-                // AI Coach Feedback
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: widget.colors.accent.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: widget.colors.accentForeground
-                          .withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            FeatherIcons.zap,
-                            size: 11,
-                            color: widget.colors.accentForeground,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Interviewer Feedback:',
-                            style: AppTypography.semiBold(
-                              11,
-                              color: widget.colors.accentForeground,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.review.feedback,
-                        style: AppTypography.regular(
-                          12,
-                          color: widget.colors.foreground,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ],
           ),
@@ -1690,93 +1639,82 @@ class _RoadmapTab extends StatelessWidget {
       children: [
         Text(
           'Targeted Learning Roadmap',
-          style: AppTypography.bold(15, color: colors.foreground),
+          style: AppTypography.bold(14, color: colors.foreground),
         ),
         Text(
-          'Curated study topics to reach senior proficiency as a $role',
+          'Curated study topics based on your answers',
           style: AppTypography.regular(
             11,
             color: colors.mutedForeground,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
 
-        ...recommendations.asMap().entries.map((entry) {
-          final idx = entry.key + 1;
-          final topic = entry.value;
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(14),
+        if (recommendations.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: colors.card,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: colors.border),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Step Number Badge
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: colors.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: colors.primary.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '0$idx',
-                      style: AppTypography.bold(
-                        12,
-                        color: colors.primary,
+            child: Text(
+              'No study recommendations at this time.',
+              style: AppTypography.regular(12, color: colors.mutedForeground),
+            ),
+          )
+        else
+          ...recommendations.asMap().entries.map((entry) {
+            final idx = entry.key + 1;
+            final topic = entry.value;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: colors.border),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: colors.primary.withValues(alpha: 0.35),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Topic Content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        topic,
-                        style: AppTypography.semiBold(
-                          13,
-                          color: colors.foreground,
-                          height: 1.35,
+                    child: Center(
+                      child: Text(
+                        '0$idx',
+                        style: AppTypography.bold(
+                          11,
+                          color: colors.primary,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            FeatherIcons.bookmark,
-                            size: 11,
-                            color: colors.tint,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'High Priority Mastery for $role',
-                            style: AppTypography.medium(
-                              10,
-                              color: colors.mutedForeground,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      topic,
+                      style: AppTypography.semiBold(
+                        12.5,
+                        color: colors.foreground,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }
@@ -1800,7 +1738,7 @@ class _BottomActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
       decoration: BoxDecoration(
         color: colors.card,
         border: Border(
@@ -1808,9 +1746,9 @@ class _BottomActionBar extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
           ),
         ],
       ),

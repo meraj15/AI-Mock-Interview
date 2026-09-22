@@ -38,8 +38,8 @@ class ApiConfig {
       .isNotEmpty
       ? const String.fromEnvironment('UAT_BASE_URL')
       : (defaultTargetPlatform == TargetPlatform.android
-          ? 'http://192.168.0.112:3000'
-          : 'http://192.168.0.112:3000');
+          ? 'http://192.168.0.113:3000'
+          : 'http://192.168.0.113:3000');
 
   /// Convenient alias for uatBaseUrl
   static String get localBaseUrl => uatBaseUrl;

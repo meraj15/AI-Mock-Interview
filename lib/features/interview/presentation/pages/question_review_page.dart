@@ -56,9 +56,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
       final r = reviews[_index];
       questionText = r.question;
       answerText = r.answer.isNotEmpty ? r.answer : 'No answer provided.';
-      expectedAnswerText = r.expectedAnswer.isNotEmpty
-          ? r.expectedAnswer
-          : 'A strong candidate explains the core concept in plain, simple English, followed by a concrete practical example.';
+      expectedAnswerText = r.expectedAnswer;
       feedbackText = r.feedback;
       scoreVal = r.score;
       topicName = history.isNotEmpty && _index < history.length
@@ -70,16 +68,15 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
       answerText = (h['answer']?.isNotEmpty ?? false)
           ? h['answer']!
           : 'No answer provided.';
-      expectedAnswerText =
-          'A strong candidate explains the core concept in plain, simple English, followed by a concrete practical example.';
-      feedbackText = 'Clear and structured response.';
-      scoreVal = 75;
+      expectedAnswerText = '';
+      feedbackText = '';
+      scoreVal = 0;
       topicName = h['topic'] ?? 'Question ${_index + 1}';
     } else {
       questionText = 'No recorded questions found for this session.';
       answerText = 'No response captured.';
       expectedAnswerText = '';
-      feedbackText = 'Complete an interview session to review your answers.';
+      feedbackText = '';
       scoreVal = 0;
       topicName = 'Review';
     }
