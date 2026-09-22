@@ -329,8 +329,8 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     final ic = context.read<InterviewController>();
     if (!mounted || ic.prompts.isEmpty) return;
 
-    // Reset and start fresh timer for this question
-    _startQuestionTimer();
+    // Reset question timer display, but do not start counting down until candidate taps to speak
+    _resetQuestionTimerDisplay();
 
     _ttsSafetyTimer?.cancel();
     _setPhase(InterviewPhase.speaking);
@@ -412,6 +412,20 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   }
 
   // ── Per-Question Timer & Auto-Submit ──────────────────────────────────────
+
+  void _resetQuestionTimerDisplay() {
+    _questionTimer?.cancel();
+    _isAutoSubmitting = false;
+
+    final ic = context.read<InterviewController>();
+    final limit = ic.config.timeLimitPerQuestion;
+    _questionTimeLimit = limit;
+    if (mounted) {
+      setState(() {
+        _questionTimeRemaining = limit > 0 ? limit : 0;
+      });
+    }
+  }
 
   void _startQuestionTimer() {
     _questionTimer?.cancel();
@@ -544,6 +558,9 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       _liveTranscript = '';
     });
     _setPhase(InterviewPhase.recording);
+
+    // Start question timer now that candidate tapped to speak
+    _startQuestionTimer();
 
     await _listenInternal();
   }
