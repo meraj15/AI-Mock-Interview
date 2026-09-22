@@ -33,18 +33,17 @@ export const config = {
   ai: {
     livePrimaryProvider: (process.env.AI_LIVE_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
     livePrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_LIVE_PRIMARY_MODEL ?? 'gemini-3.8-flash',
-    liveFallbackProvider: (process.env.AI_LIVE_FALLBACK_PROVIDER ?? 'gemini').toLowerCase(),
-    liveFallbackModel: process.env.GEMINI_MODEL ?? process.env.AI_LIVE_FALLBACK_MODEL ?? 'gemini-3.8-flash',
 
     evalPrimaryProvider: (process.env.AI_EVAL_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
     evalPrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_EVAL_PRIMARY_MODEL ?? 'gemini-3.8-flash',
-    evalFallbackProvider: (process.env.AI_EVAL_FALLBACK_PROVIDER ?? 'gemini').toLowerCase(),
-    evalFallbackModel: process.env.GEMINI_MODEL ?? process.env.AI_EVAL_FALLBACK_MODEL ?? 'gemini-3.8-flash',
 
     circuitFailureThreshold: parseInt(process.env.AI_CIRCUIT_FAILURE_THRESHOLD ?? '3', 10),
     circuitCooldownMs: parseInt(process.env.AI_CIRCUIT_COOLDOWN_MS ?? '30000', 10),
-    liveTimeoutMs: parseInt(process.env.AI_LIVE_TIMEOUT_MS ?? '15000', 10),
+    /** Live interview turn hard timeout. Target: ~10-12 s. Default: 12 000 ms. */
+    liveTimeoutMs: parseInt(process.env.AI_LIVE_TIMEOUT_MS ?? '12000', 10),
+    /** Final evaluation timeout. Larger because the prompt is substantially bigger. */
     evalTimeoutMs: parseInt(process.env.AI_EVAL_TIMEOUT_MS ?? '60000', 10),
+    /** Set AI_ENABLE_TELEMETRY=false to disable structured [TELEMETRY] log lines in production. */
+    enableTelemetry: (process.env.AI_ENABLE_TELEMETRY ?? 'true') !== 'false',
   },
 } as const;
-

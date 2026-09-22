@@ -13,6 +13,7 @@ import {
   FinalInterviewEvaluation,
 } from './ai.service';
 import { logger } from '../utils/logger';
+import { config } from '../config';
 
 export interface ActiveConversationalSession {
   id: string;
@@ -108,6 +109,7 @@ export class InterviewService {
     const totalTopics = effectiveQuestionCount;
     const maxTurns = effectiveQuestionCount;
 
+    const planStart = Date.now();
     const plan =
       await aiService.generateInterviewPlan({
         role: role.trim(),
@@ -115,6 +117,7 @@ export class InterviewService {
         experience,
         questionCount: effectiveQuestionCount,
       });
+    const planLatencyMs = Date.now() - planStart;
 
     const placeholderTopics: InterviewTopic[] = [
       {
@@ -164,8 +167,14 @@ export class InterviewService {
       session,
     );
 
+    if (config.ai.enableTelemetry) {
+      logger.info(
+        `[TELEMETRY] ${JSON.stringify({ operation: 'plan', sessionId, role: role.trim(), aiLatencyMs: planLatencyMs, cacheHit: false })}`,
+      );
+    }
+
     logger.info(
-      `[InterviewService] Started conversational interview ${sessionId} for user=${userId} role="${session.role}"`,
+      `[InterviewService] Started conversational interview ${sessionId} for user=${userId} role="${session.role}" planLatencyMs=${planLatencyMs}`,
     );
 
     return {
@@ -257,10 +266,8 @@ export class InterviewService {
       );
     }
 
-    // Scoped Idempotency Key: sessionId + turnNumber + answerId
-    const effectiveAnswerId =
-      answerId?.trim() ||
-      createHash('sha256').update(cleanedAnswer).digest('hex').slice(0, 16);
+    // Scoped Idempotency Key: sessionId + turnNumber + answerId (UUID)
+    const effectiveAnswerId = answerId?.trim() || randomUUID();
     const turnBeingAnswered = typeof turnNumber === 'number' ? turnNumber : session.totalTurns;
     const idempotencyKey = `${sessionId}:${turnBeingAnswered}:${effectiveAnswerId}`;
 
@@ -343,10 +350,13 @@ export class InterviewService {
             Boolean(question),
         );
 
+    const turnStart = Date.now();
     const turn =
       await aiService.getNextConversationalTurn({
         role: session.role,
         experience: session.experience,
+        // Pass compact skills for role-relevance; the orchestrator prompt uses them as context only.
+        // Note: skills are NOT sent as full resume data — just the array already stored in session.
         skills: session.skills,
 
         previousQuestion:
@@ -367,7 +377,16 @@ export class InterviewService {
 
         turnNumber: session.totalTurns,
         maxTurns: session.maxTurns,
+        // Pass sessionId so the orchestrator can correlate telemetry logs
+        sessionId,
       });
+    const turnLatencyMs = Date.now() - turnStart;
+
+    if (config.ai.enableTelemetry) {
+      logger.info(
+        `[TELEMETRY] ${JSON.stringify({ operation: 'live_turn', sessionId, turnNumber: session.totalTurns, aiLatencyMs: turnLatencyMs, cacheHit: false })}`,
+      );
+    }
 
     session.conversationSummary =
       turn.conversationSummary;
@@ -459,11 +478,10 @@ export class InterviewService {
     }
 
     // Add the next interviewer question.
+    // IMPORTANT: Do NOT overwrite currentTopicIndex here — it was already correctly
+    // advanced in the new_topic branch above (lines ~416-420). Blindly setting it
+    // to totalTurns-1 would cause topic state to drift away from AI-selected progression.
     session.totalTurns++;
-    session.currentTopicIndex = Math.min(
-      session.totalTopics - 1,
-      session.totalTurns - 1,
-    );
 
     session.interactions.push({
       question: nextQuestion,

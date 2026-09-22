@@ -89,6 +89,56 @@ export interface FinalEvaluationParams {
 
 export type AIOperation = 'plan' | 'live_turn' | 'final_evaluation';
 
+/**
+ * Token usage from the AI provider.
+ * Captured from provider response metadata where available (e.g. Gemini usageMetadata).
+ * Never derived from prompt text (which may contain PII).
+ */
+export interface TokenUsage {
+  /** Input/prompt tokens consumed. */
+  inputTokens?: number;
+  /** Output/completion tokens generated. */
+  outputTokens?: number;
+  /** Total tokens (input + output). */
+  totalTokens?: number;
+}
+
+/**
+ * Granular latency + cost telemetry emitted as structured [TELEMETRY] JSON log lines.
+ * Never includes API keys, JWTs, passwords, full resumes, or sensitive personal data.
+ */
+export interface LatencyTelemetry {
+  operation: AIOperation;
+  provider: string;
+  model: string;
+  /** Wall-clock ms from first byte of request to last byte of parsed AI response. */
+  latencyMs: number;
+  attemptCount: number;
+  cacheHit: boolean;
+  /** ms spent constructing the prompt string before the AI call. */
+  promptBuildMs?: number;
+  /** ms the AI provider took to return (excludes prompt build and DB). */
+  aiLatencyMs?: number;
+  /** ms to parse/validate the structured JSON response. */
+  parseMs?: number;
+  /** ms spent on database persistence after AI response. */
+  dbMs?: number;
+  /** End-to-end ms for this operation (prompt → AI → parse → DB). */
+  totalLatencyMs?: number;
+  /** HTTP status/reason that triggered a retry, e.g. "503". */
+  retryReason?: string;
+  /** True when an existing cached/persisted result was returned without calling AI. */
+  idempotencyHit?: boolean;
+  /** sessionId for correlation (never contains PII). */
+  sessionId?: string;
+  /** Turn number for correlation. */
+  turnNumber?: number;
+  /** Token counts from provider response metadata. */
+  tokenUsage?: TokenUsage;
+  /** Number of retries beyond the first attempt. */
+  retryCount?: number;
+}
+
 export interface AIExecutionMetadata {
   requestId: string;
   operation: AIOperation;
@@ -99,6 +149,10 @@ export interface AIExecutionMetadata {
   fallbackUsed: boolean;
   fallbackReason?: string;
   attemptCount: number;
+  promptBuildMs?: number;
+  aiLatencyMs?: number;
+  parseMs?: number;
+  tokenUsage?: TokenUsage;
 }
 
 export interface AIExecutionResult<T> {
@@ -110,6 +164,15 @@ export interface AIExecutionResult<T> {
 // PROVIDER ABSTRACTION INTERFACES
 // ============================================================
 
+/**
+ * Provider response envelope returned by executeStructured.
+ * Wraps the parsed data with optional token usage metadata.
+ */
+export interface ProviderResponse<T> {
+  data: T;
+  tokenUsage?: TokenUsage;
+}
+
 export interface ProviderRequest {
   model: string;
   prompt: string;
@@ -118,6 +181,8 @@ export interface ProviderRequest {
   schemaName: string;
   temperature?: number;
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+  /** Hard limit on generated output tokens. Keep small for live turns to control cost. */
+  maxOutputTokens?: number;
   timeoutMs?: number;
   abortSignal?: AbortSignal;
 }
@@ -136,5 +201,9 @@ export interface InterviewAIProvider {
 
   isConfigured(): boolean;
 
-  executeStructured<T>(params: ProviderRequest): Promise<T>;
+  /**
+   * Execute a structured AI request and return parsed data + optional token usage.
+   * The token usage is sourced from provider response metadata — never inferred from prompts.
+   */
+  executeStructured<T>(params: ProviderRequest): Promise<ProviderResponse<T>>;
 }

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { config } from '../../../config';
-import { InterviewAIProvider, ProviderRequest } from '../ai.types';
+import { InterviewAIProvider, ProviderRequest, ProviderResponse } from '../ai.types';
 
 export class OpenAIProvider implements InterviewAIProvider {
   readonly id = 'openai';
@@ -25,7 +25,7 @@ export class OpenAIProvider implements InterviewAIProvider {
     return this.client;
   }
 
-  async executeStructured<T>(params: ProviderRequest): Promise<T> {
+  async executeStructured<T>(params: ProviderRequest): Promise<ProviderResponse<T>> {
     const client = this.getClient();
     const {
       model,
@@ -33,6 +33,7 @@ export class OpenAIProvider implements InterviewAIProvider {
       openAISchema,
       schemaName,
       temperature = 0.7,
+      maxOutputTokens,
       abortSignal,
     } = params;
 
@@ -68,6 +69,7 @@ export class OpenAIProvider implements InterviewAIProvider {
         messages,
         response_format: responseFormat,
         temperature,
+        ...(maxOutputTokens && maxOutputTokens > 0 ? { max_tokens: maxOutputTokens } : {}),
       },
       {
         signal: abortSignal,
@@ -80,10 +82,23 @@ export class OpenAIProvider implements InterviewAIProvider {
       throw new Error(`[OpenAIProvider] Empty response received from model ${model}`);
     }
 
+    let data: T;
     try {
-      return JSON.parse(content) as T;
+      data = JSON.parse(content) as T;
     } catch {
       throw new Error(`[OpenAIProvider] Invalid JSON received from ${model}: parsing error`);
     }
+
+    // Extract token usage from OpenAI completion metadata.
+    const usage = completion.usage;
+    const tokenUsage = usage
+      ? {
+          inputTokens: usage.prompt_tokens,
+          outputTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+        }
+      : undefined;
+
+    return { data, tokenUsage };
   }
 }

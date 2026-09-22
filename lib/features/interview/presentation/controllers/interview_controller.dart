@@ -14,6 +14,9 @@ class InterviewController extends ChangeNotifier {
   SessionStatus _sessionStatus = SessionStatus.idle;
   String? _errorMessage;
 
+  /// Prevents concurrent answer submissions (double-tap, STT callbacks, widget rebuilds).
+  bool _isSubmitting = false;
+
   String? _sessionId;
   List<InterviewTopic> _topics = [];
   String _currentQuestion = '';
@@ -23,6 +26,10 @@ class InterviewController extends ChangeNotifier {
   int _totalTopics = 10;
   bool _isFollowUp = false;
   bool _isComplete = false;
+
+  /// Tracks the current turn number for idempotent answer submission.
+  /// Starts at 1 (Q1 is turn 1), incremented on each successful answer.
+  int _currentTurnNumber = 1;
 
   AIEvaluationResult? _lastEvaluation;
 
@@ -209,6 +216,13 @@ class InterviewController extends ChangeNotifier {
       return;
     }
 
+    // Prevent concurrent submissions: double-tap, STT callbacks, widget rebuilds.
+    if (_isSubmitting) {
+      debugPrint('[InterviewController] submitAnswer: already in-flight, ignoring duplicate call');
+      return;
+    }
+    _isSubmitting = true;
+
     _sessionStatus = SessionStatus.loading;
     notifyListeners();
 
@@ -220,12 +234,17 @@ class InterviewController extends ChangeNotifier {
     });
 
     final ai = GeminiAIInterviewService(apiClient: apiClient!);
+    final int thisTurnNumber = _currentTurnNumber;
 
     try {
       final turn = await ai.submitConversationalAnswer(
         sessionId: _sessionId!,
         answer: answer,
+        turnNumber: thisTurnNumber,
       );
+
+      // Only increment turn number on successful response
+      _currentTurnNumber++;
 
       _isFollowUp = turn.action == 'follow_up';
       _currentAcknowledgement = turn.acknowledgement;
@@ -255,9 +274,11 @@ class InterviewController extends ChangeNotifier {
         await _fetchFinalEvaluation();
         return;
       } else {
-        _errorMessage = e.toString();
+        _errorMessage = _toUserFriendlyError(e);
         _sessionStatus = SessionStatus.error;
       }
+    } finally {
+      _isSubmitting = false;
     }
 
     notifyListeners();
@@ -290,11 +311,35 @@ class InterviewController extends ChangeNotifier {
       _onSessionSaved?.call();
     } catch (e, stackTrace) {
       debugPrint('[InterviewController] _fetchFinalEvaluation error: $e\n$stackTrace');
-      _errorMessage = e.toString();
+      _errorMessage = _toUserFriendlyError(e);
       _sessionStatus = SessionStatus.error;
     }
 
     notifyListeners();
+  }
+
+  /// Converts a raw exception into a user-friendly message.
+  /// Never exposes stack traces, Gemini errors, API status details, or internal IDs.
+  String _toUserFriendlyError(Object e) {
+    final raw = e.toString().toLowerCase();
+    if (raw.contains('socket') || raw.contains('network') || raw.contains('connection') ||
+        raw.contains('lookup failed') || raw.contains('unreachable')) {
+      return 'Please check your internet connection and try again.';
+    }
+    if (raw.contains('503') || raw.contains('502') || raw.contains('temporarily') ||
+        raw.contains('unavailable') || raw.contains('busy') || raw.contains('circuit')) {
+      return 'The AI is temporarily busy. Please try again in a moment.';
+    }
+    if (raw.contains('429') || raw.contains('rate limit') || raw.contains('quota')) {
+      return 'Too many requests. Please wait a moment and try again.';
+    }
+    if (raw.contains('timeout') || raw.contains('timed out')) {
+      return 'The request took too long. Please check your connection and try again.';
+    }
+    if (raw.contains('session not found') || raw.contains('404')) {
+      return 'We couldn\'t continue this interview. Please reopen the interview.';
+    }
+    return 'Something went wrong while processing your answer. Please try again.';
   }
 
   /// Simple heuristic: pick a role label from known skill keywords.
@@ -323,6 +368,7 @@ class InterviewController extends ChangeNotifier {
   void reset() {
     _config = InterviewConfigEntity.initial();
     _interviewActive = false;
+    _isSubmitting = false;
     _sessionStatus = SessionStatus.idle;
     _errorMessage = null;
     _sessionId = null;
@@ -335,6 +381,7 @@ class InterviewController extends ChangeNotifier {
     _isFollowUp = false;
     _isComplete = false;
     _lastEvaluation = null;
+    _currentTurnNumber = 1;
     _sessionHistory.clear();
     notifyListeners();
   }

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../core/config/api_config.dart';
 import '../../core/network/api_client.dart';
@@ -213,6 +214,8 @@ abstract class AIInterviewService {
   Future<ConversationalTurnResult> submitConversationalAnswer({
     required String sessionId,
     required String answer,
+    String? answerId,
+    int? turnNumber,
   });
 
   Future<AIEvaluationResult> getFinalEvaluation({
@@ -283,9 +286,17 @@ class GeminiAIInterviewService implements AIInterviewService {
   Future<ConversationalTurnResult> submitConversationalAnswer({
     required String sessionId,
     required String answer,
+    String? answerId,
+    int? turnNumber,
   }) async {
+    // Generate a unique UUID v4 request ID so the server's scoped idempotency key
+    // (sessionId:turnNumber:answerId) can deduplicate retries cleanly.
+    final effectiveAnswerId = answerId ?? _generateUuid();
+
     final requestBody = {
       'answer': answer,
+      'answerId': effectiveAnswerId,
+      'turnNumber': ?turnNumber,
     };
 
     final endpoint = ApiConfig.interviewAnswerEndpoint(sessionId);
@@ -323,6 +334,16 @@ class GeminiAIInterviewService implements AIInterviewService {
       debugPrint('[GeminiAIInterviewService] ERROR Submitting Answer: $e\n$stackTrace');
       rethrow;
     }
+  }
+
+  /// Generates a RFC 4122 version 4 UUID for unique request identification.
+  String _generateUuid() {
+    final rnd = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // RFC 4122 v4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
+    final hexChars = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
+    return '${hexChars.substring(0, 8)}-${hexChars.substring(8, 12)}-${hexChars.substring(12, 16)}-${hexChars.substring(16, 20)}-${hexChars.substring(20, 32)}';
   }
 
   @override

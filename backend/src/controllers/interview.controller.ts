@@ -34,7 +34,8 @@ const submitAnswerSchema = z.object({
   answer: z
     .string()
     .trim()
-    .min(1, 'answer is required'),
+    .min(1, 'answer is required')
+    .max(3000, 'Answer must be 3000 characters or fewer'),
   answerId: z
     .string()
     .trim()

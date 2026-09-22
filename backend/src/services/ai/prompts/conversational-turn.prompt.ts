@@ -25,7 +25,7 @@ export function buildConversationalTurnPrompt(params: ConversationalTurnParams):
   const cleanedSkills = Array.isArray(skills)
     ? skills.filter((s) => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())
     : [];
-  const skillList = cleanedSkills.length > 0 ? cleanedSkills.join(', ') : 'No specific skills provided';
+  const skillList = cleanedSkills.length > 0 ? cleanedSkills.join(', ') : 'No specific skills listed';
 
   const recentQuestionList =
     recentQuestions && recentQuestions.length > 0
@@ -57,6 +57,11 @@ export function buildConversationalTurnPrompt(params: ConversationalTurnParams):
     stageConstraint = `Ask a practical, role-grounded question. If the answer was strong, go deeper into edge cases or trade-offs. If weak, smoothly pivot to another relevant area for a ${role}.`;
   }
 
+  // Only include the memory block when there is actual content (avoid sending "Interview just started." noise)
+  const memoryBlock = conversationSummary && conversationSummary.trim() && conversationSummary !== 'Interview in progress.'
+    ? `\nINTERVIEW MEMORY:\n${conversationSummary.trim()}`
+    : '';
+
   const prompt = `You are a senior interviewer conducting a live adaptive mock interview.
 
 GLOBAL RULE: Conduct a realistic interview appropriate for the candidate's target role. Never assume a specific technology, profession, or domain unless explicitly stated in the role or profile. Skills listed are context only — base questions on the candidate's actual profession.
@@ -64,15 +69,10 @@ GLOBAL RULE: Conduct a realistic interview appropriate for the candidate's targe
 ROLE: ${role} | EXP: ${experience || 'not specified'} | TOOLS (context only): ${skillList}
 STAGE: ${stageTag}   TURN: ${currentTurn}/${totalMaxTurns}   FOLLOWUPS_USED: ${followUpsUsed}
 
-CURRENT QUESTION:
-"${previousQuestion}"
+CURRENT QUESTION: "${previousQuestion}"
 
-CANDIDATE ANSWER:
-"${cleanedAnswer}"
-
-INTERVIEW MEMORY:
-${conversationSummary || 'Interview just started.'}
-
+CANDIDATE ANSWER: "${cleanedAnswer}"
+${memoryBlock}
 AREAS ALREADY EXPLORED: ${exploredList}
 
 RECENT QUESTIONS (do not repeat):
@@ -85,6 +85,7 @@ RULES:
 2. acknowledgement: 2–4 spoken words only (TTS, never shown in UI).
 3. nextTopic: choose a relevant evaluation area for a "${role}" not yet explored. Do not use a predefined list — pick what genuinely fits this role and this candidate.
 4. action: follow_up | new_topic | end_interview
+5. conversationSummary: update the compact interview memory. MAX 40 words. List topics covered and one-line candidate signals (strength/gap). Never expand; always compress.
 
 Return ONLY valid JSON matching the schema.`;
 

@@ -83,14 +83,13 @@ Write a professional 2-3 sentence summary of the candidate's performance.
 STRENGTHS
 =========
 
-Provide 3-5 concrete strengths demonstrated during the interview.
-Do not write generic strengths.
+Provide 3-4 concrete strengths demonstrated during the interview. Keep each to 1 concise sentence (max 20 words).
 
 ==================================================
 AREAS TO IMPROVE
 ================
 
-Provide 3-5 specific and actionable improvements.
+Provide 3-4 specific and actionable improvements. Keep each to 1 concise sentence (max 20 words).
 
 ==================================================
 SKILL PERFORMANCE
@@ -109,7 +108,7 @@ Scores must be based on demonstrated evidence.
 RECOMMENDATIONS
 ===============
 
-Provide 3-4 practical learning topics or exercises that would help the candidate improve as a ${role}.
+Provide 3 practical learning topics or exercises that would help the candidate improve as a ${role}. Keep each to 1 concise sentence.
 
 ==================================================
 QUESTION REVIEWS
@@ -122,11 +121,12 @@ For every interviewer question:
   - This MUST represent how a strong candidate could answer naturally in a real interview for a ${role}.
   - Use simple, natural, spoken English appropriate for their stated experience level (${experience || 'general'}).
   - It must sound like something a real person could say verbally in an interview.
-  - Explain the core concept or approach clearly in 1-2 simple sentences, followed by a quick practical example appropriate for a ${role}.
+  - Explain the core concept or approach clearly in 1-2 simple sentences, followed by a quick practical example appropriate for a ${role} (max 50 words total).
   - Avoid unnecessary jargon, academic/textbook language, and overly sophisticated AI documentation style.
   - For non-technical roles, use natural terminology fitting that role. Do NOT assume technical or engineering roles unless the target role actually requires it.
 * Give a score from 0-100 based on the quality of the candidate's actual answer.
-* Provide one concise feedback sentence explaining what was good or what could be improved.
+* Provide one concise feedback sentence explaining what was good or what could be improved (max 25 words).
 
+Keep output focused, compact, and completely free of conversational filler or unnecessary prose.
 Return ONLY valid JSON matching the schema.`;
 }

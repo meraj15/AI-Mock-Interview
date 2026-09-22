@@ -12,8 +12,10 @@ import {
   InterviewBlueprint,
   InterviewPlanParams,
   InterviewAIProvider,
+  LatencyTelemetry,
   ProviderHealth,
   QuestionReview,
+  TokenUsage,
 } from './ai.types';
 import { CircuitBreaker, isTransientError } from './circuit-breaker';
 import { GeminiProvider } from './providers/gemini.provider';
@@ -33,6 +35,18 @@ import {
   finalEvaluationGeminiSchema,
   finalEvaluationOpenAISchema,
 } from './schemas/final-evaluation.schema';
+
+// ============================================================
+// TOKEN OUTPUT BUDGETS
+// ============================================================
+//
+// Interview plan only returns { firstQuestion: string }. 150 tokens is plenty.
+// Live interview turns return compact JSON (~120-150 tokens expected).
+// 320 tokens provides a safe margin preventing any incomplete JSON truncation.
+// Final evaluation is a full scorecard with question reviews. 4096 tokens.
+const PLAN_MAX_OUTPUT_TOKENS = 150;
+const TURN_MAX_OUTPUT_TOKENS = 320;
+const EVAL_MAX_OUTPUT_TOKENS = 4096;
 
 // ============================================================
 // AI ORCHESTRATOR
@@ -68,6 +82,16 @@ export class AIOrchestrator {
   }
 
   // ==========================================================
+  // TELEMETRY HELPER
+  // ==========================================================
+
+  private emitTelemetry(telemetry: LatencyTelemetry): void {
+    if (!config.ai.enableTelemetry) return;
+    // Never log API keys, JWTs, passwords, full resumes, or raw candidate answers.
+    console.log('[TELEMETRY]', JSON.stringify(telemetry));
+  }
+
+  // ==========================================================
   // TIMEOUT EXECUTOR
   // ==========================================================
 
@@ -97,10 +121,35 @@ export class AIOrchestrator {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /**
+   * Returns a jittered backoff delay.
+   * Uses a short base for live turns (1 retry max) and longer for eval retries.
+   * Jitter prevents thundering-herd retry storms.
+   */
+  private jitteredDelay(attemptIndex: number, isLive: boolean): number {
+    // Live: short delay — we want fast failure, not long waits
+    // Eval: longer delays acceptable since it runs once after interview
+    const bases = isLive ? [1500] : [1000, 2000, 4000];
+    const base = bases[attemptIndex] ?? 4000;
+    const jitter = Math.floor(Math.random() * 500);
+    return base + jitter;
+  }
+
   // ==========================================================
-  // GEMINI EXECUTION WITH EXPONENTIAL BACKOFF RETRIES
+  // CORE EXECUTION WITH BACKOFF + JITTER
   // ==========================================================
 
+  /**
+   * COST DESIGN:
+   *
+   * Live turns:  maxRetries = 1 → max 2 total Gemini calls per answer
+   * Eval:        maxRetries = 2 → max 3 total Gemini calls for final evaluation
+   *
+   * Keeping live retries low is critical:
+   * - Each retry is a real API cost
+   * - Flutter may also retry, creating a multiplicative effect
+   * - Idempotency prevents duplicate AI calls from Flutter retries
+   */
   private async executeTier<T>(options: {
     operation: AIOperation;
     primaryProviderId: string;
@@ -111,7 +160,11 @@ export class AIOrchestrator {
     openAISchema?: any;
     schemaName: string;
     temperature?: number;
-    thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+    thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high' | null;
+    maxOutputTokens?: number;
+    promptBuildMs?: number;
+    sessionId?: string;
+    turnNumber?: number;
   }): Promise<AIExecutionResult<T>> {
     const {
       operation,
@@ -124,6 +177,10 @@ export class AIOrchestrator {
       schemaName,
       temperature,
       thinkingLevel,
+      maxOutputTokens,
+      promptBuildMs,
+      sessionId,
+      turnNumber,
     } = options;
 
     const requestId = randomUUID();
@@ -138,19 +195,53 @@ export class AIOrchestrator {
       );
     }
 
-    const startTime = Date.now();
-    const maxRetries = 3; // 1 initial attempt + 3 retries = 4 attempts total
-    const backoffDelays = [1000, 2000, 4000]; // 1s, 2s, 4s
+    // Check circuit breaker before any attempt — avoids a Gemini call entirely when open
+    if (primaryBreaker && !primaryBreaker.canExecute()) {
+      this.emitTelemetry({
+        operation,
+        provider: primaryProviderId,
+        model: primaryModel,
+        latencyMs: 0,
+        attemptCount: 0,
+        cacheHit: false,
+        retryReason: 'CIRCUIT_OPEN',
+        sessionId,
+        turnNumber,
+      });
+      throw new AppError(
+        'The AI interview service is temporarily unavailable. Please try again in a moment.',
+        503,
+        'AI_CIRCUIT_OPEN',
+      );
+    }
+
+    const totalStartTime = Date.now();
+    const isLive = operation === 'plan' || operation === 'live_turn';
+
+    /**
+     * RETRY BUDGET:
+     * - Live turns (plan + live_turn): 1 retry max → 2 Gemini calls maximum
+     *   Keeps cost low and avoids long wait for candidate.
+     * - Final evaluation: 2 retries max → 3 Gemini calls maximum
+     *   More generous because it runs once post-interview.
+     *
+     * Flutter-level retries are separately protected by the idempotency layer.
+     */
+    const maxRetries = isLive ? 1 : 2;
 
     let lastError: any = null;
+    let lastRetryReason: string | undefined;
+    let retryCount = 0;
+    let finalTokenUsage: TokenUsage | undefined;
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      const attemptStart = Date.now();
       try {
         console.log(
           `[AIOrchestrator] requestId=${requestId} operation=${operation} provider=${primaryProviderId} model=${primaryModel} (attempt ${attempt}/${maxRetries + 1})`,
         );
 
-        const data = await this.executeWithTimeout(
+        const providerResponse = await this.executeWithTimeout(
           (signal) =>
             primaryProvider.executeStructured<T>({
               model: primaryModel,
@@ -159,7 +250,8 @@ export class AIOrchestrator {
               openAISchema,
               schemaName,
               temperature,
-              thinkingLevel,
+              thinkingLevel: thinkingLevel ?? undefined,
+              maxOutputTokens,
               timeoutMs,
               abortSignal: signal,
             }),
@@ -169,51 +261,118 @@ export class AIOrchestrator {
 
         primaryBreaker?.recordSuccess();
 
+        const aiLatencyMs = Date.now() - attemptStart;
+        const totalLatencyMs = Date.now() - totalStartTime;
+        finalTokenUsage = providerResponse.tokenUsage;
+
         const metadata: AIExecutionMetadata = {
           requestId,
           operation,
           provider: primaryProviderId,
           model: primaryModel,
           circuitState: primaryBreaker?.getHealth().circuitState || 'CLOSED',
-          latencyMs: Date.now() - startTime,
+          latencyMs: totalLatencyMs,
           fallbackUsed: false,
           attemptCount: attempt,
+          promptBuildMs,
+          aiLatencyMs,
+          tokenUsage: finalTokenUsage,
         };
 
-        return { data, metadata };
+        this.emitTelemetry({
+          operation,
+          provider: primaryProviderId,
+          model: primaryModel,
+          promptBuildMs,
+          aiLatencyMs,
+          latencyMs: totalLatencyMs,
+          totalLatencyMs,
+          attemptCount: attempt,
+          retryCount,
+          cacheHit: false,
+          retryReason: lastRetryReason,
+          tokenUsage: finalTokenUsage,
+          sessionId,
+          turnNumber,
+        });
+
+        return { data: providerResponse.data, metadata };
       } catch (err: any) {
         lastError = err;
         const isTransient = isTransientError(err);
         primaryBreaker?.recordFailure(err);
 
+        // Extract Retry-After header if present (Gemini 429 may include it)
+        const retryAfterMs = this.extractRetryAfterMs(err);
+
+        // Derive a compact retry reason for telemetry (safe — no PII)
+        const errStatus =
+          err?.status || err?.statusCode || err?.code || err?.error?.status || '';
+        lastRetryReason = errStatus
+          ? String(errStatus)
+          : isTransient
+          ? 'transient'
+          : 'permanent';
+
         console.warn(
           `[AIOrchestrator] requestId=${requestId} ${primaryProviderId} failed on ${operation} (attempt ${attempt}/${maxRetries + 1}, transient=${isTransient}): ${err?.message || 'Unknown error'}`,
         );
 
-        // Fail-fast on permanent non-transient errors (e.g. 400 Bad Request, 401 Unauthorized, 404 Model Not Found)
+        // Fail-fast on permanent non-transient errors — no point retrying
         if (!isTransient) {
+          this.emitTelemetry({
+            operation,
+            provider: primaryProviderId,
+            model: primaryModel,
+            promptBuildMs,
+            latencyMs: Date.now() - totalStartTime,
+            totalLatencyMs: Date.now() - totalStartTime,
+            attemptCount: attempt,
+            retryCount,
+            cacheHit: false,
+            retryReason: lastRetryReason,
+            sessionId,
+            turnNumber,
+          });
           throw new AppError(
-            `Gemini service error: ${err?.message || 'Permanent client/auth error'}`,
+            `AI service error: ${err?.message || 'Permanent client/auth error'}`,
             400,
             'AI_PERMANENT_ERROR',
           );
         }
 
-        // If we still have retries remaining, wait with exponential backoff
+        // If we still have retries remaining, wait with exponential backoff + jitter
         if (attempt <= maxRetries) {
-          const delayMs = backoffDelays[attempt - 1] || 4000;
+          retryCount++;
+          const delayMs = retryAfterMs ?? this.jitteredDelay(attempt - 1, isLive);
           console.log(
-            `[AIOrchestrator] requestId=${requestId} Retrying ${operation} with ${primaryProviderId} in ${delayMs}ms (transient failure)...`,
+            `[AIOrchestrator] requestId=${requestId} Retrying ${operation} in ${delayMs}ms (reason: ${lastRetryReason}, retryCount=${retryCount})`,
           );
           await this.sleep(delayMs);
         }
       }
     }
 
-    // All retries exhausted
+    // All retries exhausted — emit final telemetry and throw controlled error
+    const totalLatencyMs = Date.now() - totalStartTime;
     console.error(
       `[AIOrchestrator] requestId=${requestId} All ${maxRetries + 1} attempts failed for ${operation}: ${lastError?.message || 'Unavailable'}`,
     );
+
+    this.emitTelemetry({
+      operation,
+      provider: primaryProviderId,
+      model: primaryModel,
+      promptBuildMs,
+      latencyMs: totalLatencyMs,
+      totalLatencyMs,
+      attemptCount: maxRetries + 1,
+      retryCount,
+      cacheHit: false,
+      retryReason: lastRetryReason,
+      sessionId,
+      turnNumber,
+    });
 
     throw new AppError(
       'The AI interview service is currently experiencing high demand. Please try again in a moment.',
@@ -222,12 +381,36 @@ export class AIOrchestrator {
     );
   }
 
+  /**
+   * Safely extract a Retry-After delay in milliseconds from a provider error.
+   * Returns undefined when no actionable header is present.
+   */
+  private extractRetryAfterMs(err: any): number | undefined {
+    try {
+      const retryAfterHeader =
+        err?.headers?.['retry-after'] ||
+        err?.error?.headers?.['retry-after'] ||
+        err?.response?.headers?.['retry-after'];
+
+      if (!retryAfterHeader) return undefined;
+
+      const seconds = parseInt(String(retryAfterHeader), 10);
+      if (!isNaN(seconds) && seconds > 0 && seconds < 120) {
+        // Cap at 2 minutes to avoid blocking the request indefinitely
+        return seconds * 1000;
+      }
+    } catch {
+      // Ignore errors in header extraction
+    }
+    return undefined;
+  }
+
   // ==========================================================
   // SANITIZATION HELPERS
   // ==========================================================
 
   private enforceSingleQuestion(rawQuestion: string, fallback: string): string {
-    let q = (rawQuestion || '').trim().replace(/^["']|["']$/g, '');
+    let q = (rawQuestion || '').trim().replace(/^[\"']|[\"']$/g, '');
     if (!q) return fallback;
 
     // Strip conversational reactions / acknowledgements if prepended
@@ -273,7 +456,9 @@ export class AIOrchestrator {
       throw new Error('Role is required');
     }
 
+    const promptStart = Date.now();
     const prompt = buildInterviewPlanPrompt(params);
+    const promptBuildMs = Date.now() - promptStart;
 
     const result = await this.executeTier<{ firstQuestion: string }>({
       operation: 'plan',
@@ -286,6 +471,8 @@ export class AIOrchestrator {
       schemaName: 'interview_plan',
       temperature: 0.7,
       thinkingLevel: 'low',
+      maxOutputTokens: PLAN_MAX_OUTPUT_TOKENS,
+      promptBuildMs,
     });
 
     const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
@@ -310,9 +497,11 @@ export class AIOrchestrator {
   // ==========================================================
 
   async getNextConversationalTurnWithMeta(
-    params: ConversationalTurnParams,
+    params: ConversationalTurnParams & { sessionId?: string },
   ): Promise<AIExecutionResult<ConversationalTurn>> {
+    const promptStart = Date.now();
     const { prompt, currentTurn, totalMaxTurns } = buildConversationalTurnPrompt(params);
+    const promptBuildMs = Date.now() - promptStart;
 
     const result = await this.executeTier<ConversationalTurn>({
       operation: 'live_turn',
@@ -325,6 +514,10 @@ export class AIOrchestrator {
       schemaName: 'conversational_turn',
       temperature: 0.7,
       thinkingLevel: 'low',
+      maxOutputTokens: TURN_MAX_OUTPUT_TOKENS,
+      promptBuildMs,
+      sessionId: params.sessionId,
+      turnNumber: params.turnNumber,
     });
 
     const raw = result.data;
@@ -368,7 +561,7 @@ export class AIOrchestrator {
   }
 
   async getNextConversationalTurn(
-    params: ConversationalTurnParams,
+    params: ConversationalTurnParams & { sessionId?: string },
   ): Promise<ConversationalTurn> {
     const res = await this.getNextConversationalTurnWithMeta(params);
     return res.data;
@@ -379,13 +572,15 @@ export class AIOrchestrator {
   // ==========================================================
 
   async generateFinalEvaluationWithMeta(
-    params: FinalEvaluationParams,
+    params: FinalEvaluationParams & { sessionId?: string },
   ): Promise<AIExecutionResult<FinalInterviewEvaluation>> {
     if (!params.transcript || params.transcript.length === 0) {
       throw new Error('Interview transcript is required');
     }
 
+    const promptStart = Date.now();
     const prompt = buildFinalEvaluationPrompt(params);
+    const promptBuildMs = Date.now() - promptStart;
 
     const result = await this.executeTier<any>({
       operation: 'final_evaluation',
@@ -397,6 +592,9 @@ export class AIOrchestrator {
       openAISchema: finalEvaluationOpenAISchema,
       schemaName: 'final_evaluation',
       temperature: 0.3, // Lower temperature for objective, consistent scoring
+      maxOutputTokens: EVAL_MAX_OUTPUT_TOKENS,
+      promptBuildMs,
+      sessionId: params.sessionId,
     });
 
     const raw = result.data;
@@ -449,7 +647,7 @@ export class AIOrchestrator {
   }
 
   async generateFinalEvaluation(
-    params: FinalEvaluationParams,
+    params: FinalEvaluationParams & { sessionId?: string },
   ): Promise<FinalInterviewEvaluation> {
     const res = await this.generateFinalEvaluationWithMeta(params);
     return res.data;
