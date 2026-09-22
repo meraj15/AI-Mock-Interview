@@ -275,8 +275,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return;
 
-    final parts =
-        trimmed.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
+    final parts = trimmed
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
     setState(() {
       for (final part in parts) {
         if (!_skills.any((s) => s.toLowerCase() == part.toLowerCase())) {
@@ -320,24 +322,26 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
       setState(() => _isUploadingResume = true);
 
-      final resumeEntity =
-          await context.read<ResumeController>().uploadFromFilePicker(
-                fileName: file.name,
-                filePath: file.path,
-                onProgress: (_) {},
-              );
+      final resumeEntity = await context
+          .read<ResumeController>()
+          .uploadFromFilePicker(
+            fileName: file.name,
+            filePath: file.path,
+            onProgress: (_) {},
+          );
 
       if (!mounted) return;
 
       setState(() {
         _isUploadingResume = false;
 
-        final extractedRole = resumeEntity.workExperiences.isNotEmpty &&
+        final extractedRole =
+            resumeEntity.workExperiences.isNotEmpty &&
                 resumeEntity.workExperiences.first.role.trim().isNotEmpty
             ? resumeEntity.workExperiences.first.role.trim()
             : (resumeEntity.name.contains('–')
-                ? resumeEntity.name.split('–').last.trim()
-                : null);
+                  ? resumeEntity.name.split('–').last.trim()
+                  : null);
 
         if (extractedRole != null && extractedRole.isNotEmpty) {
           _roleCtrl.text = extractedRole;
@@ -380,7 +384,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   Future<void> _submitProfile() async {
     final role = _roleCtrl.text.trim();
     if (role.isEmpty) {
-      setState(() => _errorMessage = 'Please enter or select your target role.');
+      setState(
+        () => _errorMessage = 'Please enter or select your target role.',
+      );
       return;
     }
 
@@ -400,19 +406,21 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         : <ProjectItem>[];
 
     final success = await context.read<ProfileController>().updateProfile(
-          targetRole: role,
-          skills: _skills,
-          experienceYears: _selectedExpYears,
-          education: educationItems.isNotEmpty ? educationItems : null,
-          projects: projectItems.isNotEmpty ? projectItems : null,
-        );
+      targetRole: role,
+      skills: _skills,
+      experienceYears: _selectedExpYears,
+      education: educationItems.isNotEmpty ? educationItems : null,
+      projects: projectItems.isNotEmpty ? projectItems : null,
+    );
 
     if (!mounted) return;
 
     if (!success) {
-      setState(() =>
-          _errorMessage = context.read<ProfileController>().errorMessage ??
-              'Failed to save profile. Please try again.');
+      setState(
+        () => _errorMessage =
+            context.read<ProfileController>().errorMessage ??
+            'Failed to save profile. Please try again.',
+      );
       return;
     }
 
@@ -433,23 +441,28 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     final matchingRoles = roleQuery.isEmpty
         ? <String>[]
         : _allRolesCatalog
-            .where((r) =>
-                r.toLowerCase().contains(roleQuery) &&
-                r.toLowerCase() != roleQuery)
-            .take(5)
-            .toList();
+              .where(
+                (r) =>
+                    r.toLowerCase().contains(roleQuery) &&
+                    r.toLowerCase() != roleQuery,
+              )
+              .take(5)
+              .toList();
 
     // Filter matching skills as user types
     final skillQuery = _skillInputCtrl.text.trim().toLowerCase();
     final matchingSkills = skillQuery.isEmpty
         ? <String>[]
         : _allSkillsCatalog
-            .where((s) =>
-                s.toLowerCase().contains(skillQuery) &&
-                !_skills.any((existing) =>
-                    existing.toLowerCase() == s.toLowerCase()))
-            .take(5)
-            .toList();
+              .where(
+                (s) =>
+                    s.toLowerCase().contains(skillQuery) &&
+                    !_skills.any(
+                      (existing) => existing.toLowerCase() == s.toLowerCase(),
+                    ),
+              )
+              .take(5)
+              .toList();
 
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardOpen = bottomInset > 0;
@@ -484,9 +497,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             decoration: BoxDecoration(
               color: colors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: colors.primary.withValues(alpha: 0.25),
-              ),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -520,13 +531,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 borderRadius: BorderRadius.circular(2),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: Container(color: colors.primary),
-                    ),
+                    Expanded(child: Container(color: colors.primary)),
                     const SizedBox(width: 4),
-                    Expanded(
-                      child: Container(color: colors.primary),
-                    ),
+                    Expanded(child: Container(color: colors.primary)),
                   ],
                 ),
               ),
@@ -541,7 +548,11 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(
-                      18, 14, 18, isKeyboardOpen ? 320 : 20),
+                    18,
+                    14,
+                    18,
+                    isKeyboardOpen ? 320 : 20,
+                  ),
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -554,8 +565,11 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                       const SizedBox(height: 4),
                       Text(
                         'Set your target job role and technical skills. AI simulates authentic interviews tailored to your exact background.',
-                        style: AppTypography.regular(12.5,
-                            color: colors.mutedForeground, height: 1.4),
+                        style: AppTypography.regular(
+                          12.5,
+                          color: colors.mutedForeground,
+                          height: 1.4,
+                        ),
                       ),
 
                       const SizedBox(height: 16),
@@ -597,11 +611,15 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2.2,
                                           valueColor: AlwaysStoppedAnimation(
-                                              colors.primary),
+                                            colors.primary,
+                                          ),
                                         ),
                                       )
-                                    : Icon(FeatherIcons.fileText,
-                                        size: 19, color: colors.primary),
+                                    : Icon(
+                                        FeatherIcons.fileText,
+                                        size: 19,
+                                        color: colors.primary,
+                                      ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -612,16 +630,20 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                       _isUploadingResume
                                           ? 'Parsing resume with AI…'
                                           : 'Fast-Track with Resume',
-                                      style: AppTypography.bold(13,
-                                          color: colors.foreground),
+                                      style: AppTypography.bold(
+                                        13,
+                                        color: colors.foreground,
+                                      ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       'Upload PDF or DOCX to auto-fill role & skills',
-                                      style: AppTypography.regular(11,
-                                          color: colors.mutedForeground),
+                                      style: AppTypography.regular(
+                                        11,
+                                        color: colors.mutedForeground,
+                                      ),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -631,15 +653,19 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 7),
+                                  horizontal: 12,
+                                  vertical: 7,
+                                ),
                                 decoration: BoxDecoration(
                                   color: colors.primary,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
                                   _isUploadingResume ? 'Working' : 'Upload',
-                                  style: AppTypography.bold(11.5,
-                                      color: colors.primaryForeground),
+                                  style: AppTypography.bold(
+                                    11.5,
+                                    color: colors.primaryForeground,
+                                  ),
                                 ),
                               ),
                             ],
@@ -656,140 +682,197 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                        children: [
-                          Icon(FeatherIcons.briefcase,
-                              size: 14, color: colors.primary),
-                          const SizedBox(width: 7),
-                          Text(
-                            'Target Role',
-                            style: AppTypography.bold(14,
-                                color: colors.foreground),
-                          ),
-                          Text(' *',
-                              style: AppTypography.bold(14,
-                                  color: colors.coral)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      Container(
-                        decoration: BoxDecoration(
-                          color: colors.card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: _roleFocusNode.hasFocus
-                                ? colors.primary
-                                : colors.border,
-                            width: _roleFocusNode.hasFocus ? 1.4 : 1.0,
-                          ),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 3),
-                        child: Row(
-                          children: [
-                            Icon(FeatherIcons.search,
-                                size: 15, color: colors.mutedForeground),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: _roleCtrl,
-                                focusNode: _roleFocusNode,
-                                style: AppTypography.medium(13.5,
-                                    color: colors.foreground),
-                                decoration: InputDecoration(
-                                  hintText: 'Type your target role (e.g. Software Engineer)',
-                                  hintStyle: AppTypography.regular(12.5,
-                                      color: colors.mutedForeground),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding:
-                                      const EdgeInsets.symmetric(vertical: 11),
+                              children: [
+                                Icon(
+                                  FeatherIcons.briefcase,
+                                  size: 14,
+                                  color: colors.primary,
                                 ),
-                                onChanged: (_) {
-                                  setState(() {});
-                                  if (_roleCtrl.text.trim().isNotEmpty) {
-                                    _scrollToRole();
-                                  }
-                                },
-                              ),
+                                const SizedBox(width: 7),
+                                Text(
+                                  'Target Role',
+                                  style: AppTypography.bold(
+                                    14,
+                                    color: colors.foreground,
+                                  ),
+                                ),
+                                Text(
+                                  ' *',
+                                  style: AppTypography.bold(
+                                    14,
+                                    color: colors.coral,
+                                  ),
+                                ),
+                              ],
                             ),
-                            if (_roleCtrl.text.isNotEmpty)
-                              GestureDetector(
-                                onTap: () => setState(() => _roleCtrl.clear()),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: Icon(FeatherIcons.xCircle,
-                                      size: 15, color: colors.mutedForeground),
+                            const SizedBox(height: 8),
+
+                            Container(
+                              decoration: BoxDecoration(
+                                color: colors.card,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: _roleFocusNode.hasFocus
+                                      ? colors.primary
+                                      : colors.border,
+                                  width: _roleFocusNode.hasFocus ? 1.4 : 1.0,
                                 ),
                               ),
-                          ],
-                        ),
-                      ),
-
-                      // Dynamic Role Autocomplete Dropdown (As You Type)
-                      if (matchingRoles.isNotEmpty && _roleFocusNode.hasFocus) ...[
-                        Container(
-                          margin: const EdgeInsets.only(top: 6),
-                          constraints: const BoxConstraints(maxHeight: 220),
-                          decoration: BoxDecoration(
-                            color: colors.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: colors.primary.withValues(alpha: 0.35)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 3,
                               ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: Column(
-                                children: matchingRoles.asMap().entries.map((entry) {
-                                  final idx = entry.key;
-                                  final role = entry.value;
-                                  return InkWell(
-                                    onTap: () => _selectRole(role),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 14, vertical: 11),
-                                      decoration: BoxDecoration(
-                                        border: idx < matchingRoles.length - 1
-                                            ? Border(
-                                                bottom: BorderSide(
-                                                    color: colors.border
-                                                        .withValues(alpha: 0.6)))
-                                            : null,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    FeatherIcons.search,
+                                    size: 15,
+                                    color: colors.mutedForeground,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _roleCtrl,
+                                      focusNode: _roleFocusNode,
+                                      style: AppTypography.medium(
+                                        13.5,
+                                        color: colors.foreground,
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Icon(FeatherIcons.briefcase,
-                                              size: 13, color: colors.primary),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              role,
-                                              style: AppTypography.medium(13,
-                                                  color: colors.foreground),
+                                      decoration: InputDecoration(
+                                        hintText:
+                                            'Type your target role (e.g. Software Engineer)',
+                                        hintStyle: AppTypography.regular(
+                                          12.5,
+                                          color: colors.mutedForeground,
+                                        ),
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: 11,
                                             ),
-                                          ),
-                                          Icon(FeatherIcons.arrowUpLeft,
-                                              size: 13,
-                                              color: colors.mutedForeground),
-                                        ],
+                                      ),
+                                      onChanged: (_) {
+                                        setState(() {});
+                                        if (_roleCtrl.text.trim().isNotEmpty) {
+                                          _scrollToRole();
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  if (_roleCtrl.text.isNotEmpty)
+                                    GestureDetector(
+                                      onTap: () =>
+                                          setState(() => _roleCtrl.clear()),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          FeatherIcons.xCircle,
+                                          size: 15,
+                                          color: colors.mutedForeground,
+                                        ),
                                       ),
                                     ),
-                                  );
-                                }).toList(),
+                                ],
                               ),
                             ),
-                          ),
-                        ),
-                      ],
+
+                            // Dynamic Role Autocomplete Dropdown (As You Type)
+                            if (matchingRoles.isNotEmpty &&
+                                _roleFocusNode.hasFocus) ...[
+                              Container(
+                                margin: const EdgeInsets.only(top: 6),
+                                constraints: const BoxConstraints(
+                                  maxHeight: 220,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.card,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: colors.primary.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: SingleChildScrollView(
+                                    physics: const BouncingScrollPhysics(),
+                                    child: Column(
+                                      children: matchingRoles
+                                          .asMap()
+                                          .entries
+                                          .map((entry) {
+                                            final idx = entry.key;
+                                            final role = entry.value;
+                                            return InkWell(
+                                              onTap: () => _selectRole(role),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 11,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  border:
+                                                      idx <
+                                                          matchingRoles.length -
+                                                              1
+                                                      ? Border(
+                                                          bottom: BorderSide(
+                                                            color: colors.border
+                                                                .withValues(
+                                                                  alpha: 0.6,
+                                                                ),
+                                                          ),
+                                                        )
+                                                      : null,
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      FeatherIcons.briefcase,
+                                                      size: 13,
+                                                      color: colors.primary,
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: Text(
+                                                        role,
+                                                        style:
+                                                            AppTypography.medium(
+                                                              13,
+                                                              color: colors
+                                                                  .foreground,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                    Icon(
+                                                      FeatherIcons.arrowUpLeft,
+                                                      size: 13,
+                                                      color: colors
+                                                          .mutedForeground,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          })
+                                          .toList(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -803,249 +886,332 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(FeatherIcons.code,
-                                  size: 14, color: colors.primary),
-                              const SizedBox(width: 7),
-                              Text(
-                                'Core Skills & Technologies',
-                                style: AppTypography.bold(14,
-                                    color: colors.foreground),
-                              ),
-                              Text(' *',
-                                  style: AppTypography.bold(14,
-                                      color: colors.coral)),
-                            ],
-                          ),
-                          if (_skills.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 9, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: colors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${_skills.length} added',
-                                style: AppTypography.bold(10.5,
-                                    color: colors.primary),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Skill Box with Selected Chips & Inline Search Input
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colors.card,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: _skillFocusNode.hasFocus
-                                ? colors.primary
-                                : (_skills.isEmpty
-                                    ? colors.border
-                                    : colors.primary.withValues(alpha: 0.35)),
-                            width: _skillFocusNode.hasFocus ? 1.4 : 1.2,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Selected Skill Chips
-                            if (_skills.isNotEmpty) ...[
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: _skills.map((skill) {
-                                  return Container(
-                                    padding:
-                                        const EdgeInsets.fromLTRB(10, 5, 7, 5),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          colors.primary.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: colors.primary
-                                            .withValues(alpha: 0.28),
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      FeatherIcons.code,
+                                      size: 14,
+                                      color: colors.primary,
+                                    ),
+                                    const SizedBox(width: 7),
+                                    Text(
+                                      'Core Skills & Technologies',
+                                      style: AppTypography.bold(
+                                        14,
+                                        color: colors.foreground,
                                       ),
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          skill,
-                                          style: AppTypography.semiBold(11.5,
-                                              color: colors.foreground),
-                                        ),
-                                        const SizedBox(width: 5),
-                                        GestureDetector(
-                                          onTap: () => _removeSkill(skill),
-                                          child: Container(
-                                            padding: const EdgeInsets.all(2),
-                                            decoration: BoxDecoration(
-                                              color: colors.primary
-                                                  .withValues(alpha: 0.15),
-                                              shape: BoxShape.circle,
+                                    Text(
+                                      ' *',
+                                      style: AppTypography.bold(
+                                        14,
+                                        color: colors.coral,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_skills.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 9,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.primary.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${_skills.length} added',
+                                      style: AppTypography.bold(
+                                        10.5,
+                                        color: colors.primary,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Skill Box with Selected Chips & Inline Search Input
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: colors.card,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: _skillFocusNode.hasFocus
+                                      ? colors.primary
+                                      : (_skills.isEmpty
+                                            ? colors.border
+                                            : colors.primary.withValues(
+                                                alpha: 0.35,
+                                              )),
+                                  width: _skillFocusNode.hasFocus ? 1.4 : 1.2,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Selected Skill Chips
+                                  if (_skills.isNotEmpty) ...[
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: _skills.map((skill) {
+                                        return Container(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            10,
+                                            5,
+                                            7,
+                                            5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: colors.primary.withValues(
+                                              alpha: 0.12,
                                             ),
-                                            child: Icon(
-                                              FeatherIcons.x,
-                                              size: 10,
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            border: Border.all(
+                                              color: colors.primary.withValues(
+                                                alpha: 0.28,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                skill,
+                                                style: AppTypography.semiBold(
+                                                  11.5,
+                                                  color: colors.foreground,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 5),
+                                              GestureDetector(
+                                                onTap: () =>
+                                                    _removeSkill(skill),
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(
+                                                    2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: colors.primary
+                                                        .withValues(
+                                                          alpha: 0.15,
+                                                        ),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Icon(
+                                                    FeatherIcons.x,
+                                                    size: 10,
+                                                    color: colors.primary,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Divider(
+                                      height: 1,
+                                      color: colors.border.withValues(
+                                        alpha: 0.6,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                  ],
+
+                                  // Input line
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        FeatherIcons.plusCircle,
+                                        size: 15,
+                                        color: colors.mutedForeground,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _skillInputCtrl,
+                                          focusNode: _skillFocusNode,
+                                          textInputAction: TextInputAction.done,
+                                          onSubmitted: _addSkill,
+                                          style: AppTypography.medium(
+                                            12.5,
+                                            color: colors.foreground,
+                                          ),
+                                          decoration: InputDecoration(
+                                            hintText: _skills.isEmpty
+                                                ? 'Type skill (e.g. Python, SQL, React) & press Enter'
+                                                : 'Type next skill...',
+                                            hintStyle: AppTypography.regular(
+                                              11.5,
+                                              color: colors.mutedForeground,
+                                            ),
+                                            border: InputBorder.none,
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  vertical: 6,
+                                                ),
+                                          ),
+                                          onChanged: (_) {
+                                            setState(() {});
+                                            if (_skillInputCtrl.text
+                                                .trim()
+                                                .isNotEmpty) {
+                                              _scrollToSkill();
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap: () =>
+                                            _addSkill(_skillInputCtrl.text),
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 11,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: colors.primary.withValues(
+                                              alpha: 0.14,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '+ Add',
+                                            style: AppTypography.bold(
+                                              11.5,
                                               color: colors.primary,
                                             ),
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 10),
-                              Divider(
-                                height: 1,
-                                color: colors.border.withValues(alpha: 0.6),
-                              ),
-                              const SizedBox(height: 6),
-                            ],
-
-                            // Input line
-                            Row(
-                              children: [
-                                Icon(FeatherIcons.plusCircle,
-                                    size: 15, color: colors.mutedForeground),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextField(
-                                    controller: _skillInputCtrl,
-                                    focusNode: _skillFocusNode,
-                                    textInputAction: TextInputAction.done,
-                                    onSubmitted: _addSkill,
-                                    style: AppTypography.medium(12.5,
-                                        color: colors.foreground),
-                                    decoration: InputDecoration(
-                                      hintText: _skills.isEmpty
-                                          ? 'Type skill (e.g. Python, SQL, React) & press Enter'
-                                          : 'Type next skill...',
-                                      hintStyle: AppTypography.regular(11.5,
-                                          color: colors.mutedForeground),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(vertical: 6),
-                                    ),
-                                    onChanged: (_) {
-                                      setState(() {});
-                                      if (_skillInputCtrl.text.trim().isNotEmpty) {
-                                        _scrollToSkill();
-                                      }
-                                    },
-                                  ),
-                                ),
-                                InkWell(
-                                  onTap: () => _addSkill(_skillInputCtrl.text),
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 11, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          colors.primary.withValues(alpha: 0.14),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '+ Add',
-                                      style: AppTypography.bold(11.5,
-                                          color: colors.primary),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Dynamic Skill Autocomplete Dropdown (As You Type)
-                      if (matchingSkills.isNotEmpty && _skillFocusNode.hasFocus) ...[
-                        Container(
-                          margin: const EdgeInsets.only(top: 6),
-                          constraints: const BoxConstraints(maxHeight: 220),
-                          decoration: BoxDecoration(
-                            color: colors.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: colors.primary.withValues(alpha: 0.35)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: Column(
-                                children: matchingSkills.asMap().entries.map((entry) {
-                                  final idx = entry.key;
-                                  final skill = entry.value;
-                                  return InkWell(
-                                    onTap: () => _addSkill(skill),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 14, vertical: 10),
-                                      decoration: BoxDecoration(
-                                        border: idx < matchingSkills.length - 1
-                                            ? Border(
-                                                bottom: BorderSide(
-                                                    color: colors.border
-                                                        .withValues(alpha: 0.6)))
-                                            : null,
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Icon(FeatherIcons.plus,
-                                              size: 13, color: colors.primary),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              skill,
-                                              style: AppTypography.medium(13,
-                                                  color: colors.foreground),
-                                            ),
-                                          ),
-                                          Container(
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Dynamic Skill Autocomplete Dropdown (As You Type)
+                            if (matchingSkills.isNotEmpty &&
+                                _skillFocusNode.hasFocus) ...[
+                              Container(
+                                margin: const EdgeInsets.only(top: 6),
+                                constraints: const BoxConstraints(
+                                  maxHeight: 220,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.card,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: colors.primary.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: SingleChildScrollView(
+                                    physics: const BouncingScrollPhysics(),
+                                    child: Column(
+                                      children: matchingSkills.asMap().entries.map((
+                                        entry,
+                                      ) {
+                                        final idx = entry.key;
+                                        final skill = entry.value;
+                                        return InkWell(
+                                          onTap: () => _addSkill(skill),
+                                          child: Container(
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 7, vertical: 2.5),
-                                            decoration: BoxDecoration(
-                                              color: colors.primary
-                                                  .withValues(alpha: 0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
+                                              horizontal: 14,
+                                              vertical: 10,
                                             ),
-                                            child: Text(
-                                              'Add',
-                                              style: AppTypography.bold(10,
-                                                  color: colors.primary),
+                                            decoration: BoxDecoration(
+                                              border:
+                                                  idx <
+                                                      matchingSkills.length - 1
+                                                  ? Border(
+                                                      bottom: BorderSide(
+                                                        color: colors.border
+                                                            .withValues(
+                                                              alpha: 0.6,
+                                                            ),
+                                                      ),
+                                                    )
+                                                  : null,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  FeatherIcons.plus,
+                                                  size: 13,
+                                                  color: colors.primary,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    skill,
+                                                    style: AppTypography.medium(
+                                                      13,
+                                                      color: colors.foreground,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 7,
+                                                        vertical: 2.5,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: colors.primary
+                                                        .withValues(alpha: 0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          6,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    'Add',
+                                                    style: AppTypography.bold(
+                                                      10,
+                                                      color: colors.primary,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                        ],
-                                      ),
+                                        );
+                                      }).toList(),
                                     ),
-                                  );
-                                }).toList(),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                      ],
+                            ],
                           ],
                         ),
                       ),
@@ -1055,13 +1221,18 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                       // ── Experience Level Section ───────────────────────────
                       Row(
                         children: [
-                          Icon(FeatherIcons.clock,
-                              size: 14, color: colors.primary),
+                          Icon(
+                            FeatherIcons.clock,
+                            size: 14,
+                            color: colors.primary,
+                          ),
                           const SizedBox(width: 7),
                           Text(
                             'Experience Level',
-                            style: AppTypography.bold(14,
-                                color: colors.foreground),
+                            style: AppTypography.bold(
+                              14,
+                              color: colors.foreground,
+                            ),
                           ),
                         ],
                       ),
@@ -1072,8 +1243,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           final isSelected = _selectedExpLabel == opt.label;
                           return Expanded(
                             child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 2.5),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2.5,
+                              ),
                               child: InkWell(
                                 onTap: () => setState(() {
                                   _selectedExpLabel = opt.label;
@@ -1082,8 +1254,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                 borderRadius: BorderRadius.circular(12),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 140),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 9),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 9,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? colors.primary
@@ -1117,7 +1290,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                           9.5,
                                           color: isSelected
                                               ? colors.primaryForeground
-                                                  .withValues(alpha: 0.8)
+                                                    .withValues(alpha: 0.8)
                                               : colors.mutedForeground,
                                         ),
                                         maxLines: 1,
@@ -1141,7 +1314,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                         borderRadius: BorderRadius.circular(14),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 11),
+                            horizontal: 14,
+                            vertical: 11,
+                          ),
                           decoration: BoxDecoration(
                             color: colors.card,
                             borderRadius: BorderRadius.circular(14),
@@ -1149,8 +1324,11 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           ),
                           child: Row(
                             children: [
-                              Icon(FeatherIcons.bookOpen,
-                                  size: 14, color: colors.mutedForeground),
+                              Icon(
+                                FeatherIcons.bookOpen,
+                                size: 14,
+                                color: colors.mutedForeground,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
@@ -1158,13 +1336,17 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                   children: [
                                     Text(
                                       'Education & Key Projects (Optional)',
-                                      style: AppTypography.bold(12,
-                                          color: colors.foreground),
+                                      style: AppTypography.bold(
+                                        12,
+                                        color: colors.foreground,
+                                      ),
                                     ),
                                     Text(
                                       'Helps AI ask in-depth background questions',
-                                      style: AppTypography.regular(10.5,
-                                          color: colors.mutedForeground),
+                                      style: AppTypography.regular(
+                                        10.5,
+                                        color: colors.mutedForeground,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1183,18 +1365,26 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
                       if (_showAdditional) ...[
                         const SizedBox(height: 12),
-                        Text('Education',
-                            style: AppTypography.semiBold(12,
-                                color: colors.foreground)),
+                        Text(
+                          'Education',
+                          style: AppTypography.semiBold(
+                            12,
+                            color: colors.foreground,
+                          ),
+                        ),
                         const SizedBox(height: 5),
                         AppTextField(
                           controller: _educationCtrl,
                           placeholder: 'e.g. B.Tech in Computer Science, 2024',
                         ),
                         const SizedBox(height: 10),
-                        Text('Featured Project',
-                            style: AppTypography.semiBold(12,
-                                color: colors.foreground)),
+                        Text(
+                          'Featured Project',
+                          style: AppTypography.semiBold(
+                            12,
+                            color: colors.foreground,
+                          ),
+                        ),
                         const SizedBox(height: 5),
                         AppTextField(
                           controller: _projectsCtrl,
@@ -1211,18 +1401,24 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                             color: colors.coral.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                                color: colors.coral.withValues(alpha: 0.35)),
+                              color: colors.coral.withValues(alpha: 0.35),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              Icon(FeatherIcons.alertCircle,
-                                  size: 16, color: colors.coral),
+                              Icon(
+                                FeatherIcons.alertCircle,
+                                size: 16,
+                                color: colors.coral,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   _errorMessage!,
-                                  style: AppTypography.semiBold(11.5,
-                                      color: colors.coral),
+                                  style: AppTypography.semiBold(
+                                    11.5,
+                                    color: colors.coral,
+                                  ),
                                 ),
                               ),
                             ],
