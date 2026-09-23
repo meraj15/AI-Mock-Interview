@@ -32,13 +32,13 @@ export const config = {
   },
   ai: {
     livePrimaryProvider: (process.env.AI_LIVE_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
-    livePrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_LIVE_PRIMARY_MODEL ?? 'gemini-3.8-flash',
+    livePrimaryModel: process.env.AI_LIVE_PRIMARY_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.8-flash',
 
     evalPrimaryProvider: (process.env.AI_EVAL_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
-    evalPrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_EVAL_PRIMARY_MODEL ?? 'gemini-3.8-flash',
+    evalPrimaryModel: process.env.AI_EVAL_PRIMARY_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite',
 
-    /** Optional secondary Gemini fallback model (e.g. gemini-2.5-flash or gemini-2.0-flash). Disabled if empty. */
-    fallbackModel: (process.env.GEMINI_FALLBACK_MODEL ?? process.env.AI_FALLBACK_MODEL ?? '').trim(),
+    /** Optional secondary Gemini fallback model. Defaults to gemini-3.5-flash-lite. */
+    fallbackModel: (process.env.GEMINI_FALLBACK_MODEL ?? process.env.AI_FALLBACK_MODEL ?? 'gemini-3.5-flash-lite').trim(),
 
     /** Thinking level for live conversational turns ('minimal' | 'low' | 'medium' | 'high'). Default: 'low'. */
     liveThinkingLevel: (process.env.GEMINI_LIVE_THINKING_LEVEL ?? 'low') as 'minimal' | 'low' | 'medium' | 'high',

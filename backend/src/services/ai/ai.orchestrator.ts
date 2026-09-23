@@ -769,6 +769,7 @@ export class AIOrchestrator {
       openAISchema: finalEvaluationOpenAISchema,
       schemaName: 'final_evaluation',
       temperature: 0.3, // Lower temperature for objective, consistent scoring
+      thinkingLevel: config.ai.liveThinkingLevel,
       maxOutputTokens: EVAL_MAX_OUTPUT_TOKENS,
       promptBuildMs,
       sessionId: params.sessionId,

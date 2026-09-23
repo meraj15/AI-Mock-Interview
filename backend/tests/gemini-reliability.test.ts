@@ -34,6 +34,7 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
   };
 
   beforeEach(() => {
+    jest.setTimeout(15000);
     jest.clearAllMocks();
 
     // Access the registered Gemini provider and circuit breaker on the singleton
@@ -90,8 +91,8 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
       ...baseTurnParams,
     });
 
-    // Strictly 2 attempts for live turn (1 initial + 1 retry)
-    expect(mockGeminiExecute).toHaveBeenCalledTimes(2);
+    // 2 attempts on primary model + 1 attempt on fallback model
+    expect(mockGeminiExecute).toHaveBeenCalledTimes(3);
     expect(result.metadata.degraded).toBe(true);
     expect(result.data.nextQuestion).toContain('experience as a Flutter Developer');
     expect(result.data.action).toBe('new_topic');
@@ -347,7 +348,8 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
       role: 'Flutter Developer',
     });
 
-    expect(mockGeminiExecute).toHaveBeenCalledTimes(2);
+    // 2 attempts on primary model + 1 attempt on fallback model
+    expect(mockGeminiExecute).toHaveBeenCalledTimes(3);
     expect(planRes.metadata.degraded).toBe(true);
     expect(planRes.data.firstQuestion).toContain('introduce yourself and share your background as a Flutter Developer');
   });
