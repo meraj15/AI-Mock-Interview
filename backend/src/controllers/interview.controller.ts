@@ -364,10 +364,14 @@ export const interviewController = {
   ): Promise<void> {
     try {
       const userId = req.user!.id;
+      const rawDays = req.query.days as string | undefined;
+      const days = rawDays ? parseInt(rawDays, 10) : undefined;
+      const validDays = days && !isNaN(days) && days > 0 ? days : undefined;
 
       const stats =
         await interviewService.getStats(
-          userId
+          userId,
+          validDays
         );
 
       res.json({

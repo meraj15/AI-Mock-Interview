@@ -1002,9 +1002,11 @@ export class InterviewService {
    */
   async getStats(
     userId: string,
+    days?: number,
   ): Promise<InterviewStats> {
     return interviewRepository.getStats(
       userId,
+      days,
     );
   }
 }

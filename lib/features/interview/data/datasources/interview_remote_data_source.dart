@@ -55,6 +55,7 @@ class InterviewStatsModel {
   final Map<String, int> skillAverages;   // avg per skill across all sessions
   final int completionRate;               // % of sessions > 30 s
   final int overallChange;                // second-half avg − first-half avg
+  final int? days;                        // Filtered timeframe in days (e.g. 7, 15, 30)
 
   const InterviewStatsModel({
     required this.averageScore,
@@ -67,6 +68,7 @@ class InterviewStatsModel {
     this.skillAverages   = const {},
     this.completionRate  = 0,
     this.overallChange   = 0,
+    this.days,
   });
 
   factory InterviewStatsModel.fromJson(Map<String, dynamic> j) {
@@ -95,6 +97,7 @@ class InterviewStatsModel {
       skillAverages:   skillAverages,
       completionRate:  (j['completionRate']  as num?)?.toInt() ?? 0,
       overallChange:   (j['overallChange']   as num?)?.toInt() ?? 0,
+      days:            (j['days']            as num?)?.toInt(),
     );
   }
 
@@ -109,6 +112,7 @@ class InterviewStatsModel {
     skillAverages: {},
     completionRate: 0,
     overallChange: 0,
+    days: null,
   );
 }
 
@@ -183,7 +187,7 @@ class InterviewSessionSummary {
 
 abstract class InterviewRemoteDataSource {
   Future<void> saveSession(SaveInterviewRequest request);
-  Future<InterviewStatsModel> getStats();
+  Future<InterviewStatsModel> getStats({int? days});
   Future<List<InterviewSessionSummary>> listSessions({int limit, int offset});
   Future<Map<String, dynamic>> getSessionDetails(String sessionId);
 }
@@ -202,8 +206,11 @@ class InterviewRemoteDataSourceImpl implements InterviewRemoteDataSource {
   }
 
   @override
-  Future<InterviewStatsModel> getStats() async {
-    final response = await apiClient.get(ApiConfig.interviewStatsEndpoint);
+  Future<InterviewStatsModel> getStats({int? days}) async {
+    final response = await apiClient.get(
+      ApiConfig.interviewStatsEndpoint,
+      queryParameters: days != null ? {'days': days} : null,
+    );
     final data = response.data as Map<String, dynamic>? ?? {};
     return InterviewStatsModel.fromJson(data);
   }

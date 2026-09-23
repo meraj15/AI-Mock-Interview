@@ -62,6 +62,7 @@ export interface InterviewStats {
   skillAverages: Record<string, number>;
   completionRate: number;
   overallChange: number;
+  days?: number;
 }
 
 export interface HistoricalQuestionRecord {
@@ -270,403 +271,236 @@ export class InterviewRepository {
   }
 
   /**
-   * Compute all home-screen performance statistics for a user.
+   * Compute performance statistics for a user, optionally filtered by a timeframe (days).
    */
   async getStats(
     userId: string,
+    days?: number,
   ): Promise<InterviewStats> {
+    const startDate =
+      days && days > 0
+        ? new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+        : undefined;
+
+    const timeFilter = startDate ? { createdAt: { gte: startDate } } : {};
+
     // ────────────────────────────────────────────────────────────────────────
     // 1. Aggregate: average / count / max
     // ────────────────────────────────────────────────────────────────────────
 
-    const agg =
-      await prisma.interviewSession.aggregate({
-        where: {
-          userId,
-        },
+    const agg = await prisma.interviewSession.aggregate({
+      where: {
+        userId,
+        ...timeFilter,
+      },
+      _count: {
+        id: true,
+      },
+      _avg: {
+        score: true,
+      },
+      _max: {
+        score: true,
+      },
+    });
 
-        _count: {
-          id: true,
-        },
-
-        _avg: {
-          score: true,
-        },
-
-        _max: {
-          score: true,
-        },
-      });
-
-    const totalInterviews =
-      agg._count.id;
-
-    const averageScore =
-      Math.round(
-        agg._avg.score ?? 0,
-      );
-
-    const bestScore =
-      agg._max.score ?? 0;
+    const totalInterviews = agg._count.id;
+    const averageScore = Math.round(agg._avg.score ?? 0);
+    const bestScore = agg._max.score ?? 0;
 
     // ────────────────────────────────────────────────────────────────────────
-    // 2. This week
-    //
-    // Monday 00:00 UTC → now
+    // 2. This week (Monday 00:00 UTC → now)
     // ────────────────────────────────────────────────────────────────────────
 
     const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const diffToMonday = (dayOfWeek + 6) % 7;
+    const monday = new Date(now);
+    monday.setUTCDate(now.getUTCDate() - diffToMonday);
+    monday.setUTCHours(0, 0, 0, 0);
 
-    const dayOfWeek =
-      now.getUTCDay();
-
-    // 0 = Sunday
-    // 1 = Monday
-    // ...
-    // 6 = Saturday
-
-    const diffToMonday =
-      (dayOfWeek + 6) % 7;
-
-    const monday =
-      new Date(now);
-
-    monday.setUTCDate(
-      now.getUTCDate() -
-        diffToMonday,
-    );
-
-    monday.setUTCHours(
-      0,
-      0,
-      0,
-      0,
-    );
-
-    const thisWeekCount =
-      await prisma.interviewSession.count(
-        {
-          where: {
-            userId,
-
-            createdAt: {
-              gte: monday,
-            },
-          },
+    const thisWeekCount = await prisma.interviewSession.count({
+      where: {
+        userId,
+        createdAt: {
+          gte: monday,
         },
-      );
+      },
+    });
 
     // ────────────────────────────────────────────────────────────────────────
-    // 3. Monthly change
+    // 3. Period / Monthly change
     // ────────────────────────────────────────────────────────────────────────
 
-    const startOfThisMonth =
-      new Date(
-        Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth(),
-          1,
-        ),
-      );
-
-    const startOfPreviousMonth =
-      new Date(
-        Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth() - 1,
-          1,
-        ),
-      );
-
-    const [
-      thisMonthAgg,
-      previousMonthAgg,
-    ] = await Promise.all([
-      prisma.interviewSession.aggregate(
-        {
+    let monthlyChange = 0;
+    if (startDate && days) {
+      const priorStartDate = new Date(startDate.getTime() - days * 24 * 60 * 60 * 1000);
+      const [currentAgg, priorAgg] = await Promise.all([
+        prisma.interviewSession.aggregate({
           where: {
             userId,
-
-            createdAt: {
-              gte: startOfThisMonth,
-            },
+            createdAt: { gte: startDate },
           },
-
-          _avg: {
-            score: true,
-          },
-        },
-      ),
-
-      prisma.interviewSession.aggregate(
-        {
+          _avg: { score: true },
+        }),
+        prisma.interviewSession.aggregate({
           where: {
             userId,
+            createdAt: { gte: priorStartDate, lt: startDate },
+          },
+          _avg: { score: true },
+        }),
+      ]);
+      monthlyChange = Math.round(
+        (currentAgg._avg.score ?? 0) - (priorAgg._avg.score ?? 0)
+      );
+    } else {
+      const startOfThisMonth = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+      );
+      const startOfPreviousMonth = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)
+      );
 
+      const [thisMonthAgg, previousMonthAgg] = await Promise.all([
+        prisma.interviewSession.aggregate({
+          where: {
+            userId,
+            createdAt: { gte: startOfThisMonth },
+          },
+          _avg: { score: true },
+        }),
+        prisma.interviewSession.aggregate({
+          where: {
+            userId,
             createdAt: {
               gte: startOfPreviousMonth,
               lt: startOfThisMonth,
             },
           },
+          _avg: { score: true },
+        }),
+      ]);
 
-          _avg: {
-            score: true,
-          },
-        },
-      ),
-    ]);
-
-    const monthlyChange =
-      Math.round(
-        (thisMonthAgg._avg.score ?? 0) -
-          (previousMonthAgg._avg.score ?? 0),
+      monthlyChange = Math.round(
+        (thisMonthAgg._avg.score ?? 0) - (previousMonthAgg._avg.score ?? 0)
       );
+    }
 
     // ────────────────────────────────────────────────────────────────────────
     // 4. Current streak
     // ────────────────────────────────────────────────────────────────────────
 
-    const currentStreak =
-      await this._calculateStreak(
+    const currentStreak = await this._calculateStreak(userId);
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 5. Score history (returned oldest → newest for charts)
+    // ────────────────────────────────────────────────────────────────────────
+
+    const sessions = await prisma.interviewSession.findMany({
+      where: {
         userId,
-      );
+        ...timeFilter,
+      },
+      select: {
+        score: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      take: days ? 50 : 10,
+    });
+
+    const scoreHistory = sessions.map((s) => s.score);
 
     // ────────────────────────────────────────────────────────────────────────
-    // 5. Score history
-    //
-    // Last 10 sessions.
-    // Returned oldest → newest for charts.
+    // 6. Skill averages for this timeframe
     // ────────────────────────────────────────────────────────────────────────
 
-    const lastTen =
-      await prisma.interviewSession.findMany(
-        {
-          where: {
-            userId,
-          },
+    const allSessions = await prisma.interviewSession.findMany({
+      where: {
+        userId,
+        ...timeFilter,
+      },
+      select: {
+        skillScores: true,
+      },
+    });
 
-          select: {
-            score: true,
-          },
-
-          orderBy: {
-            createdAt: 'desc',
-          },
-
-          take: 10,
-        },
-      );
-
-    const scoreHistory =
-      lastTen
-        .map(
-          (session) =>
-            session.score,
-        )
-        .reverse();
-
-    // ────────────────────────────────────────────────────────────────────────
-    // 6. Skill averages
-    //
-    // These are based on the skill/competency scores generated by the AI
-    // during evaluation, not necessarily the user's selected skills.
-    // ────────────────────────────────────────────────────────────────────────
-
-    const allSessions =
-      await prisma.interviewSession.findMany(
-        {
-          where: {
-            userId,
-          },
-
-          select: {
-            skillScores: true,
-          },
-        },
-      );
-
-    const skillTotals: Record<
-      string,
-      {
-        sum: number;
-        count: number;
-      }
-    > = {};
+    const skillTotals: Record<string, { sum: number; count: number }> = {};
 
     for (const session of allSessions) {
-      const scores =
-        session.skillScores as Record<
-          string,
-          number
-        >;
-
-      if (
-        scores &&
-        typeof scores === 'object' &&
-        !Array.isArray(scores)
-      ) {
-        for (const [
-          key,
-          value,
-        ] of Object.entries(scores)) {
-          if (
-            typeof value !==
-            'number'
-          ) {
-            continue;
+      const scores = session.skillScores as Record<string, number>;
+      if (scores && typeof scores === 'object' && !Array.isArray(scores)) {
+        for (const [key, value] of Object.entries(scores)) {
+          if (typeof value !== 'number') continue;
+          if (!skillTotals[key]) {
+            skillTotals[key] = { sum: 0, count: 0 };
           }
-
-          if (
-            !skillTotals[key]
-          ) {
-            skillTotals[key] = {
-              sum: 0,
-              count: 0,
-            };
-          }
-
-          skillTotals[key]!.sum +=
-            value;
-
-          skillTotals[key]!.count +=
-            1;
+          skillTotals[key]!.sum += value;
+          skillTotals[key]!.count += 1;
         }
       }
     }
 
-    const skillAverages: Record<
-      string,
-      number
-    > = {};
-
-    for (const [
-      key,
-      value,
-    ] of Object.entries(
-      skillTotals,
-    )) {
-      if (value.count === 0) {
-        continue;
-      }
-
-      skillAverages[key] =
-        Math.round(
-          value.sum /
-            value.count,
-        );
+    const skillAverages: Record<string, number> = {};
+    for (const [key, value] of Object.entries(skillTotals)) {
+      if (value.count === 0) continue;
+      skillAverages[key] = Math.round(value.sum / value.count);
     }
 
     // ────────────────────────────────────────────────────────────────────────
     // 7. Completion rate
-    //
-    // Currently uses duration > 30 seconds as the completion proxy.
     // ────────────────────────────────────────────────────────────────────────
 
-    const completedCount =
-      await prisma.interviewSession.count(
-        {
-          where: {
-            userId,
-
-            durationSecs: {
-              gt: 30,
-            },
-          },
+    const completedCount = await prisma.interviewSession.count({
+      where: {
+        userId,
+        ...timeFilter,
+        durationSecs: {
+          gt: 30,
         },
-      );
+      },
+    });
 
     const completionRate =
       totalInterviews > 0
-        ? Math.round(
-            (completedCount /
-              totalInterviews) *
-              100,
-          )
+        ? Math.round((completedCount / totalInterviews) * 100)
         : 0;
 
     // ────────────────────────────────────────────────────────────────────────
     // 8. Overall change
-    //
-    // Compares the average score of the first half of interviews
-    // against the second half.
     // ────────────────────────────────────────────────────────────────────────
 
     let overallChange = 0;
-
     if (totalInterviews >= 2) {
-      const all =
-        await prisma.interviewSession.findMany(
-          {
-            where: {
-              userId,
-            },
+      const all = await prisma.interviewSession.findMany({
+        where: {
+          userId,
+          ...timeFilter,
+        },
+        select: {
+          score: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
 
-            select: {
-              score: true,
-            },
+      const midpoint = Math.floor(all.length / 2);
+      const firstHalf = all.slice(0, midpoint).map((session) => session.score);
+      const secondHalf = all.slice(midpoint).map((session) => session.score);
 
-            orderBy: {
-              createdAt: 'asc',
-            },
-          },
+      const calculateAverage = (values: number[]): number => {
+        if (values.length === 0) return 0;
+        return (
+          values.reduce((total, value) => total + value, 0) / values.length
         );
+      };
 
-      const midpoint =
-        Math.floor(
-          all.length / 2,
-        );
-
-      const firstHalf =
-        all
-          .slice(
-            0,
-            midpoint,
-          )
-          .map(
-            (session) =>
-              session.score,
-          );
-
-      const secondHalf =
-        all
-          .slice(midpoint)
-          .map(
-            (session) =>
-              session.score,
-          );
-
-      const calculateAverage =
-        (
-          values: number[],
-        ): number => {
-          if (
-            values.length === 0
-          ) {
-            return 0;
-          }
-
-          return (
-            values.reduce(
-              (
-                total,
-                value,
-              ) =>
-                total + value,
-              0,
-            ) /
-            values.length
-          );
-        };
-
-      overallChange =
-        Math.round(
-          calculateAverage(
-            secondHalf,
-          ) -
-            calculateAverage(
-              firstHalf,
-            ),
-        );
+      overallChange = Math.round(
+        calculateAverage(secondHalf) - calculateAverage(firstHalf)
+      );
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -684,6 +518,7 @@ export class InterviewRepository {
       skillAverages,
       completionRate,
       overallChange,
+      days,
     };
   }
 
