@@ -13,6 +13,10 @@ export class AppError extends Error {
     this.isOperational = isOperational;
     Error.captureStackTrace(this, this.constructor);
   }
+
+  public get code(): string {
+    return this.errorCode;
+  }
 }
 
 export class NotFoundError extends AppError {

@@ -149,6 +149,8 @@ export interface LatencyTelemetry {
   questionHistoryQueryMs?: number;
   /** True when a duplicate question was avoided. */
   duplicateAvoided?: boolean;
+  /** True when response is generated via graceful degradation under service unavailability. */
+  degraded?: boolean;
 }
 
 export interface AIExecutionMetadata {
@@ -165,6 +167,8 @@ export interface AIExecutionMetadata {
   aiLatencyMs?: number;
   parseMs?: number;
   tokenUsage?: TokenUsage;
+  /** True when response was generated via graceful degradation under service unavailability. */
+  degraded?: boolean;
 }
 
 export interface AIExecutionResult<T> {

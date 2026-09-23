@@ -9,6 +9,11 @@ export function isTransientError(err: unknown): boolean {
 
   const errorObj = err as Record<string, any>;
 
+  // Explicit timeout flag set by timeout executor
+  if (errorObj?.isTimeout) {
+    return true;
+  }
+
   const status = Number(
     errorObj?.status ||
       errorObj?.statusCode ||

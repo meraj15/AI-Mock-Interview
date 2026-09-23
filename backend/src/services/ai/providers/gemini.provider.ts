@@ -72,11 +72,27 @@ export class GeminiProvider implements InterviewAIProvider {
       };
     }
 
-    const response = await client.models.generateContent({
-      model,
-      contents: prompt,
-      config: generateConfig,
-    });
+    let response: any;
+    try {
+      response = await client.models.generateContent({
+        model,
+        contents: prompt,
+        config: generateConfig,
+      });
+    } catch (err: any) {
+      const errMsg = String(err?.message || err).toLowerCase();
+      // If error is specifically that thinkingConfig is unsupported on this model, retry without it
+      if (generateConfig.thinkingConfig && (errMsg.includes('thinking') || errMsg.includes('unsupported field'))) {
+        delete generateConfig.thinkingConfig;
+        response = await client.models.generateContent({
+          model,
+          contents: prompt,
+          config: generateConfig,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     const text = response.text?.trim();
     if (!text) {

@@ -106,7 +106,11 @@ export class AIOrchestrator {
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         controller.abort();
-        reject(new Error(`[AIOrchestrator] ${label} timed out after ${timeoutMs}ms`));
+        const timeoutErr: any = new Error(`[AIOrchestrator] ${label} timed out after ${timeoutMs}ms`);
+        timeoutErr.status = 504; // Gateway Timeout — let isTransientError recognize it
+        timeoutErr.statusCode = 504;
+        timeoutErr.isTimeout = true;
+        reject(timeoutErr);
       }, timeoutMs);
     });
 
@@ -123,14 +127,13 @@ export class AIOrchestrator {
 
   /**
    * Returns a jittered backoff delay.
-   * Uses a short base for live turns (1 retry max) and longer for eval retries.
+   * Live turns: ~1.0-1.5s (1000ms base + 0-500ms jitter).
+   * Eval: longer delays since it is not real-time.
    * Jitter prevents thundering-herd retry storms.
    */
   private jitteredDelay(attemptIndex: number, isLive: boolean): number {
-    // Live: short delay — we want fast failure, not long waits
-    // Eval: longer delays acceptable since it runs once after interview
-    const bases = isLive ? [1500] : [1000, 2000, 4000];
-    const base = bases[attemptIndex] ?? 4000;
+    const bases = isLive ? [1000] : [1000, 2000, 4000];
+    const base = bases[attemptIndex] ?? (isLive ? 1000 : 4000);
     const jitter = Math.floor(Math.random() * 500);
     return base + jitter;
   }
@@ -300,26 +303,42 @@ export class AIOrchestrator {
       } catch (err: any) {
         lastError = err;
         const isTransient = isTransientError(err);
-        primaryBreaker?.recordFailure(err);
+        const aiLatencyMs = Date.now() - attemptStart;
 
         // Extract Retry-After header if present (Gemini 429 may include it)
-        const retryAfterMs = this.extractRetryAfterMs(err);
+        const rawRetryAfter = this.extractRetryAfterMs(err);
+        // Cap Retry-After to avoid indefinite client freezes: 2.5s max for live turns, 10s max for eval
+        const retryAfterMs = rawRetryAfter !== undefined
+          ? Math.min(rawRetryAfter, isLive ? 2500 : 10000)
+          : undefined;
 
-        // Derive a compact retry reason for telemetry (safe — no PII)
+        // Derive status and error reason for telemetry (safe — no PII)
         const errStatus =
-          err?.status || err?.statusCode || err?.code || err?.error?.status || '';
-        lastRetryReason = errStatus
-          ? String(errStatus)
-          : isTransient
-          ? 'transient'
-          : 'permanent';
+          Number(err?.status || err?.statusCode || err?.code || err?.error?.status) || (isTransient ? 503 : 400);
+        lastRetryReason = String(errStatus);
+        const willRetry = isTransient && attempt <= maxRetries;
 
-        console.warn(
-          `[AIOrchestrator] requestId=${requestId} ${primaryProviderId} failed on ${operation} (attempt ${attempt}/${maxRetries + 1}, transient=${isTransient}): ${err?.message || 'Unknown error'}`,
+        // Structured [AI_ERROR] telemetry log for operational observability
+        console.error(
+          `[AI_ERROR] ${JSON.stringify({
+            operation,
+            provider: primaryProviderId,
+            model: primaryModel,
+            status: errStatus,
+            attempt,
+            maxAttempts: maxRetries + 1,
+            retrying: willRetry,
+            sessionId,
+            turnNumber,
+            aiLatencyMs,
+            errorType: isTransient ? 'transient' : 'permanent',
+            errorMessage: err?.message || 'Unknown error',
+          })}`,
         );
 
-        // Fail-fast on permanent non-transient errors — no point retrying
+        // Fail-fast on permanent non-transient errors — do not retry, count on circuit breaker
         if (!isTransient) {
+          primaryBreaker?.recordFailure(err);
           this.emitTelemetry({
             operation,
             provider: primaryProviderId,
@@ -342,7 +361,7 @@ export class AIOrchestrator {
         }
 
         // If we still have retries remaining, wait with exponential backoff + jitter
-        if (attempt <= maxRetries) {
+        if (willRetry) {
           retryCount++;
           const delayMs = retryAfterMs ?? this.jitteredDelay(attempt - 1, isLive);
           console.log(
@@ -353,12 +372,95 @@ export class AIOrchestrator {
       }
     }
 
-    // All retries exhausted — emit final telemetry and throw controlled error
-    const totalLatencyMs = Date.now() - totalStartTime;
+    // Record circuit breaker failure once for the entire logical operation when all retries are exhausted
+    primaryBreaker?.recordFailure(lastError);
+
+    // Structured [AI_ERROR] telemetry on final exhaustion
     console.error(
-      `[AIOrchestrator] requestId=${requestId} All ${maxRetries + 1} attempts failed for ${operation}: ${lastError?.message || 'Unavailable'}`,
+      `[AI_ERROR] ${JSON.stringify({
+        operation,
+        provider: primaryProviderId,
+        model: primaryModel,
+        status: Number(lastError?.status || lastError?.statusCode || 503) || 503,
+        attempt: maxRetries + 1,
+        retrying: false,
+        sessionId,
+        turnNumber,
+        errorType: 'transient_exhausted',
+        errorMessage: lastError?.message || 'Unavailable',
+      })}`,
     );
 
+    // Optional Gemini fallback model (sequential, configuration-driven)
+    if (config.ai.fallbackModel && config.ai.fallbackModel !== primaryModel) {
+      console.log(
+        `[AIOrchestrator] Primary model ${primaryModel} exhausted retries. Attempting fallback model: ${config.ai.fallbackModel}`,
+      );
+      try {
+        const fallbackStart = Date.now();
+        const fallbackResponse = await this.executeWithTimeout(
+          (signal) =>
+            primaryProvider.executeStructured<T>({
+              model: config.ai.fallbackModel,
+              prompt,
+              geminiSchema,
+              openAISchema,
+              schemaName,
+              temperature,
+              thinkingLevel: thinkingLevel ?? undefined,
+              maxOutputTokens,
+              timeoutMs,
+              abortSignal: signal,
+            }),
+          timeoutMs,
+          `${operation}:fallback:${config.ai.fallbackModel}`,
+        );
+
+        primaryBreaker?.recordSuccess();
+        const totalLatencyMs = Date.now() - totalStartTime;
+
+        this.emitTelemetry({
+          operation,
+          provider: primaryProviderId,
+          model: config.ai.fallbackModel,
+          promptBuildMs,
+          aiLatencyMs: Date.now() - fallbackStart,
+          latencyMs: totalLatencyMs,
+          totalLatencyMs,
+          attemptCount: maxRetries + 2,
+          retryCount,
+          cacheHit: false,
+          tokenUsage: fallbackResponse.tokenUsage,
+          sessionId,
+          turnNumber,
+        });
+
+        return {
+          data: fallbackResponse.data,
+          metadata: {
+            requestId,
+            operation,
+            provider: primaryProviderId,
+            model: config.ai.fallbackModel,
+            circuitState: primaryBreaker?.getHealth().circuitState || 'CLOSED',
+            latencyMs: totalLatencyMs,
+            fallbackUsed: true,
+            fallbackReason: `Primary model ${primaryModel} exhausted retries`,
+            attemptCount: maxRetries + 2,
+            promptBuildMs,
+            aiLatencyMs: Date.now() - fallbackStart,
+            tokenUsage: fallbackResponse.tokenUsage,
+          },
+        };
+      } catch (fallbackErr: any) {
+        console.error(
+          `[AIOrchestrator] Fallback model ${config.ai.fallbackModel} also failed: ${fallbackErr?.message || 'Unavailable'}`,
+        );
+      }
+    }
+
+    // All retries exhausted — emit final telemetry and throw controlled error
+    const totalLatencyMs = Date.now() - totalStartTime;
     this.emitTelemetry({
       operation,
       provider: primaryProviderId,
@@ -460,31 +562,59 @@ export class AIOrchestrator {
     const prompt = buildInterviewPlanPrompt(params);
     const promptBuildMs = Date.now() - promptStart;
 
-    const result = await this.executeTier<{ firstQuestion: string }>({
-      operation: 'plan',
-      primaryProviderId: config.ai.livePrimaryProvider,
-      primaryModel: config.ai.livePrimaryModel,
-      timeoutMs: config.ai.liveTimeoutMs,
-      prompt,
-      geminiSchema: interviewPlanGeminiSchema,
-      openAISchema: interviewPlanOpenAISchema,
-      schemaName: 'interview_plan',
-      temperature: 0.7,
-      thinkingLevel: 'low',
-      maxOutputTokens: PLAN_MAX_OUTPUT_TOKENS,
-      promptBuildMs,
-    });
+    try {
+      const result = await this.executeTier<{ firstQuestion: string }>({
+        operation: 'plan',
+        primaryProviderId: config.ai.livePrimaryProvider,
+        primaryModel: config.ai.livePrimaryModel,
+        timeoutMs: config.ai.liveTimeoutMs,
+        prompt,
+        geminiSchema: interviewPlanGeminiSchema,
+        openAISchema: interviewPlanOpenAISchema,
+        schemaName: 'interview_plan',
+        temperature: 0.7,
+        thinkingLevel: config.ai.liveThinkingLevel,
+        maxOutputTokens: PLAN_MAX_OUTPUT_TOKENS,
+        promptBuildMs,
+      });
 
-    const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
-    const firstQuestion = this.enforceSingleQuestion(
-      String(result.data.firstQuestion || '').trim(),
-      defaultFirstQ,
-    );
+      const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
+      const firstQuestion = this.enforceSingleQuestion(
+        String(result.data.firstQuestion || '').trim(),
+        defaultFirstQ,
+      );
 
-    return {
-      data: { topics: [], firstQuestion },
-      metadata: result.metadata,
-    };
+      return {
+        data: { topics: [], firstQuestion },
+        metadata: result.metadata,
+      };
+    } catch (err: any) {
+      if (
+        err instanceof AppError &&
+        (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN')
+      ) {
+        console.warn(
+          `[AIOrchestrator] Gracefully degrading generateInterviewPlan due to ${err.code}: using fallback welcome question.`,
+        );
+        const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
+        return {
+          data: { topics: [], firstQuestion: defaultFirstQ },
+          metadata: {
+            requestId: randomUUID(),
+            operation: 'plan',
+            provider: config.ai.livePrimaryProvider,
+            model: config.ai.livePrimaryModel,
+            circuitState:
+              this.circuitBreakers.get(config.ai.livePrimaryProvider)?.getHealth().circuitState || 'OPEN',
+            latencyMs: Date.now() - promptStart,
+            fallbackUsed: false,
+            attemptCount: 1,
+            degraded: true,
+          },
+        };
+      }
+      throw err;
+    }
   }
 
   async generateInterviewPlan(params: InterviewPlanParams): Promise<InterviewBlueprint> {
@@ -503,61 +633,108 @@ export class AIOrchestrator {
     const { prompt, currentTurn, totalMaxTurns } = buildConversationalTurnPrompt(params);
     const promptBuildMs = Date.now() - promptStart;
 
-    const result = await this.executeTier<ConversationalTurn>({
-      operation: 'live_turn',
-      primaryProviderId: config.ai.livePrimaryProvider,
-      primaryModel: config.ai.livePrimaryModel,
-      timeoutMs: config.ai.liveTimeoutMs,
-      prompt,
-      geminiSchema: conversationalTurnGeminiSchema,
-      openAISchema: conversationalTurnOpenAISchema,
-      schemaName: 'conversational_turn',
-      temperature: 0.7,
-      thinkingLevel: 'low',
-      maxOutputTokens: TURN_MAX_OUTPUT_TOKENS,
-      promptBuildMs,
-      sessionId: params.sessionId,
-      turnNumber: params.turnNumber,
-    });
+    try {
+      const result = await this.executeTier<ConversationalTurn>({
+        operation: 'live_turn',
+        primaryProviderId: config.ai.livePrimaryProvider,
+        primaryModel: config.ai.livePrimaryModel,
+        timeoutMs: config.ai.liveTimeoutMs,
+        prompt,
+        geminiSchema: conversationalTurnGeminiSchema,
+        openAISchema: conversationalTurnOpenAISchema,
+        schemaName: 'conversational_turn',
+        temperature: 0.7,
+        thinkingLevel: config.ai.liveThinkingLevel,
+        maxOutputTokens: TURN_MAX_OUTPUT_TOKENS,
+        promptBuildMs,
+        sessionId: params.sessionId,
+        turnNumber: params.turnNumber,
+      });
 
-    const raw = result.data;
-    const isPenultimateTurn = currentTurn === totalMaxTurns - 1;
-    const isFinalClosingTurn = currentTurn >= totalMaxTurns;
+      const raw = result.data;
+      const isPenultimateTurn = currentTurn === totalMaxTurns - 1;
+      const isFinalClosingTurn = currentTurn >= totalMaxTurns;
 
-    // Normalization & guards
-    let acknowledgement = (raw.acknowledgement || '').trim();
-    if (acknowledgement.split(/\s+/).length > 6) {
-      acknowledgement = acknowledgement.split(/\s+/).slice(0, 4).join(' ') + '.';
+      // Normalization & guards
+      let acknowledgement = (raw.acknowledgement || '').trim();
+      if (acknowledgement.split(/\s+/).length > 6) {
+        acknowledgement = acknowledgement.split(/\s+/).slice(0, 4).join(' ') + '.';
+      }
+
+      let action = raw.action;
+      if (isFinalClosingTurn) {
+        action = 'end_interview';
+      } else if (action === 'end_interview' && currentTurn < totalMaxTurns) {
+        action = 'new_topic';
+      }
+
+      const fallbackQuestion =
+        action === 'end_interview'
+          ? "Thank you for sharing your experience. We'll conclude the interview here!"
+          : `Could you tell me more about your experience as a ${params.role}?`;
+
+      const nextQuestion = this.enforceSingleQuestion(raw.nextQuestion, fallbackQuestion);
+      const nextTopic = (raw.nextTopic || 'Role Competency').trim();
+      const conversationSummary = (
+        raw.conversationSummary || params.conversationSummary || 'Interview in progress.'
+      ).trim();
+
+      return {
+        data: {
+          acknowledgement,
+          action,
+          nextQuestion,
+          nextTopic,
+          conversationSummary,
+        },
+        metadata: result.metadata,
+      };
+    } catch (err: any) {
+      if (
+        err instanceof AppError &&
+        (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN')
+      ) {
+        console.warn(
+          `[AIOrchestrator] Gracefully degrading getNextConversationalTurn due to ${err.code}: turn=${currentTurn}/${totalMaxTurns}.`,
+        );
+        const isFinalClosingTurn = currentTurn >= totalMaxTurns;
+        const action: 'continue_topic' | 'new_topic' | 'end_interview' = isFinalClosingTurn
+          ? 'end_interview'
+          : 'new_topic';
+
+        const fallbackQuestion = isFinalClosingTurn
+          ? "Thank you for sharing your experience. We'll conclude the interview here!"
+          : `Could you tell me more about your experience as a ${params.role}?`;
+
+        const fallbackTopic =
+          (params.areasExplored && params.areasExplored.length > 0
+            ? params.areasExplored[params.areasExplored.length - 1]
+            : undefined) || 'Role Competency';
+
+        return {
+          data: {
+            acknowledgement: 'Got it.',
+            action,
+            nextQuestion: fallbackQuestion,
+            nextTopic: fallbackTopic,
+            conversationSummary: params.conversationSummary || 'Interview in progress.',
+          },
+          metadata: {
+            requestId: randomUUID(),
+            operation: 'live_turn',
+            provider: config.ai.livePrimaryProvider,
+            model: config.ai.livePrimaryModel,
+            circuitState:
+              this.circuitBreakers.get(config.ai.livePrimaryProvider)?.getHealth().circuitState || 'OPEN',
+            latencyMs: Date.now() - promptStart,
+            fallbackUsed: false,
+            attemptCount: 1,
+            degraded: true,
+          },
+        };
+      }
+      throw err;
     }
-
-    let action = raw.action;
-    if (isFinalClosingTurn) {
-      action = 'end_interview';
-    } else if (action === 'end_interview' && currentTurn < totalMaxTurns) {
-      action = 'new_topic';
-    }
-
-    const fallbackQuestion =
-      action === 'end_interview'
-        ? "Thank you for sharing your experience. We'll conclude the interview here!"
-        : `Could you tell me more about your experience as a ${params.role}?`;
-
-    const nextQuestion = this.enforceSingleQuestion(raw.nextQuestion, fallbackQuestion);
-    const nextTopic = (raw.nextTopic || 'Role Competency').trim();
-    const conversationSummary = (
-      raw.conversationSummary || params.conversationSummary || 'Interview in progress.'
-    ).trim();
-
-    return {
-      data: {
-        acknowledgement,
-        action,
-        nextQuestion,
-        nextTopic,
-        conversationSummary,
-      },
-      metadata: result.metadata,
-    };
   }
 
   async getNextConversationalTurn(

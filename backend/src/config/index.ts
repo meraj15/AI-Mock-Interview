@@ -37,6 +37,12 @@ export const config = {
     evalPrimaryProvider: (process.env.AI_EVAL_PRIMARY_PROVIDER ?? 'gemini').toLowerCase(),
     evalPrimaryModel: process.env.GEMINI_MODEL ?? process.env.AI_EVAL_PRIMARY_MODEL ?? 'gemini-3.8-flash',
 
+    /** Optional secondary Gemini fallback model (e.g. gemini-2.5-flash or gemini-2.0-flash). Disabled if empty. */
+    fallbackModel: (process.env.GEMINI_FALLBACK_MODEL ?? process.env.AI_FALLBACK_MODEL ?? '').trim(),
+
+    /** Thinking level for live conversational turns ('minimal' | 'low' | 'medium' | 'high'). Default: 'low'. */
+    liveThinkingLevel: (process.env.GEMINI_LIVE_THINKING_LEVEL ?? 'low') as 'minimal' | 'low' | 'medium' | 'high',
+
     circuitFailureThreshold: parseInt(process.env.AI_CIRCUIT_FAILURE_THRESHOLD ?? '3', 10),
     circuitCooldownMs: parseInt(process.env.AI_CIRCUIT_COOLDOWN_MS ?? '30000', 10),
     /** Live interview turn hard timeout. Target: ~10-12 s. Default: 12 000 ms. */
