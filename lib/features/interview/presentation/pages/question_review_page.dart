@@ -14,11 +14,7 @@ class QuestionReviewPage extends StatefulWidget {
   final List<QuestionReview>? questions;
   final String? role;
 
-  const QuestionReviewPage({
-    super.key,
-    this.questions,
-    this.role,
-  });
+  const QuestionReviewPage({super.key, this.questions, this.role});
 
   @override
   State<QuestionReviewPage> createState() => _QuestionReviewPageState();
@@ -75,8 +71,8 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
     final total = reviews.isNotEmpty
         ? reviews.length
         : history.isNotEmpty
-            ? history.length
-            : 1;
+        ? history.length
+        : 1;
 
     if (_index >= total) {
       _index = (total - 1).clamp(0, total);
@@ -122,12 +118,15 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: isSelected ? colors.primary : colors.card,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                              color: isSelected ? colors.primary : colors.border),
+                            color: isSelected ? colors.primary : colors.border,
+                          ),
                         ),
                         child: Text(
                           'Q${i + 1}',
@@ -174,8 +173,10 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
           // Bottom Navigation Buttons (Prev / Next & Dots)
           if (total > 1) ...[
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 4.0,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -190,8 +191,8 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                         : null,
                     style: TextButton.styleFrom(
                       foregroundColor: colors.foreground,
-                      disabledForegroundColor:
-                          colors.mutedForeground.withValues(alpha: 0.35),
+                      disabledForegroundColor: colors.mutedForeground
+                          .withValues(alpha: 0.35),
                       textStyle: AppTypography.semiBold(13),
                     ),
                     child: const Row(
@@ -230,8 +231,8 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                         : null,
                     style: TextButton.styleFrom(
                       foregroundColor: colors.primary,
-                      disabledForegroundColor:
-                          colors.mutedForeground.withValues(alpha: 0.35),
+                      disabledForegroundColor: colors.mutedForeground
+                          .withValues(alpha: 0.35),
                       textStyle: AppTypography.semiBold(13),
                     ),
                     child: const Row(
@@ -327,16 +328,21 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: (isHigh ? colors.mint : colors.coral)
-                            .withValues(alpha: 0.15),
+                        color: (isHigh ? colors.mint : colors.coral).withValues(
+                          alpha: 0.15,
+                        ),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         '$scoreVal / 100',
-                        style: AppTypography.bold(12,
-                            color: isHigh ? colors.mint : colors.coral),
+                        style: AppTypography.bold(
+                          12,
+                          color: isHigh ? colors.mint : colors.coral,
+                        ),
                       ),
                     ),
                   ],
@@ -344,8 +350,11 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 const SizedBox(height: 12),
                 Text(
                   questionText,
-                  style: AppTypography.bold(16,
-                      color: colors.foreground, height: 1.35),
+                  style: AppTypography.bold(
+                    16,
+                    color: colors.foreground,
+                    height: 1.35,
+                  ),
                 ),
               ],
             ),
@@ -376,8 +385,11 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 Expanded(
                   child: Text(
                     answerText,
-                    style: AppTypography.regular(13,
-                        color: colors.foreground, height: 1.5),
+                    style: AppTypography.regular(
+                      13,
+                      color: colors.foreground,
+                      height: 1.5,
+                    ),
                   ),
                 ),
               ],
@@ -393,9 +405,7 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
               decoration: BoxDecoration(
                 color: colors.mint.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: colors.mint.withValues(alpha: 0.35),
-                ),
+                border: Border.all(color: colors.mint.withValues(alpha: 0.35)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,8 +439,11 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                   const SizedBox(height: 10),
                   Text(
                     expectedAnswerText,
-                    style: AppTypography.regular(13,
-                        color: colors.foreground, height: 1.55),
+                    style: AppTypography.regular(
+                      13,
+                      color: colors.foreground,
+                      height: 1.55,
+                    ),
                   ),
                 ],
               ),
@@ -447,8 +460,10 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                 color: colors.card,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                    color: (isHigh ? colors.mint : colors.coral)
-                        .withValues(alpha: 0.35)),
+                  color: (isHigh ? colors.mint : colors.coral).withValues(
+                    alpha: 0.35,
+                  ),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,8 +477,11 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                   Expanded(
                     child: Text(
                       feedbackText,
-                      style: AppTypography.regular(13,
-                          color: colors.foreground, height: 1.5),
+                      style: AppTypography.regular(
+                        13,
+                        color: colors.foreground,
+                        height: 1.5,
+                      ),
                     ),
                   ),
                 ],
