@@ -145,7 +145,7 @@ SKILL PERFORMANCE (scores 0-100 each, evidence-based):
 
 RECOMMENDATIONS (3 items):
 Practical, specific learning actions — not just "read more about X."
-Example: "Practice explaining [specific concept] out loud in 2 minutes — your answer showed 
+Example: "Practice explaining [specific concept] out loud in 2 minutes — your answer showed khanmehe
 you understand it but couldn't articulate it clearly under pressure."
 Max 25 words each.
 

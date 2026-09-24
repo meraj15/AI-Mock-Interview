@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:speech_to_text/speech_recognition_result.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
@@ -41,6 +42,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   String _liveTranscript = '';
   bool _isExplicitlyStopping = false;
   bool _isRestartingStt = false;
+  Timer? _sttKeepAliveTimer;
   final TextEditingController _answerCtrl = TextEditingController();
   final FocusNode _answerFocusNode = FocusNode();
 
@@ -147,6 +149,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     _questionTimer?.cancel();
     _ttsSafetyTimer?.cancel();
     _loadingStatusTimer?.cancel();
+    _stopSttKeepAlive();
     _tts.stop();
     _stt.stop();
     _sessionTimer?.cancel();
@@ -229,7 +232,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       },
       onStatus: (status) async {
         debugPrint('[STT Status]: $status');
-        if (status == 'notListening' &&
+        if ((status == 'notListening' || status == 'done') &&
             _phase == InterviewPhase.recording &&
             !_isExplicitlyStopping) {
           await _restartListeningSafely();
@@ -239,6 +242,25 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     if (mounted) setState(() => _sttAvailable = ok);
   }
 
+  void _startSttKeepAlive() {
+    _sttKeepAliveTimer?.cancel();
+    _sttKeepAliveTimer = Timer.periodic(const Duration(milliseconds: 1200), (timer) {
+      if (!mounted || _phase != InterviewPhase.recording || _isExplicitlyStopping) {
+        timer.cancel();
+        return;
+      }
+      if (!_stt.isListening && !_isRestartingStt) {
+        debugPrint('[STT Watchdog] Recognizer silent while recording — reviving...');
+        _restartListeningSafely();
+      }
+    });
+  }
+
+  void _stopSttKeepAlive() {
+    _sttKeepAliveTimer?.cancel();
+    _sttKeepAliveTimer = null;
+  }
+
   Future<void> _restartListeningSafely() async {
     if (_isRestartingStt || !_sttAvailable || _isExplicitlyStopping || _phase != InterviewPhase.recording) {
       return;
@@ -246,7 +268,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     _isRestartingStt = true;
 
     try {
-      _commitCurrentSessionWords();
+      _commitCurrentWords();
       if (mounted) {
         setState(() {
           _liveTranscript = _accumulatedTranscript;
@@ -259,7 +281,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
         } catch (_) {}
       }
 
-      await Future.delayed(const Duration(milliseconds: 250));
+      await Future.delayed(const Duration(milliseconds: 120));
 
       if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
         await _listenInternal();
@@ -496,13 +518,14 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
 
     // 2. Stop STT if recording
     _isExplicitlyStopping = true;
+    _stopSttKeepAlive();
     try {
       if (_stt.isListening) {
         await _stt.stop();
       }
     } catch (_) {}
 
-    _commitCurrentSessionWords();
+    _commitCurrentWords();
 
     // 3. Resolve answer text (prioritize editor, then accumulated, then live, then fallback)
     String answer = _answerCtrl.text.trim();
@@ -562,10 +585,13 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
     // Start question timer now that candidate tapped to speak
     _startQuestionTimer();
 
+    // Start keep-alive watchdog to ensure recording never stops until candidate taps stop
+    _startSttKeepAlive();
+
     await _listenInternal();
   }
 
-  Future<void> _listenInternal() async {
+  Future<void> _listenInternal({int retryCount = 0}) async {
     if (!_sttAvailable || _isExplicitlyStopping || _phase != InterviewPhase.recording) {
       return;
     }
@@ -574,85 +600,99 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
       await _stt.listen(
         onResult: (result) {
           if (!mounted || _phase != InterviewPhase.recording) return;
-          _onSpeechResult(result.recognizedWords);
+          _onSpeechResult(result);
         },
         listenOptions: stt.SpeechListenOptions(
           listenMode: stt.ListenMode.dictation,
           cancelOnError: false,
           partialResults: true,
-          listenFor: const Duration(minutes: 10),
-          pauseFor: const Duration(seconds: 15),
+          listenFor: const Duration(hours: 1),
+          pauseFor: const Duration(seconds: 30),
         ),
       );
     } catch (e) {
       debugPrint('[STT listen exception]: $e');
+      if (retryCount < 3 && mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (mounted && _phase == InterviewPhase.recording && !_isExplicitlyStopping) {
+          await _listenInternal(retryCount: retryCount + 1);
+        }
+      }
     }
   }
 
-  void _commitCurrentSessionWords() {
+  String _combineTranscripts(String previous, String current) {
+    final prev = previous.trim();
+    final curr = current.trim();
+
+    if (prev.isEmpty) return curr;
+    if (curr.isEmpty) return prev;
+
+    final prevLower = prev.toLowerCase();
+    final currLower = curr.toLowerCase();
+
+    // 1. Direct prefix match: if current already includes previous text, use current
+    if (currLower.startsWith(prevLower)) {
+      return curr;
+    }
+
+    // 2. Punctuation-insensitive match: e.g. "I am a dev." vs "I am a dev and I love Dart"
+    final cleanPrev = prevLower.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final cleanCurr = currLower.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (cleanPrev.isNotEmpty && cleanCurr.startsWith(cleanPrev)) {
+      return curr;
+    }
+
+    // 3. Otherwise append with a clean single space
+    return '$prev $curr';
+  }
+
+  void _commitCurrentWords() {
     final trimmed = _currentSessionWords.trim();
     if (trimmed.isEmpty) return;
 
-    if (_accumulatedTranscript.isEmpty) {
-      _accumulatedTranscript = trimmed;
-    } else {
-      final accLower = _accumulatedTranscript.toLowerCase();
-      final inLower = trimmed.toLowerCase();
-
-      if (inLower.startsWith(accLower)) {
-        _accumulatedTranscript = trimmed;
-      } else {
-        _accumulatedTranscript = '$_accumulatedTranscript $trimmed'.trim();
-      }
-    }
+    _accumulatedTranscript = _combineTranscripts(_accumulatedTranscript, trimmed);
     _currentSessionWords = '';
   }
 
-  void _onSpeechResult(String incoming) {
-    incoming = incoming.trim();
-    if (incoming.isEmpty) return;
+  void _onSpeechResult(SpeechRecognitionResult result) {
+    final words = result.recognizedWords.trim();
+    if (words.isEmpty) return;
 
-    _currentSessionWords = incoming;
-
-    String fullText;
-    if (_accumulatedTranscript.isEmpty) {
-      fullText = _currentSessionWords;
-    } else {
-      final accLower = _accumulatedTranscript.toLowerCase();
-      final inLower = _currentSessionWords.toLowerCase();
-
-      if (inLower.startsWith(accLower)) {
-        // Native recognizer kept the cumulative words, avoid double-prepending
-        fullText = _currentSessionWords;
-      } else {
-        // Native recognizer started a fresh session buffer, append to accumulated
-        fullText = '$_accumulatedTranscript $_currentSessionWords';
-      }
-    }
+    _currentSessionWords = words;
+    final fullText = _combineTranscripts(_accumulatedTranscript, _currentSessionWords);
 
     setState(() {
       _liveTranscript = fullText.trim();
     });
 
     _autoScrollTranscript();
+
+    if (result.finalResult) {
+      _commitCurrentWords();
+    }
   }
 
   Future<void> _finishRecordingAndSubmit() async {
     _isExplicitlyStopping = true;
+    _stopSttKeepAlive();
+
     try {
-      await _stt.stop();
+      if (_stt.isListening) {
+        await _stt.stop();
+      }
     } catch (_) {}
 
-    _commitCurrentSessionWords();
+    _commitCurrentWords();
 
+    final finalAnswer = _accumulatedTranscript.trim();
     setState(() {
-      _liveTranscript = _accumulatedTranscript.trim();
+      _liveTranscript = finalAnswer;
     });
 
-    final answer = _accumulatedTranscript.trim();
-    if (answer.isNotEmpty) {
+    if (finalAnswer.isNotEmpty) {
       // Move to answered phase: show editable transcript card
-      _answerCtrl.text = answer;
+      _answerCtrl.text = finalAnswer;
       _setPhase(InterviewPhase.answered);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_answerEditorScrollCtrl.hasClients) {
@@ -693,6 +733,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
   }
 
   void _navigateToResult(InterviewController ic) {
+    _stopSttKeepAlive();
     _streamingTimer?.cancel();
     _questionTimer?.cancel();
     _tts.stop();
@@ -775,6 +816,7 @@ class _InterviewSessionPageState extends State<InterviewSessionPage>
             ),
             onPressed: () {
               Navigator.of(ctx).pop();
+              _stopSttKeepAlive();
               _streamingTimer?.cancel();
               _questionTimer?.cancel();
               _tts.stop();
