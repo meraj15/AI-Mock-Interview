@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
@@ -291,6 +292,7 @@ class _ResultShimmerLoadingView extends StatelessWidget {
   final VoidCallback onClose;
 
   const _ResultShimmerLoadingView({
+    super.key,
     required this.colors,
     required this.role,
     required this.questionCount,
@@ -317,179 +319,721 @@ class _ResultShimmerLoadingView extends StatelessWidget {
             ],
     );
 
+    final heroShimmerBase = Colors.white.withValues(alpha: 0.08);
+    final heroShimmerHighlight = Colors.white.withValues(alpha: 0.24);
+
+    final bodyShimmerBase = isDark ? const Color(0xFF1F2C46) : const Color(0xFFE8EDF5);
+    final bodyShimmerHighlight = isDark ? const Color(0xFF2C3E61) : const Color(0xFFF6F8FC);
+
     return Scaffold(
       backgroundColor: colors.background,
-      body: AppShimmer(
-        child: Column(
-          children: [
-            // Shimmer Hero
-            Container(
-              decoration: BoxDecoration(gradient: bgGradient),
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: const [
-                          ShimmerBox(width: 34, height: 34, borderRadius: 10),
-                          ShimmerBox(width: 140, height: 16, borderRadius: 6),
-                          ShimmerBox(width: 34, height: 34, borderRadius: 10),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+      body: Column(
+        children: [
+          // ── Hero Section (Solid Stable Gradient) ──────────────────────
+          Container(
+            decoration: BoxDecoration(
+              gradient: bgGradient,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Bar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        InkWell(
+                          onTap: onClose,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: const Icon(
+                              FeatherIcons.x,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _PulsingDot(color: colors.mint),
+                              const SizedBox(width: 6),
+                              Text(
+                                'AI EVALUATING',
+                                style: AppTypography.bold(
+                                  10.5,
+                                  color: Colors.white,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            FeatherIcons.share2,
+                            size: 15,
+                            color: Colors.white.withValues(alpha: 0.35),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
 
-                      // Score Dial + Verdict Meta
-                      Row(
+                    // Score Dial + Verdict Meta
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Animated Evaluating Radial Gauge
+                        _ScoreRingEvaluatingGauge(accentColor: colors.mint),
+
+                        const SizedBox(width: 18),
+
+                        // Role & Shimmering Band Meta
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                role,
+                                style: AppTypography.bold(
+                                  16,
+                                  color: Colors.white,
+                                  height: 1.2,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Hiring Band Shimmer Placeholder
+                              AppShimmer(
+                                baseColor: heroShimmerBase,
+                                highlightColor: heroShimmerHighlight,
+                                child: Container(
+                                  width: 100,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Performance Label Shimmer Placeholder
+                              AppShimmer(
+                                baseColor: heroShimmerBase,
+                                highlightColor: heroShimmerHighlight,
+                                child: Container(
+                                  width: 135,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Quick Stats Strip
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          const ShimmerBox.circle(size: 104),
-                          const SizedBox(width: 18),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
-                                ShimmerBox(width: 130, height: 18, borderRadius: 6),
-                                SizedBox(height: 10),
-                                ShimmerBox(width: 95, height: 26, borderRadius: 8),
-                                SizedBox(height: 8),
-                                ShimmerBox(width: 150, height: 14, borderRadius: 6),
-                              ],
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                FeatherIcons.helpCircle,
+                                size: 12,
+                                color: Colors.white.withValues(alpha: 0.7),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                '$questionCount Questions',
+                                style: AppTypography.medium(
+                                  11,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            width: 1,
+                            height: 12,
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                FeatherIcons.activity,
+                                size: 12,
+                                color: Colors.white.withValues(alpha: 0.7),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Complete',
+                                style: AppTypography.medium(
+                                  11,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            width: 1,
+                            height: 12,
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
+                          AppShimmer(
+                            baseColor: heroShimmerBase,
+                            highlightColor: heroShimmerHighlight,
+                            child: Container(
+                              width: 60,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
-                      // Stats Strip
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: const [
-                            ShimmerBox(width: 70, height: 18, borderRadius: 6),
-                            ShimmerBox(width: 70, height: 18, borderRadius: 6),
-                            ShimmerBox(width: 70, height: 18, borderRadius: 6),
+          // ── Segmented Tab Bar ──────────────────────────────────────────
+          Container(
+            margin: const EdgeInsets.fromLTRB(18, 12, 18, 2),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colors.border),
+            ),
+            child: Row(
+              children: [
+                _TabItem(
+                  label: 'Overview',
+                  icon: FeatherIcons.fileText,
+                  isSelected: true,
+                  onTap: () {},
+                  colors: colors,
+                ),
+                _TabItem(
+                  label: 'Q&A ($questionCount)',
+                  icon: FeatherIcons.helpCircle,
+                  isSelected: false,
+                  onTap: () {},
+                  colors: colors,
+                ),
+                _TabItem(
+                  label: 'Roadmap',
+                  icon: FeatherIcons.compass,
+                  isSelected: false,
+                  onTap: () {},
+                  colors: colors,
+                ),
+              ],
+            ),
+          ),
+
+          // ── Scrollable Body Cards (Real Surfaces + Shimmer Content) ────
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Card 1: Executive Summary Card Shell
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                FeatherIcons.fileText,
+                                size: 14,
+                                color: colors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Executive Summary',
+                              style: AppTypography.bold(14, color: colors.foreground),
+                            ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Shimmer Tab Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-              child: Container(
-                height: 42,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: colors.card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: colors.border),
-                ),
-                child: Row(
-                  children: const [
-                    Expanded(child: ShimmerBox(height: 34, borderRadius: 10)),
-                    SizedBox(width: 6),
-                    Expanded(child: ShimmerBox(height: 34, borderRadius: 10)),
-                    SizedBox(width: 6),
-                    Expanded(child: ShimmerBox(height: 34, borderRadius: 10)),
-                  ],
-                ),
-              ),
-            ),
-
-            // Shimmer Cards in Body
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: Column(
-                  children: [
-                    // Summary card shimmer
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: colors.card,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: colors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          ShimmerBox(width: 160, height: 16, borderRadius: 6),
-                          SizedBox(height: 12),
-                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
-                          SizedBox(height: 7),
-                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
-                          SizedBox(height: 7),
-                          ShimmerBox(width: 220, height: 13, borderRadius: 4),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Key Takeaways shimmer
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: colors.card,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: colors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          ShimmerBox(width: 140, height: 15, borderRadius: 6),
-                          SizedBox(height: 10),
-                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
-                          SizedBox(height: 6),
-                          ShimmerBox(width: 260, height: 13, borderRadius: 4),
-                          SizedBox(height: 14),
-                          ShimmerBox(width: 130, height: 15, borderRadius: 6),
-                          SizedBox(height: 10),
-                          ShimmerBox(width: double.infinity, height: 13, borderRadius: 4),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Bottom Status indicator
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colors.primary,
+                        const SizedBox(height: 14),
+                        AppShimmer(
+                          baseColor: bodyShimmerBase,
+                          highlightColor: bodyShimmerHighlight,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              ShimmerBox(width: double.infinity, height: 13, borderRadius: 5),
+                              SizedBox(height: 8),
+                              ShimmerBox(width: double.infinity, height: 13, borderRadius: 5),
+                              SizedBox(height: 8),
+                              ShimmerBox(width: 240, height: 13, borderRadius: 5),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Generating AI evaluation scorecard…',
-                    style: AppTypography.medium(12, color: colors.mutedForeground),
+
+                  const SizedBox(height: 12),
+
+                  // Card 2: Key Takeaways Card Shell
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: colors.success.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                FeatherIcons.checkCircle,
+                                size: 14,
+                                color: colors.success,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Key Strengths',
+                              style: AppTypography.bold(14, color: colors.foreground),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        AppShimmer(
+                          baseColor: bodyShimmerBase,
+                          highlightColor: bodyShimmerHighlight,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              ShimmerBox(width: double.infinity, height: 13, borderRadius: 5),
+                              SizedBox(height: 8),
+                              ShimmerBox(width: 270, height: 13, borderRadius: 5),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: colors.coral.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                FeatherIcons.trendingUp,
+                                size: 14,
+                                color: colors.coral,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Areas to Improve',
+                              style: AppTypography.bold(14, color: colors.foreground),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        AppShimmer(
+                          baseColor: bodyShimmerBase,
+                          highlightColor: bodyShimmerHighlight,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              ShimmerBox(width: double.infinity, height: 13, borderRadius: 5),
+                              SizedBox(height: 8),
+                              ShimmerBox(width: 240, height: 13, borderRadius: 5),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
+
+          // ── Bottom Live AI Evaluation Status Banner ────────────────────
+          _LiveAiEvaluatingBanner(
+            colors: colors,
+            role: role,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVALUATING RADIAL GAUGE & LIVE BANNER WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ScoreRingEvaluatingGauge extends StatefulWidget {
+  final Color accentColor;
+  const _ScoreRingEvaluatingGauge({required this.accentColor});
+
+  @override
+  State<_ScoreRingEvaluatingGauge> createState() =>
+      _ScoreRingEvaluatingGaugeState();
+}
+
+class _ScoreRingEvaluatingGaugeState extends State<_ScoreRingEvaluatingGauge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        return SizedBox(
+          width: 104,
+          height: 104,
+          child: CustomPaint(
+            painter: _EvaluatingRingPainter(
+              rotation: _ctrl.value * 2 * math.pi,
+              accentColor: widget.accentColor,
+            ),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '--',
+                    style: AppTypography.bold(
+                      26,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      height: 1.05,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'SCORING',
+                    style: AppTypography.bold(
+                      8.5,
+                      color: const Color(0xFF8FA5D1),
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EvaluatingRingPainter extends CustomPainter {
+  final double rotation;
+  final Color accentColor;
+
+  const _EvaluatingRingPainter({
+    required this.rotation,
+    required this.accentColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final radius = cx - 6;
+
+    // Track
+    final trackPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.10)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7;
+    canvas.drawCircle(Offset(cx, cy), radius, trackPaint);
+
+    // Active rotating arc
+    final activePaint = Paint()
+      ..shader = SweepGradient(
+        colors: [
+          accentColor.withValues(alpha: 0.0),
+          accentColor.withValues(alpha: 0.45),
+          accentColor,
+        ],
+        stops: const [0.0, 0.5, 1.0],
+        transform: GradientRotation(rotation),
+      ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: radius))
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 7;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: radius),
+      rotation,
+      math.pi * 1.25,
+      false,
+      activePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_EvaluatingRingPainter old) =>
+      old.rotation != rotation || old.accentColor != accentColor;
+}
+
+class _PulsingDot extends StatefulWidget {
+  final Color color;
+  const _PulsingDot({required this.color});
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(begin: 0.35, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, _) {
+        return Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: widget.color.withValues(alpha: _anim.value),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withValues(alpha: _anim.value * 0.7),
+                blurRadius: 6,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LiveAiEvaluatingBanner extends StatefulWidget {
+  final AppColorScheme colors;
+  final String role;
+
+  const _LiveAiEvaluatingBanner({
+    required this.colors,
+    required this.role,
+  });
+
+  @override
+  State<_LiveAiEvaluatingBanner> createState() =>
+      _LiveAiEvaluatingBannerState();
+}
+
+class _LiveAiEvaluatingBannerState extends State<_LiveAiEvaluatingBanner> {
+  int _step = 0;
+  late final List<String> _steps;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _steps = [
+      'Evaluating answer clarity & technical depth…',
+      'Benchmarking against ${widget.role.isNotEmpty ? widget.role : "role"} expectations…',
+      'Synthesizing key strengths & growth areas…',
+      'Generating personalized preparation roadmap…',
+    ];
+
+    _timer = Timer.periodic(const Duration(milliseconds: 2400), (t) {
+      if (mounted) {
+        setState(() {
+          _step = (_step + 1) % _steps.length;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colors.primary.withValues(alpha: 0.25),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primary.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 17,
+            height: 17,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 350),
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.25),
+                    end: Offset.zero,
+                  ).animate(anim),
+                  child: child,
+                ),
+              ),
+              child: Text(
+                _steps[_step],
+                key: ValueKey<int>(_step),
+                style: AppTypography.semiBold(
+                  12,
+                  color: colors.foreground,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
