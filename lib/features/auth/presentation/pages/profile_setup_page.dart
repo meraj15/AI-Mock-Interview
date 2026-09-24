@@ -740,7 +740,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                       ),
                                       decoration: InputDecoration(
                                         hintText:
-                                            'Type your target role (e.g. Software Engineer)',
+                                            'Type your target role',
                                         hintStyle: AppTypography.regular(
                                           12.5,
                                           color: colors.mutedForeground,
@@ -1051,7 +1051,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                           ),
                                           decoration: InputDecoration(
                                             hintText: _skills.isEmpty
-                                                ? 'Type skill (e.g. Python, SQL, React) & press Enter'
+                                                ? 'Type skill & press Enter'
                                                 : 'Type next skill...',
                                             hintStyle: AppTypography.regular(
                                               11.5,

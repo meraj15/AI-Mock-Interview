@@ -1,5 +1,6 @@
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -204,14 +205,22 @@ class _SignupPageState extends State<SignupPage> {
                 obscureText: !_passwordVisible,
                 onChanged: (_) => setState(() => _showStrengthHints = true),
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 14),
-                child: GestureDetector(
-                  onTap: () => setState(() => _passwordVisible = !_passwordVisible),
-                  child: Icon(
-                    _passwordVisible ? FeatherIcons.eyeOff : FeatherIcons.eye,
-                    size: 17,
-                    color: colors.mutedForeground,
+              Positioned(
+                top: 0,
+                bottom: 12,
+                right: 14,
+                child: Center(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _passwordVisible = !_passwordVisible),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        _passwordVisible ? FeatherIcons.eyeOff : FeatherIcons.eye,
+                        size: 17,
+                        color: colors.mutedForeground,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -294,7 +303,11 @@ class _SignupPageState extends State<SignupPage> {
             children: [
               Expanded(
                 child: _SocialButton(
-                  icon: FeatherIcons.chrome,
+                  icon: SvgPicture.asset(
+                            'assets/svg/google-icon-logo-svgrepo-com.svg',
+                            width: 17,
+                            height: 17,
+                          ),
                   label: 'Google',
                   colors: colors,
                   onTap: () async {
@@ -310,7 +323,15 @@ class _SignupPageState extends State<SignupPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: _SocialButton(
-                  icon: FeatherIcons.smartphone,
+                  icon: SvgPicture.asset(
+                    'assets/svg/apple-logo-svgrepo-com.svg',
+                    width: 17,
+                    height: 17,
+                    colorFilter: ColorFilter.mode(
+                      colors.foreground,
+                      BlendMode.srcIn,
+                    ),
+                  ),
                   label: 'Apple',
                   colors: colors,
                   onTap: () async {
@@ -371,7 +392,7 @@ class _PasswordRule extends StatelessWidget {  final bool met;
 }
 
 class _SocialButton extends StatelessWidget {
-  final IconData icon;
+  final Widget icon;
   final String label;
   final AppColorScheme colors;
   final VoidCallback onTap;
@@ -400,7 +421,7 @@ class _SocialButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 17, color: colors.foreground),
+              icon,
               const SizedBox(width: 8),
               Text(label, style: AppTypography.semiBold(13, color: colors.foreground)),
             ],

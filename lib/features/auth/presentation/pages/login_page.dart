@@ -1,5 +1,6 @@
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -254,7 +255,11 @@ class _LoginPageState extends State<LoginPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(FeatherIcons.chrome, size: 17, color: colors.foreground),
+                            SvgPicture.asset(
+                            'assets/svg/google-icon-logo-svgrepo-com.svg',
+                            width: 17,
+                            height: 17,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Google',
@@ -303,7 +308,15 @@ class _LoginPageState extends State<LoginPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(FeatherIcons.smartphone, size: 17, color: colors.foreground),
+                          SvgPicture.asset(
+                            'assets/svg/apple-logo-svgrepo-com.svg',
+                            width: 17,
+                            height: 17,
+                            colorFilter: ColorFilter.mode(
+                              colors.foreground,
+                              BlendMode.srcIn,
+                            ),
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Apple',
