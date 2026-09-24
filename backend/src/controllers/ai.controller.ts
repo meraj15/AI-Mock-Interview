@@ -39,6 +39,14 @@ const interviewPlanSchema = z.object({
     .max(20)
     .optional()
     .default(10),
+
+  mode: z
+    .string()
+    .optional(),
+
+  focusArea: z
+    .union([z.string(), z.array(z.string())])
+    .optional(),
 });
 
 /**
@@ -216,6 +224,8 @@ export class AIController {
             validated.experience,
           questionCount:
             validated.questionCount,
+          mode: validated.mode,
+          focusArea: validated.focusArea,
         });
 
       res.status(200).json({
@@ -279,6 +289,7 @@ export class AIController {
           recentQuestions: validated.recentQuestions,
           turnNumber: validated.turnNumber,
           maxTurns: validated.maxTurns,
+          topicsRemaining: validated.topicsRemaining,
         });
 
       res.status(200).json({

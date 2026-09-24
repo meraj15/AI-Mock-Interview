@@ -28,6 +28,14 @@ const startSessionSchema = z.object({
     .max(20)
     .optional()
     .default(10),
+
+  mode: z
+    .string()
+    .optional(),
+
+  focusArea: z
+    .union([z.string(), z.array(z.string())])
+    .optional(),
 });
 
 const submitAnswerSchema = z.object({

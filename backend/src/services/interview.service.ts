@@ -32,6 +32,8 @@ export interface ActiveConversationalSession {
   currentTopicIndex: number;
   totalTopics: number;
   areasExplored: string[];
+  topicRoadmap?: string[];
+  topicsRemaining?: string[];
   followUpsUsedForCurrentTopic: number;
 
   totalTurns: number;
@@ -84,11 +86,14 @@ export class InterviewService {
       skills?: string[];
       experience?: string;
       questionCount?: number;
+      mode?: string;
+      focusArea?: string | string[];
     }
   ): Promise<{
     sessionId: string;
     role: string;
     topics: InterviewTopic[];
+    topicRoadmap?: string[];
     currentTopic: string;
     currentTopicIndex: number;
     totalTopics: number;
@@ -176,15 +181,24 @@ export class InterviewService {
         experience,
         questionCount: effectiveQuestionCount,
         previousQuestions: promptQuestions,
+        mode: params.mode,
+        focusArea: params.focusArea,
       });
     const planLatencyMs = Date.now() - planStart;
 
-    const placeholderTopics: InterviewTopic[] = [
+    const topicRoadmap = Array.isArray(plan.topicRoadmap) ? plan.topicRoadmap : [];
+    const openingTopic = plan.openingTopic || 'Introduction';
+
+    const sessionTopics: InterviewTopic[] = [
       {
-        name: 'Introduction',
+        name: openingTopic,
         objective:
           'Open the interview naturally and understand the candidate background.',
       },
+      ...topicRoadmap.map((t) => ({
+        name: t,
+        objective: `Evaluate candidate competency in ${t}.`,
+      })),
     ];
 
     const sessionId = randomUUID();
@@ -196,10 +210,12 @@ export class InterviewService {
       skills: normalizedSkills,
       experience,
 
-      topics: placeholderTopics,
+      topics: sessionTopics,
       currentTopicIndex: 0,
-      totalTopics,
-      areasExplored: ['Introduction'],
+      totalTopics: sessionTopics.length,
+      areasExplored: [openingTopic],
+      topicRoadmap,
+      topicsRemaining: [...topicRoadmap],
       followUpsUsedForCurrentTopic: 0,
 
       totalTurns: 1,
@@ -263,7 +279,8 @@ export class InterviewService {
       sessionId,
       role: session.role,
       topics: session.topics,
-      currentTopic: session.topics[0].name,
+      topicRoadmap: session.topicRoadmap,
+      currentTopic: session.topics[0]?.name || openingTopic,
       currentTopicIndex: 0,
       totalTopics: session.totalTopics,
       firstQuestion: plan.firstQuestion,
@@ -300,6 +317,8 @@ export class InterviewService {
     currentTopicIndex: number;
     totalTopics: number;
     isComplete: boolean;
+    answerClassification?: string;
+    followUpType?: string | null;
   }> {
     const session =
       this.activeSessions.get(sessionId);
@@ -463,6 +482,7 @@ export class InterviewService {
         // Pass bounded historical questions and topics for rotation
         previousQuestions: session.questionHistory,
         previouslyCoveredTopics: session.coveredTopics,
+        topicsRemaining: session.topicsRemaining,
         // Pass sessionId so the orchestrator can correlate telemetry logs
         sessionId,
       });
@@ -576,6 +596,16 @@ export class InterviewService {
       if (nextTopic && !session.areasExplored.includes(nextTopic)) {
         session.areasExplored.push(nextTopic);
       }
+      if (session.topicsRemaining && session.topicsRemaining.length > 0) {
+        const idx = session.topicsRemaining.findIndex(
+          (t) => t.toLowerCase() === nextTopic.toLowerCase(),
+        );
+        if (idx !== -1) {
+          session.topicsRemaining.splice(idx, 1);
+        } else {
+          session.topicsRemaining.shift();
+        }
+      }
       session.currentTopicIndex = Math.min(
         session.totalTopics - 1,
         session.currentTopicIndex + 1,
@@ -660,6 +690,10 @@ export class InterviewService {
         session.totalTopics,
 
       isComplete: false,
+
+      answerClassification: turn.answerClassification,
+
+      followUpType: turn.followUpType ?? null,
     };
 
     return result;

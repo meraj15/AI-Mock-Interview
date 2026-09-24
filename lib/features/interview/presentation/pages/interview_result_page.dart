@@ -292,7 +292,6 @@ class _ResultShimmerLoadingView extends StatelessWidget {
   final VoidCallback onClose;
 
   const _ResultShimmerLoadingView({
-    super.key,
     required this.colors,
     required this.role,
     required this.questionCount,

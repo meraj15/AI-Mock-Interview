@@ -3,55 +3,90 @@ import { Type } from '@google/genai';
 export const conversationalTurnGeminiSchema = {
   type: Type.OBJECT,
   properties: {
-    acknowledgement: {
+    answerClassification: {
       type: Type.STRING,
-      description: 'Short spoken reaction (2–4 words). TTS only, never shown in UI.',
+      enum: ['STRONG', 'VAGUE', 'TOO_SHORT', 'INTERESTING', 'OFF_TOPIC', 'NO_ANSWER'],
+      description: 'Classification of candidate answer: STRONG, VAGUE, TOO_SHORT, INTERESTING, OFF_TOPIC, NO_ANSWER.',
     },
     action: {
       type: Type.STRING,
       enum: ['follow_up', 'new_topic', 'end_interview'],
     },
+    followUpType: {
+      type: Type.STRING,
+      nullable: true,
+      description: 'CHALLENGE, DEEP_DIVE, EXPAND, REDIRECT, REPHRASE, or null if action is new_topic or end_interview.',
+    },
+    acknowledgement: {
+      type: Type.STRING,
+      description: 'Short spoken reaction (2–8 words). TTS only, never shown in UI.',
+    },
     nextQuestion: {
       type: Type.STRING,
-      description: 'Pure interview question only. No acknowledgement mixed in. Max 18 words. One "?".',
+      description: 'Pure interview question only. No acknowledgement mixed in. Max 18 words. Exactly one "?". If end_interview: warm genuine closing line.',
     },
     nextTopic: {
       type: Type.STRING,
-      description: 'Relevant evaluation area for this specific role (not from a fixed list).',
+      description: 'Relevant evaluation area for this specific role.',
     },
     conversationSummary: {
       type: Type.STRING,
-      description: 'Short 1–2 sentence memory of candidate ability demonstrated so far.',
+      description: 'Compressed running memory of candidate ability demonstrated so far (max 40 words).',
     },
   },
-  required: ['acknowledgement', 'action', 'nextQuestion', 'nextTopic', 'conversationSummary'],
+  required: [
+    'answerClassification',
+    'action',
+    'followUpType',
+    'acknowledgement',
+    'nextQuestion',
+    'nextTopic',
+    'conversationSummary',
+  ],
   additionalProperties: false,
 };
 
 export const conversationalTurnOpenAISchema = {
   type: 'object',
   properties: {
-    acknowledgement: {
+    answerClassification: {
       type: 'string',
-      description: 'Short spoken reaction (2–4 words). TTS only, never shown in UI.',
+      enum: ['STRONG', 'VAGUE', 'TOO_SHORT', 'INTERESTING', 'OFF_TOPIC', 'NO_ANSWER'],
+      description: 'Classification of candidate answer: STRONG, VAGUE, TOO_SHORT, INTERESTING, OFF_TOPIC, NO_ANSWER.',
     },
     action: {
       type: 'string',
       enum: ['follow_up', 'new_topic', 'end_interview'],
     },
+    followUpType: {
+      type: ['string', 'null'],
+      description: 'CHALLENGE, DEEP_DIVE, EXPAND, REDIRECT, REPHRASE, or null if action is new_topic or end_interview.',
+    },
+    acknowledgement: {
+      type: 'string',
+      description: 'Short spoken reaction (2–8 words). TTS only, never shown in UI.',
+    },
     nextQuestion: {
       type: 'string',
-      description: 'Pure interview question only. No acknowledgement mixed in. Max 18 words. One "?".',
+      description: 'Pure interview question only. No acknowledgement mixed in. Max 18 words. Exactly one "?". If end_interview: warm genuine closing line.',
     },
     nextTopic: {
       type: 'string',
-      description: 'Relevant evaluation area for this specific role (not from a fixed list).',
+      description: 'Relevant evaluation area for this specific role.',
     },
     conversationSummary: {
       type: 'string',
-      description: 'Short 1–2 sentence memory of candidate ability demonstrated so far.',
+      description: 'Compressed running memory of candidate ability demonstrated so far (max 40 words).',
     },
   },
-  required: ['acknowledgement', 'action', 'nextQuestion', 'nextTopic', 'conversationSummary'],
+  required: [
+    'answerClassification',
+    'action',
+    'followUpType',
+    'acknowledgement',
+    'nextQuestion',
+    'nextTopic',
+    'conversationSummary',
+  ],
   additionalProperties: false,
 };

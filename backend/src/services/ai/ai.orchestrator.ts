@@ -563,7 +563,11 @@ export class AIOrchestrator {
     const promptBuildMs = Date.now() - promptStart;
 
     try {
-      const result = await this.executeTier<{ firstQuestion: string }>({
+      const result = await this.executeTier<{
+        firstQuestion: string;
+        topicRoadmap?: string[];
+        openingTopic?: string;
+      }>({
         operation: 'plan',
         primaryProviderId: config.ai.livePrimaryProvider,
         primaryModel: config.ai.livePrimaryModel,
@@ -585,7 +589,12 @@ export class AIOrchestrator {
       );
 
       return {
-        data: { topics: [], firstQuestion },
+        data: {
+          topics: [],
+          firstQuestion,
+          topicRoadmap: Array.isArray(result.data.topicRoadmap) ? result.data.topicRoadmap : [],
+          openingTopic: result.data.openingTopic || 'Introduction',
+        },
         metadata: result.metadata,
       };
     } catch (err: any) {
@@ -598,7 +607,12 @@ export class AIOrchestrator {
         );
         const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
         return {
-          data: { topics: [], firstQuestion: defaultFirstQ },
+          data: {
+            topics: [],
+            firstQuestion: defaultFirstQ,
+            topicRoadmap: [],
+            openingTopic: 'Introduction',
+          },
           metadata: {
             requestId: randomUUID(),
             operation: 'plan',
@@ -686,6 +700,8 @@ export class AIOrchestrator {
           nextQuestion,
           nextTopic,
           conversationSummary,
+          answerClassification: raw.answerClassification,
+          followUpType: raw.followUpType ?? null,
         },
         metadata: result.metadata,
       };
@@ -698,7 +714,7 @@ export class AIOrchestrator {
           `[AIOrchestrator] Gracefully degrading getNextConversationalTurn due to ${err.code}: turn=${currentTurn}/${totalMaxTurns}.`,
         );
         const isFinalClosingTurn = currentTurn >= totalMaxTurns;
-        const action: 'continue_topic' | 'new_topic' | 'end_interview' = isFinalClosingTurn
+        const action: 'follow_up' | 'new_topic' | 'end_interview' = isFinalClosingTurn
           ? 'end_interview'
           : 'new_topic';
 
@@ -718,6 +734,8 @@ export class AIOrchestrator {
             nextQuestion: fallbackQuestion,
             nextTopic: fallbackTopic,
             conversationSummary: params.conversationSummary || 'Interview in progress.',
+            answerClassification: 'STRONG',
+            followUpType: null,
           },
           metadata: {
             requestId: randomUUID(),

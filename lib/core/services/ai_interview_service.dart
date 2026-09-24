@@ -26,6 +26,7 @@ class ConversationalStartResult {
   final String sessionId;
   final String role;
   final List<InterviewTopic> topics;
+  final List<String> topicRoadmap;
   final String currentTopic;
   final int currentTopicIndex;
   final int totalTopics;
@@ -35,6 +36,7 @@ class ConversationalStartResult {
     required this.sessionId,
     required this.role,
     required this.topics,
+    this.topicRoadmap = const [],
     required this.currentTopic,
     required this.currentTopicIndex,
     required this.totalTopics,
@@ -43,6 +45,7 @@ class ConversationalStartResult {
 
   factory ConversationalStartResult.fromJson(Map<String, dynamic> j) {
     final rawTopics = j['topics'] as List<dynamic>? ?? [];
+    final rawRoadmap = j['topicRoadmap'] as List<dynamic>? ?? [];
     return ConversationalStartResult(
       sessionId: j['sessionId'] as String? ?? '',
       role: j['role'] as String? ?? '',
@@ -50,6 +53,7 @@ class ConversationalStartResult {
           .whereType<Map<String, dynamic>>()
           .map(InterviewTopic.fromJson)
           .toList(),
+      topicRoadmap: rawRoadmap.whereType<String>().toList(),
       currentTopic: j['currentTopic'] as String? ?? 'Introduction',
       currentTopicIndex: (j['currentTopicIndex'] as num?)?.toInt() ?? 0,
       totalTopics: (j['totalTopics'] as num?)?.toInt() ?? 1,
@@ -66,6 +70,8 @@ class ConversationalTurnResult {
   final int currentTopicIndex;
   final int totalTopics;
   final bool isComplete;
+  final String? answerClassification;
+  final String? followUpType;
 
   const ConversationalTurnResult({
     required this.acknowledgement,
@@ -75,6 +81,8 @@ class ConversationalTurnResult {
     required this.currentTopicIndex,
     required this.totalTopics,
     required this.isComplete,
+    this.answerClassification,
+    this.followUpType,
   });
 
   factory ConversationalTurnResult.fromJson(Map<String, dynamic> j) {
@@ -86,6 +94,8 @@ class ConversationalTurnResult {
       currentTopicIndex: (j['currentTopicIndex'] as num?)?.toInt() ?? 0,
       totalTopics: (j['totalTopics'] as num?)?.toInt() ?? 1,
       isComplete: j['isComplete'] as bool? ?? false,
+      answerClassification: j['answerClassification'] as String?,
+      followUpType: j['followUpType'] as String?,
     );
   }
 }

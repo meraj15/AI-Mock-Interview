@@ -10,9 +10,9 @@ describe('Question Rotation Prompt Generation', () => {
         experience: '3 years',
       });
 
-      expect(prompt).toContain('ROLE: Flutter Developer');
-      expect(prompt).toContain('Generate exactly ONE warm opening question:');
-      expect(prompt).not.toContain('ROTATION HINT:');
+      expect(prompt).toContain('Role: Flutter Developer');
+      expect(prompt).toContain('Write ONE warm, natural opening question that:');
+      expect(prompt).not.toContain('This candidate has done previous sessions.');
     });
 
     it('should include natural variation rotation hint when previousQuestions exist', () => {
@@ -25,9 +25,8 @@ describe('Question Rotation Prompt Generation', () => {
         ],
       });
 
-      expect(prompt).toContain('ROTATION HINT:');
-      expect(prompt).toContain('Introduction questions are expected to recur, but provide natural wording variation');
-      expect(prompt).toContain('Maximum 18 words. Exactly one question mark.');
+      expect(prompt).toContain('This candidate has done previous sessions. Vary the wording of the opening naturally — same intent, fresh phrasing.');
+      expect(prompt).toContain('Maximum 20 words. Exactly one question mark.');
     });
   });
 
@@ -57,21 +56,21 @@ describe('Question Rotation Prompt Generation', () => {
       });
 
       // Verifies previously covered topics are passed
-      expect(prompt).toContain('PREVIOUS SESSIONS\' TOPICS: State Management, Widget Lifecycle, REST APIs');
+      expect(prompt).toContain('Previous sessions covered: State Management, Widget Lifecycle, REST APIs');
 
       // Verifies current session questions section
-      expect(prompt).toContain('QUESTIONS ALREADY ASKED IN THIS INTERVIEW (DO NOT REPEAT):');
+      expect(prompt).toContain('QUESTIONS ALREADY ASKED — DO NOT REPEAT OR CLOSELY PARAPHRASE:');
       expect(prompt).toContain('1. Welcome! Tell me about yourself.');
 
       // Verifies previous sessions' questions section
-      expect(prompt).toContain('PREVIOUS SESSIONS\' QUESTIONS (avoid repeating):');
+      expect(prompt).toContain('PREVIOUS SESSIONS (avoid repeating):');
       expect(prompt).toContain('- What is Provider in Flutter?');
       expect(prompt).toContain('- Explain StatefulWidget vs StatelessWidget.');
 
-      // Verifies rules encourage unexplored topics and disallow duplicate questions
-      expect(prompt).toContain('choose a relevant evaluation area for a "Flutter Developer" not yet explored in this or previous sessions');
-      expect(prompt).toContain('Do NOT repeat or ask substantially similar versions of questions from this or previous sessions');
-      expect(prompt).toContain('Contextual follow-ups based on the candidate\'s current answer are permitted');
+      // Verifies role and decision guidelines are present
+      expect(prompt).toContain('Role: Flutter Developer');
+      expect(prompt).toContain('answerClassification');
+      expect(prompt).toContain('followUpType');
     });
 
     it('should keep token size bounded when large history is passed', () => {
@@ -104,11 +103,11 @@ describe('Question Rotation Prompt Generation', () => {
 
       // Current session questions header is present
       const lines = prompt.split('\n');
-      const currentHeaderIndex = lines.findIndex((l) => l.includes('QUESTIONS ALREADY ASKED IN THIS INTERVIEW (DO NOT REPEAT):'));
+      const currentHeaderIndex = lines.findIndex((l) => l.includes('QUESTIONS ALREADY ASKED — DO NOT REPEAT OR CLOSELY PARAPHRASE:'));
       expect(currentHeaderIndex).toBeGreaterThan(-1);
 
-      // Prompt length is well bounded (< 2500 characters, ~400-500 tokens)
-      expect(prompt.length).toBeLessThan(2500);
+      // Prompt length is well bounded (< 7500 characters, ~1500 tokens)
+      expect(prompt.length).toBeLessThan(7500);
     });
   });
 });

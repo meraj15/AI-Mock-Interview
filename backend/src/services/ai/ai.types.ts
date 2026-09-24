@@ -8,8 +8,10 @@ export interface InterviewTopic {
 }
 
 export interface InterviewBlueprint {
-  topics: InterviewTopic[];
+  topics?: InterviewTopic[];
   firstQuestion: string;
+  topicRoadmap?: string[];
+  openingTopic?: string;
 }
 
 export interface ConversationalTurn {
@@ -18,6 +20,20 @@ export interface ConversationalTurn {
   nextQuestion: string;
   nextTopic: string;
   conversationSummary: string;
+  answerClassification?:
+    | 'STRONG'
+    | 'VAGUE'
+    | 'TOO_SHORT'
+    | 'INTERESTING'
+    | 'OFF_TOPIC'
+    | 'NO_ANSWER';
+  followUpType?:
+    | 'CHALLENGE'
+    | 'DEEP_DIVE'
+    | 'EXPAND'
+    | 'REDIRECT'
+    | 'REPHRASE'
+    | null;
 }
 
 export interface QuestionReview {
@@ -60,6 +76,8 @@ export interface InterviewPlanParams {
   experience?: string;
   skills?: string[];
   questionCount?: number;
+  mode?: string;
+  focusArea?: string | string[];
   previousQuestions?: string[];
 }
 
@@ -78,6 +96,7 @@ export interface ConversationalTurnParams {
   maxTurns?: number;
   previousQuestions?: string[];
   previouslyCoveredTopics?: string[];
+  topicsRemaining?: string[];
 }
 
 export interface FinalEvaluationParams {
