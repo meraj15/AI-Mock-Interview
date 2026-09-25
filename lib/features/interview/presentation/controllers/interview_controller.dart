@@ -38,6 +38,7 @@ class InterviewController extends ChangeNotifier {
   int _currentTurnNumber = 1;
 
   AIEvaluationResult? _lastEvaluation;
+  String? _lastEvaluatedSessionId;
 
   /// Optional — injected in main.dart.
   final InterviewRemoteDataSource? remoteDataSource;
@@ -80,6 +81,7 @@ class InterviewController extends ChangeNotifier {
   bool get isComplete => _isComplete;
 
   AIEvaluationResult? get lastEvaluation => _lastEvaluation;
+  String? get lastEvaluatedSessionId => _lastEvaluatedSessionId;
   List<Map<String, String>> get sessionHistory => _sessionHistory;
 
   // Non-empty placeholder so existing guards recognize session has questions
@@ -143,6 +145,14 @@ class InterviewController extends ChangeNotifier {
       _isComplete = false;
       _topics = [];
       _sessionHistory.clear();
+
+      // Crucial: Clear previous interview evaluation & turn state so new session never reuses old results
+      _lastEvaluation = null;
+      _lastEvaluatedSessionId = null;
+      _currentTurnNumber = 1;
+      _sessionId = null;
+      _isFetchingEvaluation = false;
+      _isSubmitting = false;
 
       // 1. Determine target role with priority: explicit targetRole -> profile -> resume -> existing config
       String effectiveRole = _config.role;
@@ -304,7 +314,7 @@ class InterviewController extends ChangeNotifier {
 
   Future<void> _fetchFinalEvaluation() async {
     if (_sessionId == null || apiClient == null) return;
-    if (_lastEvaluation != null) {
+    if (_lastEvaluation != null && _lastEvaluatedSessionId == _sessionId) {
       _sessionStatus = SessionStatus.complete;
       notifyListeners();
       return;
@@ -323,11 +333,13 @@ class InterviewController extends ChangeNotifier {
     final ai = GeminiAIInterviewService(apiClient: apiClient!);
 
     try {
-      debugPrint('[InterviewController] Fetching final evaluation from backend...');
-      _lastEvaluation = await ai.getFinalEvaluation(
+      debugPrint('[InterviewController] Fetching final evaluation from backend for sessionId: $_sessionId...');
+      final eval = await ai.getFinalEvaluation(
         sessionId: _sessionId!,
         config: _config,
       );
+      _lastEvaluation = eval;
+      _lastEvaluatedSessionId = _sessionId;
       _sessionStatus = SessionStatus.complete;
       _onSessionSaved?.call();
     } catch (e, stackTrace) {
@@ -391,6 +403,8 @@ class InterviewController extends ChangeNotifier {
     _config = InterviewConfigEntity.initial();
     _interviewActive = false;
     _isSubmitting = false;
+    _isStarting = false;
+    _isFetchingEvaluation = false;
     _sessionStatus = SessionStatus.idle;
     _errorMessage = null;
     _sessionId = null;
@@ -403,6 +417,31 @@ class InterviewController extends ChangeNotifier {
     _isFollowUp = false;
     _isComplete = false;
     _lastEvaluation = null;
+    _lastEvaluatedSessionId = null;
+    _currentTurnNumber = 1;
+    _sessionHistory.clear();
+    notifyListeners();
+  }
+
+  /// Resets session runtime state (including previous evaluations and turn counts)
+  /// for a new interview, while preserving the user's role and configuration preferences.
+  void resetSessionForNewInterview() {
+    _interviewActive = false;
+    _isSubmitting = false;
+    _isStarting = false;
+    _isFetchingEvaluation = false;
+    _sessionStatus = SessionStatus.idle;
+    _errorMessage = null;
+    _sessionId = null;
+    _topics = [];
+    _currentQuestion = '';
+    _currentAcknowledgement = '';
+    _currentTopic = '';
+    _currentTopicIndex = 0;
+    _isFollowUp = false;
+    _isComplete = false;
+    _lastEvaluation = null;
+    _lastEvaluatedSessionId = null;
     _currentTurnNumber = 1;
     _sessionHistory.clear();
     notifyListeners();

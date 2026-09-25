@@ -52,8 +52,8 @@ class _InterviewResultPageState extends State<InterviewResultPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final ic = context.read<InterviewController>();
-      if (ic.lastEvaluation == null &&
-          ic.sessionId != null &&
+      if (ic.sessionId != null &&
+          (ic.lastEvaluation == null || ic.lastEvaluatedSessionId != ic.sessionId) &&
           ic.sessionStatus != SessionStatus.evaluating) {
         ic.fetchFinalEvaluation();
       }
@@ -99,10 +99,11 @@ class _InterviewResultPageState extends State<InterviewResultPage>
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final ic = context.watch<InterviewController>();
-    final eval = ic.lastEvaluation;
+    final eval = (ic.lastEvaluatedSessionId == ic.sessionId) ? ic.lastEvaluation : null;
     final config = ic.config;
 
     void navigateHome() {
+      context.read<InterviewController>().resetSessionForNewInterview();
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainNavPage()),
         (_) => false,
@@ -268,11 +269,14 @@ class _InterviewResultPageState extends State<InterviewResultPage>
             onReviewAnswers: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const QuestionReviewPage()),
             ),
-            onNewSession: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const QuickInterviewSetupPage(),
-              ),
-            ),
+            onNewSession: () {
+              context.read<InterviewController>().resetSessionForNewInterview();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => const QuickInterviewSetupPage(),
+                ),
+              );
+            },
           ),
         ],
       ),

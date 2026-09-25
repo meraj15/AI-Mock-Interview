@@ -92,6 +92,7 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
 
   void _saveAndStart() async {
     final interviewCtrl = context.read<InterviewController>();
+    interviewCtrl.resetSessionForNewInterview();
     interviewCtrl.updateConfig(
       questions: _questionCount,
       timeLimitPerQuestion: _timeLimitPerQuestion,

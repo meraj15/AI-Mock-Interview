@@ -64,7 +64,9 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final interviewCtrl = context.watch<InterviewController>();
-    final eval = interviewCtrl.lastEvaluation;
+    final eval = (interviewCtrl.lastEvaluatedSessionId == interviewCtrl.sessionId)
+        ? interviewCtrl.lastEvaluation
+        : null;
     final reviews = widget.questions ?? eval?.questionReviews ?? [];
     final history = interviewCtrl.sessionHistory;
 

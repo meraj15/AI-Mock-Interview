@@ -143,6 +143,7 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage>
             ? auth.user!.targetRole.trim()
             : null);
 
+    ic.resetSessionForNewInterview();
     ic.updateConfig(
       role: userRole,
       questions: _selectedMode.questionCount,
