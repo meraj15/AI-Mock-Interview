@@ -31,15 +31,15 @@ class ApiConfig {
       'https://ai-mock-interview-production-09fa.up.railway.app';
 
   /// Local / UAT Base URL
-  /// Connected to your local development machine IP (192.168.0.112:3000)
+  /// Connected to your local development machine IP (192.168.0.117:3000)
   /// so physical mobile devices on the Wi-Fi network and emulators can reach the backend.
   static String uatBaseUrl = const String.fromEnvironment('UAT_BASE_URL',
           defaultValue: '')
       .isNotEmpty
       ? const String.fromEnvironment('UAT_BASE_URL')
       : (defaultTargetPlatform == TargetPlatform.android
-          ? 'http://192.168.0.113:3000'
-          : 'http://192.168.0.113:3000');
+          ? 'http://192.168.0.117:3000'
+          : 'http://192.168.0.117:3000');
 
   /// Convenient alias for uatBaseUrl
   static String get localBaseUrl => uatBaseUrl;
