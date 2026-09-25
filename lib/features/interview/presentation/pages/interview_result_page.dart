@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:feather_icons/feather_icons.dart';
 import 'package:flutter/material.dart';
@@ -370,27 +369,16 @@ class _ResultShimmerLoadingView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _PulsingDot(color: colors.mint),
-                              const SizedBox(width: 6),
-                              Text(
-                                'AI EVALUATING',
-                                style: AppTypography.bold(
-                                  10.5,
-                                  color: Colors.white,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ],
+                        AppShimmer(
+                          baseColor: heroShimmerBase,
+                          highlightColor: heroShimmerHighlight,
+                          child: Container(
+                            width: 100,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
                           ),
                         ),
                         Container(
@@ -418,20 +406,22 @@ class _ResultShimmerLoadingView extends StatelessWidget {
 
                         const SizedBox(width: 18),
 
-                        // Role & Shimmering Band Meta
+                        // Role & Shimmering Band Meta (Zero text)
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                role,
-                                style: AppTypography.bold(
-                                  16,
-                                  color: Colors.white,
-                                  height: 1.2,
+                              AppShimmer(
+                                baseColor: heroShimmerBase,
+                                highlightColor: heroShimmerHighlight,
+                                child: Container(
+                                  width: 140,
+                                  height: 18,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 8),
 
@@ -471,7 +461,7 @@ class _ResultShimmerLoadingView extends StatelessWidget {
 
                     const SizedBox(height: 14),
 
-                    // Quick Stats Strip
+                    // Quick Stats Strip (Shimmer Skeleton, Zero text)
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
                       decoration: BoxDecoration(
@@ -481,59 +471,39 @@ class _ResultShimmerLoadingView extends StatelessWidget {
                           color: Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                FeatherIcons.helpCircle,
-                                size: 12,
-                                color: Colors.white.withValues(alpha: 0.7),
+                      child: AppShimmer(
+                        baseColor: heroShimmerBase,
+                        highlightColor: heroShimmerHighlight,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Container(
+                              width: 85,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(5),
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                '$questionCount Questions',
-                                style: AppTypography.medium(
-                                  11,
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 12,
+                              color: Colors.white.withValues(alpha: 0.2),
+                            ),
+                            Container(
+                              width: 65,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(5),
                               ),
-                            ],
-                          ),
-                          Container(
-                            width: 1,
-                            height: 12,
-                            color: Colors.white.withValues(alpha: 0.12),
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                FeatherIcons.activity,
-                                size: 12,
-                                color: Colors.white.withValues(alpha: 0.7),
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                'Complete',
-                                style: AppTypography.medium(
-                                  11,
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            width: 1,
-                            height: 12,
-                            color: Colors.white.withValues(alpha: 0.12),
-                          ),
-                          AppShimmer(
-                            baseColor: heroShimmerBase,
-                            highlightColor: heroShimmerHighlight,
-                            child: Container(
+                            ),
+                            Container(
+                              width: 1,
+                              height: 12,
+                              color: Colors.white.withValues(alpha: 0.2),
+                            ),
+                            Container(
                               width: 60,
                               height: 14,
                               decoration: BoxDecoration(
@@ -541,8 +511,8 @@ class _ResultShimmerLoadingView extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(5),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -551,43 +521,37 @@ class _ResultShimmerLoadingView extends StatelessWidget {
             ),
           ),
 
-          // ── Segmented Tab Bar ──────────────────────────────────────────
-          Container(
-            margin: const EdgeInsets.fromLTRB(18, 12, 18, 2),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: colors.border),
-            ),
-            child: Row(
-              children: [
-                _TabItem(
-                  label: 'Overview',
-                  icon: FeatherIcons.fileText,
-                  isSelected: true,
-                  onTap: () {},
-                  colors: colors,
-                ),
-                _TabItem(
-                  label: 'Q&A ($questionCount)',
-                  icon: FeatherIcons.helpCircle,
-                  isSelected: false,
-                  onTap: () {},
-                  colors: colors,
-                ),
-                _TabItem(
-                  label: 'Roadmap',
-                  icon: FeatherIcons.compass,
-                  isSelected: false,
-                  onTap: () {},
-                  colors: colors,
-                ),
-              ],
+          // ── Segmented Tab Bar Skeleton (Zero text) ─────────────────────
+          AppShimmer(
+            baseColor: bodyShimmerBase,
+            highlightColor: bodyShimmerHighlight,
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(18, 12, 18, 2),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: colors.border),
+              ),
+              child: Row(
+                children: const [
+                  Expanded(
+                    child: ShimmerBox(width: double.infinity, height: 32, borderRadius: 10),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: ShimmerBox(width: double.infinity, height: 32, borderRadius: 10),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: ShimmerBox(width: double.infinity, height: 32, borderRadius: 10),
+                  ),
+                ],
+              ),
             ),
           ),
 
-          // ── Scrollable Body Cards (Real Surfaces + Shimmer Content) ────
+          // ── Scrollable Body Cards (Real Surfaces + Shimmer Content, Zero text) ────
           Expanded(
             child: SingleChildScrollView(
               physics: const NeverScrollableScrollPhysics(),
@@ -595,7 +559,7 @@ class _ResultShimmerLoadingView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Card 1: Executive Summary Card Shell
+                  // Card 1: Executive Summary Card Shell (Zero text)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -607,26 +571,16 @@ class _ResultShimmerLoadingView extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: colors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                FeatherIcons.fileText,
-                                size: 14,
-                                color: colors.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Executive Summary',
-                              style: AppTypography.bold(14, color: colors.foreground),
-                            ),
-                          ],
+                        AppShimmer(
+                          baseColor: bodyShimmerBase,
+                          highlightColor: bodyShimmerHighlight,
+                          child: Row(
+                            children: const [
+                              ShimmerBox(width: 26, height: 26, borderRadius: 8),
+                              SizedBox(width: 10),
+                              ShimmerBox(width: 135, height: 16, borderRadius: 5),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 14),
                         AppShimmer(
@@ -649,7 +603,7 @@ class _ResultShimmerLoadingView extends StatelessWidget {
 
                   const SizedBox(height: 12),
 
-                  // Card 2: Key Takeaways Card Shell
+                  // Card 2: Key Takeaways Card Shell (Zero text)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -661,26 +615,16 @@ class _ResultShimmerLoadingView extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: colors.success.withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                FeatherIcons.checkCircle,
-                                size: 14,
-                                color: colors.success,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Key Strengths',
-                              style: AppTypography.bold(14, color: colors.foreground),
-                            ),
-                          ],
+                        AppShimmer(
+                          baseColor: bodyShimmerBase,
+                          highlightColor: bodyShimmerHighlight,
+                          child: Row(
+                            children: const [
+                              ShimmerBox(width: 26, height: 26, borderRadius: 8),
+                              SizedBox(width: 10),
+                              ShimmerBox(width: 115, height: 16, borderRadius: 5),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         AppShimmer(
@@ -696,26 +640,16 @@ class _ResultShimmerLoadingView extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: colors.coral.withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                FeatherIcons.trendingUp,
-                                size: 14,
-                                color: colors.coral,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Areas to Improve',
-                              style: AppTypography.bold(14, color: colors.foreground),
-                            ),
-                          ],
+                        AppShimmer(
+                          baseColor: bodyShimmerBase,
+                          highlightColor: bodyShimmerHighlight,
+                          child: Row(
+                            children: const [
+                              ShimmerBox(width: 26, height: 26, borderRadius: 8),
+                              SizedBox(width: 10),
+                              ShimmerBox(width: 125, height: 16, borderRadius: 5),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         AppShimmer(
@@ -738,10 +672,30 @@ class _ResultShimmerLoadingView extends StatelessWidget {
             ),
           ),
 
-          // ── Bottom Live AI Evaluation Status Banner ────────────────────
-          _LiveAiEvaluatingBanner(
-            colors: colors,
-            role: role,
+          // ── Bottom Live AI Evaluation Status Skeleton (Zero text) ───────
+          AppShimmer(
+            baseColor: bodyShimmerBase,
+            highlightColor: bodyShimmerHighlight,
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: colors.primary.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: const [
+                  ShimmerBox(width: 18, height: 18, borderRadius: 9),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: ShimmerBox(width: double.infinity, height: 14, borderRadius: 5),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -795,27 +749,17 @@ class _ScoreRingEvaluatingGaugeState extends State<_ScoreRingEvaluatingGauge>
               accentColor: widget.accentColor,
             ),
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '--',
-                    style: AppTypography.bold(
-                      26,
-                      color: Colors.white.withValues(alpha: 0.9),
-                      height: 1.05,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'SCORING',
-                    style: AppTypography.bold(
-                      8.5,
-                      color: const Color(0xFF8FA5D1),
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
+              child: AppShimmer(
+                baseColor: Colors.white.withValues(alpha: 0.12),
+                highlightColor: Colors.white.withValues(alpha: 0.32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    ShimmerBox(width: 38, height: 22, borderRadius: 5),
+                    SizedBox(height: 5),
+                    ShimmerBox(width: 48, height: 9, borderRadius: 3),
+                  ],
+                ),
               ),
             ),
           ),
@@ -874,168 +818,6 @@ class _EvaluatingRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_EvaluatingRingPainter old) =>
       old.rotation != rotation || old.accentColor != accentColor;
-}
-
-class _PulsingDot extends StatefulWidget {
-  final Color color;
-  const _PulsingDot({required this.color});
-
-  @override
-  State<_PulsingDot> createState() => _PulsingDotState();
-}
-
-class _PulsingDotState extends State<_PulsingDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat(reverse: true);
-    _anim = Tween<double>(begin: 0.35, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (context, _) {
-        return Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(
-            color: widget.color.withValues(alpha: _anim.value),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: widget.color.withValues(alpha: _anim.value * 0.7),
-                blurRadius: 6,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _LiveAiEvaluatingBanner extends StatefulWidget {
-  final AppColorScheme colors;
-  final String role;
-
-  const _LiveAiEvaluatingBanner({
-    required this.colors,
-    required this.role,
-  });
-
-  @override
-  State<_LiveAiEvaluatingBanner> createState() =>
-      _LiveAiEvaluatingBannerState();
-}
-
-class _LiveAiEvaluatingBannerState extends State<_LiveAiEvaluatingBanner> {
-  int _step = 0;
-  late final List<String> _steps;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _steps = [
-      'Evaluating answer clarity & technical depth…',
-      'Benchmarking against ${widget.role.isNotEmpty ? widget.role : "role"} expectations…',
-      'Synthesizing key strengths & growth areas…',
-      'Generating personalized preparation roadmap…',
-    ];
-
-    _timer = Timer.periodic(const Duration(milliseconds: 2400), (t) {
-      if (mounted) {
-        setState(() {
-          _step = (_step + 1) % _steps.length;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colors.primary.withValues(alpha: 0.25),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.primary.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 17,
-            height: 17,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.2,
-              valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 350),
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.25),
-                    end: Offset.zero,
-                  ).animate(anim),
-                  child: child,
-                ),
-              ),
-              child: Text(
-                _steps[_step],
-                key: ValueKey<int>(_step),
-                style: AppTypography.semiBold(
-                  12,
-                  color: colors.foreground,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -738,10 +738,10 @@ export class InterviewService {
     );
 
     return {
-      acknowledgement: 'Thank you.',
+      acknowledgement: 'Thanks for your time!',
       action: 'end_interview',
       nextQuestion:
-        'That concludes our interview! Great job completing all the questions. You can now review your performance evaluation.',
+        "That's a wrap — you did great! Your full results will be ready in just a moment.",
       nextTopic: topic,
       currentTopicIndex:
         session.currentTopicIndex,
@@ -842,9 +842,9 @@ export class InterviewService {
       );
 
       const hiringBand =
-        evaluation.performanceLevel === 'Excellent'
+        evaluation.performanceLevel === 'Exceptional'
           ? 'Strong Hire'
-          : evaluation.performanceLevel === 'Good'
+          : evaluation.performanceLevel === 'Strong'
           ? 'Hire'
           : evaluation.performanceLevel === 'Average'
           ? 'Leaning Hire'
@@ -932,11 +932,13 @@ export class InterviewService {
   ): FinalInterviewEvaluation {
     const level: FinalInterviewEvaluation['performanceLevel'] =
       session.score >= 85
-        ? 'Excellent'
+        ? 'Exceptional'
         : session.score >= 70
-        ? 'Good'
+        ? 'Strong'
         : session.score >= 55
         ? 'Average'
+        : session.score >= 40
+        ? 'Below Average'
         : 'Needs Improvement';
 
     const rawSkillScores =

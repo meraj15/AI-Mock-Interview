@@ -61,6 +61,12 @@ class _HomePageState extends State<HomePage> {
         ? profileCtrl.initials.toUpperCase()
         : firstName.isNotEmpty ? firstName[0].toUpperCase() : 'U';
 
+    if (dashboard.isLoading) {
+      return AppScaffold(
+        body: _HomeShimmerLoadingView(colors: colors),
+      );
+    }
+
     return AppScaffold(
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,6 +489,189 @@ class _EmptyRecentInterviews extends StatelessWidget {
                 color: colors.mutedForeground, height: 1.4),
             textAlign: TextAlign.center,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Full-screen loading shimmer for Home Page (zero text) ─────────────────────
+
+class _HomeShimmerLoadingView extends StatelessWidget {
+  final AppColorScheme colors;
+  const _HomeShimmerLoadingView({required this.colors});
+
+  Widget _buildStatCardSkeleton() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          ShimmerBox(
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+          ),
+          SizedBox(height: 12),
+          ShimmerBox(
+            width: 54,
+            height: 22,
+            borderRadius: 6,
+          ),
+          SizedBox(height: 6),
+          ShimmerBox(
+            width: 76,
+            height: 12,
+            borderRadius: 4,
+          ),
+          SizedBox(height: 6),
+          ShimmerBox(
+            width: 46,
+            height: 10,
+            borderRadius: 4,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+
+          // Header: Greeting line 1, Greeting line 2, and Avatar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  ShimmerBox(width: 170, height: 24, borderRadius: 6),
+                  SizedBox(height: 8),
+                  ShimmerBox(width: 220, height: 13, borderRadius: 5),
+                ],
+              ),
+              const ShimmerBox(width: 45, height: 45, borderRadius: 16),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Quick Start Banner Skeleton (same size & shape, no text)
+          Container(
+            padding: const EdgeInsets.all(21),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: colors.border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      ShimmerBox(width: 90, height: 10, borderRadius: 4),
+                      SizedBox(height: 12),
+                      ShimmerBox(width: 180, height: 24, borderRadius: 6),
+                      SizedBox(height: 8),
+                      ShimmerBox(width: 220, height: 12, borderRadius: 4),
+                      SizedBox(height: 15),
+                      ShimmerBox(width: 95, height: 30, borderRadius: 13),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const ShimmerBox(width: 80, height: 80, borderRadius: 40),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 22),
+
+          // Section Title 1 Skeleton
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              ShimmerBox(width: 130, height: 16, borderRadius: 5),
+              ShimmerBox(width: 80, height: 13, borderRadius: 4),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Stat Cards Grid Skeleton (2x2)
+          Row(
+            children: [
+              Expanded(child: _buildStatCardSkeleton()),
+              const SizedBox(width: 10),
+              Expanded(child: _buildStatCardSkeleton()),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _buildStatCardSkeleton()),
+              const SizedBox(width: 10),
+              Expanded(child: _buildStatCardSkeleton()),
+            ],
+          ),
+
+          const SizedBox(height: 22),
+
+          // Section Title 2 Skeleton
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              ShimmerBox(width: 120, height: 16, borderRadius: 5),
+              ShimmerBox(width: 50, height: 13, borderRadius: 4),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Recent Session Card Skeleton
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: colors.border),
+            ),
+            child: Row(
+              children: [
+                const ShimmerBox(width: 44, height: 44, borderRadius: 14),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      ShimmerBox(width: 140, height: 14, borderRadius: 5),
+                      SizedBox(height: 6),
+                      ShimmerBox(width: 90, height: 10, borderRadius: 4),
+                      SizedBox(height: 8),
+                      ShimmerBox(width: 70, height: 18, borderRadius: 6),
+                    ],
+                  ),
+                ),
+                const ShimmerBox(width: 40, height: 22, borderRadius: 6),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
         ],
       ),
     );

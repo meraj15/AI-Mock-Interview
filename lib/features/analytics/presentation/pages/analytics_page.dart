@@ -68,6 +68,15 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       best: stats.bestScore,
     );
 
+    if (isLoading) {
+      return AppScaffold(
+        body: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: _AnalyticsShimmerLoadingView(colors: colors),
+        ),
+      );
+    }
+
     return AppScaffold(
       body: RefreshIndicator(
         color: colors.primary,
@@ -240,6 +249,181 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         height: height,
         borderRadius: 18,
       );
+}
+
+// ── Full-screen loading shimmer for Analytics Page (zero text) ───────────────
+
+class _AnalyticsShimmerLoadingView extends StatelessWidget {
+  final AppColorScheme colors;
+  const _AnalyticsShimmerLoadingView({required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+
+          // Header Title & Dropdown Filter Skeleton
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  ShimmerBox(width: 190, height: 24, borderRadius: 6),
+                  SizedBox(height: 6),
+                  ShimmerBox(width: 230, height: 12, borderRadius: 4),
+                ],
+              ),
+              const ShimmerBox(width: 88, height: 32, borderRadius: 14),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // Top KPI Stat Cards Skeleton
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 95,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: colors.card,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      ShimmerBox(width: 80, height: 12, borderRadius: 4),
+                      ShimmerBox(width: 50, height: 24, borderRadius: 6),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  height: 95,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: colors.card,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      ShimmerBox(width: 85, height: 12, borderRadius: 4),
+                      ShimmerBox(width: 45, height: 24, borderRadius: 6),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // Score Trajectory Chart Card Skeleton
+          Container(
+            width: double.infinity,
+            height: 240,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: colors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    ShimmerBox(width: 120, height: 16, borderRadius: 5),
+                    ShimmerBox(width: 65, height: 20, borderRadius: 10),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const ShimmerBox(width: 160, height: 11, borderRadius: 4),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: const [
+                    ShimmerBox(width: 18, height: 60, borderRadius: 6),
+                    ShimmerBox(width: 18, height: 100, borderRadius: 6),
+                    ShimmerBox(width: 18, height: 80, borderRadius: 6),
+                    ShimmerBox(width: 18, height: 120, borderRadius: 6),
+                    ShimmerBox(width: 18, height: 95, borderRadius: 6),
+                    ShimmerBox(width: 18, height: 140, borderRadius: 6),
+                    ShimmerBox(width: 18, height: 110, borderRadius: 6),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // Skill Competency Card Skeleton
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: colors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                ShimmerBox(width: 140, height: 16, borderRadius: 5),
+                SizedBox(height: 14),
+                ShimmerBox(width: double.infinity, height: 14, borderRadius: 5),
+                SizedBox(height: 10),
+                ShimmerBox(width: double.infinity, height: 14, borderRadius: 5),
+                SizedBox(height: 10),
+                ShimmerBox(width: double.infinity, height: 14, borderRadius: 5),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // AI Insight Card Skeleton
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: colors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                ShimmerBox(width: 130, height: 14, borderRadius: 4),
+                SizedBox(height: 10),
+                ShimmerBox(width: double.infinity, height: 12, borderRadius: 4),
+                SizedBox(height: 6),
+                ShimmerBox(width: 200, height: 12, borderRadius: 4),
+              ],
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

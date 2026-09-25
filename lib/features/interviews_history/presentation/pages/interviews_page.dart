@@ -299,6 +299,19 @@ class _InterviewsPageState extends State<InterviewsPage> {
       sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
 
+    if (dashboard.isLoading && sessions.isEmpty) {
+      return AppScaffold(
+        scrollable: false,
+        body: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom + 40,
+          ),
+          child: _InterviewsShimmerLoadingView(colors: colors),
+        ),
+      );
+    }
+
     return AppScaffold(
       scrollable: false,
       body: RefreshIndicator(
@@ -518,3 +531,119 @@ class _InterviewsPageState extends State<InterviewsPage> {
     );
   }
 }
+
+// ── Full-screen loading shimmer for Interviews Page (zero text) ──────────────
+
+class _InterviewsShimmerLoadingView extends StatelessWidget {
+  final AppColorScheme colors;
+  const _InterviewsShimmerLoadingView({required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+
+          // Header Skeleton: Title, Subtitle, and Right Action Button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  ShimmerBox(width: 150, height: 24, borderRadius: 6),
+                  SizedBox(height: 6),
+                  ShimmerBox(width: 210, height: 12, borderRadius: 4),
+                ],
+              ),
+              const ShimmerBox(width: 38, height: 38, borderRadius: 12),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Section Title Skeleton: Sessions count & Sort
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              ShimmerBox(width: 90, height: 15, borderRadius: 4),
+              ShimmerBox(width: 80, height: 13, borderRadius: 4),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Session Card Skeletons (5 cards)
+          ...List.generate(
+            5,
+            (i) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: colors.border),
+              ),
+              child: Row(
+                children: [
+                  const ShimmerBox(
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        ShimmerBox(
+                          width: 140,
+                          height: 14,
+                          borderRadius: 5,
+                        ),
+                        SizedBox(height: 6),
+                        ShimmerBox(
+                          width: 110,
+                          height: 10,
+                          borderRadius: 4,
+                        ),
+                        SizedBox(height: 8),
+                        ShimmerBox(
+                          width: 75,
+                          height: 18,
+                          borderRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: const [
+                      ShimmerBox(
+                        width: 36,
+                        height: 22,
+                        borderRadius: 6,
+                      ),
+                      SizedBox(height: 8),
+                      ShimmerBox(
+                        width: 14,
+                        height: 14,
+                        borderRadius: 4,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+}
+

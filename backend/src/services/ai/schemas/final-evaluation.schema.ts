@@ -8,7 +8,7 @@ export const finalEvaluationGeminiSchema = {
     },
     performanceLevel: {
       type: Type.STRING,
-      enum: ['Excellent', 'Good', 'Average', 'Needs Improvement'],
+      enum: ['Exceptional', 'Strong', 'Average', 'Below Average', 'Needs Improvement'],
     },
     summary: {
       type: Type.STRING,
@@ -109,7 +109,7 @@ export const finalEvaluationOpenAISchema = {
     },
     performanceLevel: {
       type: 'string',
-      enum: ['Excellent', 'Good', 'Average', 'Needs Improvement'],
+      enum: ['Exceptional', 'Strong', 'Average', 'Below Average', 'Needs Improvement'],
     },
     summary: {
       type: 'string',

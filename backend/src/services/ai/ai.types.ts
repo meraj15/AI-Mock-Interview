@@ -47,9 +47,10 @@ export interface QuestionReview {
 export interface FinalInterviewEvaluation {
   overallScore: number;
   performanceLevel:
-    | 'Excellent'
-    | 'Good'
+    | 'Exceptional'
+    | 'Strong'
     | 'Average'
+    | 'Below Average'
     | 'Needs Improvement';
   summary: string;
   strengths: string[];

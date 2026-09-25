@@ -582,7 +582,7 @@ export class AIOrchestrator {
         promptBuildMs,
       });
 
-      const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
+      const defaultFirstQ = `Hey, thanks for jumping in! Tell me a bit about yourself and what you have been doing as a ${role.trim()}.`;
       const firstQuestion = this.enforceSingleQuestion(
         String(result.data.firstQuestion || '').trim(),
         defaultFirstQ,
@@ -605,7 +605,7 @@ export class AIOrchestrator {
         console.warn(
           `[AIOrchestrator] Gracefully degrading generateInterviewPlan due to ${err.code}: using fallback welcome question.`,
         );
-        const defaultFirstQ = `Welcome! Could you introduce yourself and share your background as a ${role.trim()}?`;
+        const defaultFirstQ = `Hey, thanks for jumping in! Tell me a bit about yourself and what you have been doing as a ${role.trim()}.`;
         return {
           data: {
             topics: [],
@@ -684,8 +684,8 @@ export class AIOrchestrator {
 
       const fallbackQuestion =
         action === 'end_interview'
-          ? "Thank you for sharing your experience. We'll conclude the interview here!"
-          : `Could you tell me more about your experience as a ${params.role}?`;
+          ? "Thanks so much for your time — we're all done here!"
+          : `Tell me more about your work as a ${params.role} — what does a typical day look like for you?`;
 
       const nextQuestion = this.enforceSingleQuestion(raw.nextQuestion, fallbackQuestion);
       const nextTopic = (raw.nextTopic || 'Role Competency').trim();
@@ -719,8 +719,8 @@ export class AIOrchestrator {
           : 'new_topic';
 
         const fallbackQuestion = isFinalClosingTurn
-          ? "Thank you for sharing your experience. We'll conclude the interview here!"
-          : `Could you tell me more about your experience as a ${params.role}?`;
+          ? "Thanks so much for your time — we're all done here!"
+          : `Tell me more about your work as a ${params.role} — what does a typical day look like for you?`;
 
         const fallbackTopic =
           (params.areasExplored && params.areasExplored.length > 0
