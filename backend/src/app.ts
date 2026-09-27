@@ -11,6 +11,8 @@ import profileRouter from './routes/profile.routes';
 import resumeRouter from './routes/resume.routes';
 import interviewRouter from './routes/interview.routes';
 import aiRouter from './routes/ai.routes';
+import subscriptionRouter from './routes/subscription.routes';
+import webhookRouter from './routes/webhook.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -32,6 +34,11 @@ export function createApp(): Application {
     })
   );
 
+  // ── Webhook routes (must be BEFORE global JSON body parser) ────────────────
+  // The webhook route captures raw body for HMAC signature verification.
+  // It uses its own body-reading middleware and must NOT be parsed by express.json().
+  app.use('/api/v1/webhooks', webhookRouter);
+
   // ── Body parsing ─────────────────────────────────────────────────────────
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -51,6 +58,7 @@ export function createApp(): Application {
   app.use('/api/v1/interviews', interviewRouter);
   app.use('/api/v1/ai', aiRouter);
   app.use('/api/resume', resumeRouter);
+  app.use('/api/v1/subscriptions', subscriptionRouter);
 
   // 404 fallthrough
   app.use((_req: Request, res: Response) => {

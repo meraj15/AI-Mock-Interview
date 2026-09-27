@@ -52,4 +52,19 @@ export const config = {
     /** Set AI_ENABLE_TELEMETRY=false to disable structured [TELEMETRY] log lines in production. */
     enableTelemetry: (process.env.AI_ENABLE_TELEMETRY ?? 'true') !== 'false',
   },
+  razorpay: {
+    // Key ID is non-sensitive and is passed to Flutter for checkout initialisation.
+    keyId: process.env.RAZORPAY_KEY_ID ?? '',
+    // Key Secret and webhook secret MUST stay on the backend only.
+    // NEVER log or expose these values.
+    keySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? '',
+    // Razorpay plan IDs are configured in the dashboard and stored in env.
+    // Flutter never sends or receives these IDs directly.
+    monthlyPlanId: process.env.RAZORPAY_MONTHLY_PLAN_ID ?? '',
+    yearlyPlanId: process.env.RAZORPAY_YEARLY_PLAN_ID ?? '',
+    // Use TEST mode during development.
+    // Switch to live credentials in production via Railway env vars.
+    isTestMode: (process.env.RAZORPAY_KEY_ID ?? '').startsWith('rzp_test_'),
+  },
 } as const;

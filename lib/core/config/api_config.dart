@@ -129,6 +129,15 @@ class ApiConfig {
   static String interviewAnswerEndpoint(String sessionId) => '/api/v1/interviews/$sessionId/answer';
   static String interviewResultEndpoint(String sessionId) => '/api/v1/interviews/$sessionId/result';
 
+  // ── Subscription Endpoints ─────────────────────────────────────────────────
+  static const String subscriptionPlansEndpoint   = '/api/v1/subscriptions/plans';
+  static const String subscriptionMeEndpoint      = '/api/v1/subscriptions/me';
+  static const String subscriptionCreateEndpoint  = '/api/v1/subscriptions/create';
+  static const String subscriptionVerifyEndpoint  = '/api/v1/subscriptions/verify-payment';
+  static const String subscriptionMeCancelEndpoint = '/api/v1/subscriptions/me/cancel';
+  static String subscriptionCancelEndpoint(String id) => '/api/v1/subscriptions/$id/cancel';
+
+
   // ── Network Timeouts ───────────────────────────────────────────────────────
   /// Standard timeout for non-AI endpoints (auth, profile, etc.).
   static const Duration connectTimeout = Duration(seconds: 20);

@@ -1,14 +1,25 @@
 import { createApp } from './app';
 import { config } from './config';
 import { logger } from './utils/logger';
+import { subscriptionService } from './services/subscription.service';
 
 const app = createApp();
 
-const server = app.listen(config.port, '0.0.0.0', () => {
+const server = app.listen(config.port, '0.0.0.0', async () => {
   logger.info(`🚀 Server running on http://0.0.0.0:${config.port} (accessible via localhost and 10.0.2.2)`);
   logger.info(`   Environment : ${config.nodeEnv}`);
   logger.info(`   Health check: http://localhost:${config.port}/health`);
+  logger.info(`   Razorpay    : ${config.razorpay.isTestMode ? '🧪 TEST MODE' : '🔴 LIVE MODE'}`);
+
+  // Sync plan catalogue to the database.
+  // Safe to run on every start — uses upsert so existing data is preserved.
+  try {
+    await subscriptionService.syncPlans();
+  } catch (err) {
+    logger.warn(`[RAZORPAY] Plan sync failed (check RAZORPAY_*_PLAN_ID env vars): ${(err as Error).message}`);
+  }
 });
+
 
 // Graceful shutdown
 const shutdown = (signal: string) => {

@@ -15,6 +15,8 @@ import 'edit_profile_page.dart';
 import 'notification_settings_page.dart';
 import 'settings_page.dart';
 import 'voice_settings_page.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
+import '../../../subscription/presentation/pages/premium_page.dart';
 
 class ProfilePage extends StatelessWidget {
   final bool showHeader;
@@ -25,6 +27,7 @@ class ProfilePage extends StatelessWidget {
     final colors = AppColorScheme.of(context);
     final auth = context.watch<AuthController>();
     final profileCtrl = context.watch<ProfileController>();
+    final subCtrl = context.watch<SubscriptionController>();
 
     // Real name comes from ProfileController; email always from AuthController
     final userEmail = auth.user?.email ?? '';
@@ -41,6 +44,13 @@ class ProfilePage extends StatelessWidget {
     final targetRole = profileCtrl.targetRole;
 
     final menuItems = [
+      {
+        'icon': FeatherIcons.star,
+        'title': 'Premium',
+        'detail': subCtrl.isPremium ? '✦ Active — Unlimited access' : 'Unlock unlimited AI interviews',
+        'page': const PremiumPage(),
+        'isPremium': true,
+      },
       {
         'icon': FeatherIcons.mic,
         'title': 'AI Interviewer Voice & Persona',
@@ -177,6 +187,10 @@ class ProfilePage extends StatelessWidget {
           const SizedBox(height: 8),
 
           ...menuItems.map((item) {
+            final isPremiumRow = (item['isPremium'] as bool?) == true;
+            final iconColor = isPremiumRow ? colors.yellow : colors.primary;
+            final iconBg   = isPremiumRow ? colors.yellow.withOpacity(0.15) : colors.secondary;
+
             return Material(
               color: Colors.transparent,
               child: InkWell(
@@ -196,11 +210,11 @@ class ProfilePage extends StatelessWidget {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: colors.secondary,
+                          color: iconBg,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         alignment: Alignment.center,
-                        child: Icon(item['icon'] as IconData, size: 17, color: colors.primary),
+                        child: Icon(item['icon'] as IconData, size: 17, color: iconColor),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -215,7 +229,10 @@ class ProfilePage extends StatelessWidget {
                             const SizedBox(height: 3),
                             Text(
                               item['detail'] as String,
-                              style: AppTypography.regular(10, color: colors.mutedForeground),
+                              style: AppTypography.regular(10,
+                                color: isPremiumRow && subCtrl.isPremium
+                                    ? colors.success
+                                    : colors.mutedForeground),
                             ),
                           ],
                         ),
@@ -227,6 +244,7 @@ class ProfilePage extends StatelessWidget {
               ),
             );
           }),
+
 
           const SizedBox(height: 24),
 
@@ -275,3 +293,4 @@ class ProfilePage extends StatelessWidget {
     );
   }
 }
+

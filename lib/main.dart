@@ -17,6 +17,9 @@ import 'features/profile/presentation/controllers/profile_controller.dart';
 import 'features/profile/presentation/controllers/theme_controller.dart';
 import 'features/resume/data/datasources/resume_remote_data_source.dart';
 import 'features/resume/presentation/controllers/resume_controller.dart';
+import 'features/subscription/data/datasources/subscription_remote_data_source.dart';
+import 'features/subscription/data/repositories/subscription_repository_impl.dart';
+import 'features/subscription/presentation/controllers/subscription_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,8 +35,12 @@ void main() async {
   final profileRemoteDataSource = ProfileRemoteDataSourceImpl(apiClient: apiClient);
   final resumeRemoteDataSource = ResumeRemoteDataSourceImpl(tokenStorage: tokenStorage);
   final interviewRemoteDataSource = InterviewRemoteDataSourceImpl(apiClient: apiClient);
+  final subscriptionRemoteDataSource = SubscriptionRemoteDataSourceImpl(apiClient: apiClient);
 
   // Repositories
+  final subscriptionRepository = SubscriptionRepositoryImpl(
+    remoteDataSource: subscriptionRemoteDataSource,
+  );
   final authRepository = AuthRepositoryImpl(
     remoteDataSource: authRemoteDataSource,
     localDataSource: authLocalDataSource,
@@ -113,7 +120,22 @@ void main() async {
             remoteDataSource: resumeRemoteDataSource,
           ),
         ),
-      
+        // SubscriptionController reacts to auth state changes.
+        // When authenticated → load subscription status.
+        // When signed out → reset to free state.
+        ChangeNotifierProxyProvider<AuthController, SubscriptionController>(
+          create: (_) => SubscriptionController(
+            repository: subscriptionRepository,
+          ),
+          update: (_, authCtrl, subCtrl) {
+            if (authCtrl.isAuthenticated) {
+              subCtrl!.refreshSubscription();
+            } else {
+              subCtrl!.resetPaymentState();
+            }
+            return subCtrl;
+          },
+        ),
       ],
       child: const InterviewCoachApp(),
     ),
