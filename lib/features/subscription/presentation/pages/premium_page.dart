@@ -3,10 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/app_header.dart';
 import '../../../../core/widgets/app_scaffold.dart';
-import '../controllers/subscription_controller.dart';
+import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
 import '../../domain/entities/plan_entity.dart';
+import '../controllers/subscription_controller.dart';
+
+extension _PlanEntityX on PlanEntity {
+  int get amountInRupees => (priceInPaise / 100).round();
+
+  int get monthlyEquivalentRupees {
+    if (isYearly) {
+      return (amountInRupees / 12).round();
+    }
+    return amountInRupees;
+  }
+}
 
 class PremiumPage extends StatefulWidget {
   const PremiumPage({super.key});
@@ -29,18 +40,29 @@ class _PremiumPageState extends State<PremiumPage> {
     final colors = AppColorScheme.of(context);
     final ctrl = context.watch<SubscriptionController>();
 
+    final isBusy = ctrl.paymentState == PaymentState.creatingSubscription ||
+        ctrl.paymentState == PaymentState.verifying;
+
     return PopScope(
-      canPop: ctrl.paymentState != PaymentState.creatingSubscription &&
-          ctrl.paymentState != PaymentState.verifying,
+      canPop: !isBusy,
       child: AppScaffold(
-        body: Column(
-          children: [
-            AppHeader(
-              title: 'Premium',
-              onBack: () => Navigator.of(context).pop(),
-            ),
-            Expanded(child: _buildBody(context, colors, ctrl)),
-          ],
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top Bar with Close '✕' Icon
+              _TopCloseBar(
+                colors: colors,
+                onClose: () => Navigator.of(context).pop(),
+              ),
+
+              // Main Body Content
+              Expanded(
+                child: _buildBody(context, colors, ctrl),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -48,10 +70,20 @@ class _PremiumPageState extends State<PremiumPage> {
 
   Widget _buildBody(
       BuildContext context, AppColorScheme colors, SubscriptionController ctrl) {
-    // ── Overlay states ───────────────────────────────────────────────────────
+    // ── Overlays: Success, Verifying, Network Error ──────────────────────────
     if (ctrl.paymentState == PaymentState.success) {
       return _SuccessOverlay(
-          colors: colors, onDone: () => Navigator.of(context).pop());
+        colors: colors,
+        onDone: () => Navigator.of(context).pop(),
+        onStartPractice: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const QuickInterviewSetupPage(),
+            ),
+          );
+        },
+      );
     }
 
     if (ctrl.paymentState == PaymentState.verifying ||
@@ -60,7 +92,7 @@ class _PremiumPageState extends State<PremiumPage> {
         colors: colors,
         message: ctrl.paymentState == PaymentState.creatingSubscription
             ? 'Opening secure checkout…'
-            : 'Verifying your payment…',
+            : 'Verifying payment…',
       );
     }
 
@@ -68,7 +100,7 @@ class _PremiumPageState extends State<PremiumPage> {
       return _NetworkErrorOverlay(
         colors: colors,
         message: ctrl.errorMessage ??
-            'Your payment may have been completed. We\'re checking your subscription status.',
+            'Payment might be completed. Check subscription status.',
         onRefresh: () async {
           await ctrl.refreshSubscription();
           if (mounted) ctrl.resetPaymentState();
@@ -76,117 +108,273 @@ class _PremiumPageState extends State<PremiumPage> {
       );
     }
 
-    // ── Loading ──────────────────────────────────────────────────────────────
+    // ── Loading ────────────────────────────────────────────────────────────
     if (ctrl.isLoading) {
-      return Center(child: CircularProgressIndicator(color: colors.primary));
+      return Center(
+        child: CircularProgressIndicator(
+          color: colors.primary,
+          strokeWidth: 2.5,
+        ),
+      );
     }
 
-    // ── Load error ───────────────────────────────────────────────────────────
+    // ── Load Error ─────────────────────────────────────────────────────────
     if (ctrl.loadStatus == SubscriptionLoadStatus.error) {
       return _ErrorState(
-          colors: colors,
-          message: ctrl.errorMessage ?? 'Unable to load subscription details.',
-          onRetry: ctrl.loadAll);
+        colors: colors,
+        message: ctrl.errorMessage ?? 'Unable to load plans.',
+        onRetry: ctrl.loadAll,
+      );
     }
 
-    // ── Main content ─────────────────────────────────────────────────────────
-    return RefreshIndicator(
-      color: colors.primary,
-      onRefresh: ctrl.refreshSubscription,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-        children: [
-          if (ctrl.isPremium) ...[
-            _ActiveBanner(colors: colors, subscription: ctrl.subscription),
-            const SizedBox(height: 24),
-          ] else ...[
-            _HeroBanner(colors: colors),
-            const SizedBox(height: 28),
-          ],
+    // ── Active Member View (If already subscribed) ─────────────────────────
+    if (ctrl.isPremium) {
+      return _ActiveSubscriberView(colors: colors, ctrl: ctrl);
+    }
 
-          // Plan selector (non-premium users only)
-          if (!ctrl.isPremium && ctrl.plans.isNotEmpty) ...[
-            Text('Choose your plan',
-                style: AppTypography.semiBold(15, color: colors.foreground)),
-            const SizedBox(height: 12),
-            _PlanSelector(colors: colors, ctrl: ctrl),
-            const SizedBox(height: 24),
-          ],
+    // ── Non-Premium Subscription Page (Matches Reference Image) ────────────
+    final monthlyPlan = ctrl.monthlyPlan;
+    final yearlyPlan = ctrl.yearlyPlan;
 
-          // Benefits list
-          _BenefitsList(colors: colors),
-          const SizedBox(height: 28),
+    final selectedPlan = ctrl.selectedPlan ?? yearlyPlan ?? monthlyPlan;
+    final isYearlySelected =
+        selectedPlan?.isYearly ?? (ctrl.selectedPlanCode == yearlyPlan?.code);
 
-          // Error banners
-          if (ctrl.paymentState == PaymentState.failed &&
-              ctrl.errorMessage != null) ...[
-            _ErrorBanner(colors: colors, message: ctrl.errorMessage!),
-            const SizedBox(height: 16),
-          ],
-          if (ctrl.paymentState == PaymentState.cancelled) ...[
-            _InfoBanner(
-                colors: colors,
-                message: 'Payment was cancelled. You can try again anytime.'),
-            const SizedBox(height: 16),
-          ],
+    final monthlyPrice = monthlyPlan?.amountInRupees ?? 199;
+    final yearlyTotal = yearlyPlan?.amountInRupees ?? 1999;
+    final yearlyPerMonth = yearlyPlan?.monthlyEquivalentRupees ?? 166;
 
-          // CTA
-          if (!ctrl.isPremium)
-            _SubscribeButton(colors: colors, ctrl: ctrl)
-          else
-            _ManageSection(colors: colors, ctrl: ctrl),
-        ],
-      ),
-    );
-  }
-}
+    final buttonLabel = isYearlySelected
+        ? 'Start annual plan — ₹$yearlyTotal/yr'
+        : 'Start monthly plan — ₹$monthlyPrice/mo';
 
-// ── Hero Banner ────────────────────────────────────────────────────────────────
-
-class _HeroBanner extends StatelessWidget {
-  final AppColorScheme colors;
-  const _HeroBanner({required this.colors});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            colors.primary.withOpacity(0.85),
-            colors.violet.withOpacity(0.75),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppColors.radius),
-      ),
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Crown Icon Badge
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: colors.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(
-              '✦ PREMIUM',
-              style:
-                  AppTypography.bold(11, color: Colors.white, letterSpacing: 1.5),
+            alignment: Alignment.center,
+            child: _CrownIcon(
+              size: 28,
+              color: colors.primary,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
+
+          // Main Headline
           Text(
-            'Ace every interview\nwith AI coaching',
-            style: AppTypography.bold(22, color: Colors.white, height: 1.3),
+            'Go Pro. Nail every interview.',
+            style: AppTypography.bold(23, color: colors.foreground),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
+
+          // Subtitle
           Text(
-            'Unlimited mock interviews, deep feedback,\nand performance analytics.',
-            style: AppTypography.regular(13,
-                color: Colors.white.withOpacity(0.85), height: 1.5),
+            'Unlimited AI coaching, real-time feedback,\nand company-specific question banks.',
+            style: AppTypography.regular(
+              13.5,
+              color: colors.mutedForeground,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 26),
+
+          // 4 Feature Items
+          const _FeatureItem(
+            icon: FeatherIcons.zap,
+            title: 'Unlimited mock interviews',
+            subtitle: 'Coding, system design, behavioral — no daily cap',
+          ),
+          const SizedBox(height: 16),
+          const _FeatureItem(
+            icon: FeatherIcons.barChart2,
+            title: 'Full evaluation rubric',
+            subtitle:
+                'Scored on clarity, depth, correctness, and communication',
+          ),
+          const SizedBox(height: 16),
+          const _FeatureItem(
+            icon: FeatherIcons.target,
+            title: 'Target company calibration',
+            subtitle: 'Questions modeled on Google, Amazon, Meta, and more',
+          ),
+          const SizedBox(height: 16),
+          const _FeatureItem(
+            icon: FeatherIcons.mic,
+            title: 'Voice AI with follow-ups',
+            subtitle: 'Realistic interviewer pressure and pushbacks',
+          ),
+          const SizedBox(height: 28),
+
+          // Side-by-side Plan Cards
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Monthly Card
+              Expanded(
+                child: _PlanOptionCard(
+                  colors: colors,
+                  title: 'Monthly',
+                  mainPrice: '₹$monthlyPrice',
+                  perPeriod: '/mo',
+                  subtitle: 'Cancel anytime',
+                  isSelected: !isYearlySelected,
+                  onTap: () {
+                    if (monthlyPlan != null) {
+                      ctrl.selectPlan(monthlyPlan.code);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Annual Card with Badge
+              Expanded(
+                child: _PlanOptionCard(
+                  colors: colors,
+                  title: 'Annual',
+                  mainPrice: '₹$yearlyPerMonth',
+                  perPeriod: '/mo',
+                  subtitle: '₹$yearlyTotal billed yearly',
+                  badgeText: 'Best value — save 16%',
+                  isSelected: isYearlySelected,
+                  onTap: () {
+                    if (yearlyPlan != null) {
+                      ctrl.selectPlan(yearlyPlan.code);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Primary Button
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: ctrl.isSubscribing ? null : ctrl.subscribe,
+                borderRadius: BorderRadius.circular(16),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: colors.card,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: colors.border.withValues(alpha: 0.9),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        offset: const Offset(0, 2),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: ctrl.isSubscribing
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colors.foreground,
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                FeatherIcons.zap,
+                                size: 16,
+                                color: colors.foreground,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                buttonLabel,
+                                style: AppTypography.bold(14.5,
+                                    color: colors.foreground),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Footer links
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _FooterLink(
+                text: 'Restore purchase',
+                onTap: () async {
+                  await ctrl.refreshSubscription();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ctrl.isPremium
+                              ? 'Subscription restored!'
+                              : 'Status checked. No active plan found.',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                colors: colors,
+              ),
+              const SizedBox(width: 20),
+              _FooterLink(
+                text: 'Terms',
+                onTap: () => _showTextModal(context, 'Terms of Service',
+                    'By subscribing, you gain full access to all AI interview features. Subscriptions automatically renew unless cancelled at least 24 hours before the end of the billing period.'),
+                colors: colors,
+              ),
+              const SizedBox(width: 20),
+              _FooterLink(
+                text: 'Privacy',
+                onTap: () => _showTextModal(context, 'Privacy Policy',
+                    'Your interview responses and resumes are strictly private and used exclusively to generate your personalized practice questions and feedback.'),
+                colors: colors,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  void _showTextModal(BuildContext context, String title, String body) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: AppTypography.bold(16)),
+        content: Text(body,
+            style: AppTypography.regular(13, color: Colors.grey[700])),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -194,379 +382,395 @@ class _HeroBanner extends StatelessWidget {
   }
 }
 
-// ── Active Premium Banner ──────────────────────────────────────────────────────
+// ── Top Close Bar ──────────────────────────────────────────────────────────────
 
-class _ActiveBanner extends StatelessWidget {
+class _TopCloseBar extends StatelessWidget {
   final AppColorScheme colors;
-  final dynamic subscription;
-  const _ActiveBanner({required this.colors, required this.subscription});
+  final VoidCallback onClose;
+
+  const _TopCloseBar({required this.colors, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colors.accent,
-        borderRadius: BorderRadius.circular(AppColors.radius),
-        border: Border.all(color: colors.success.withOpacity(0.4)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.only(top: 8, right: 18, bottom: 4),
+      alignment: Alignment.centerRight,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onClose,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: colors.success.withOpacity(0.15),
               shape: BoxShape.circle,
+              border: Border.all(
+                color: colors.border.withValues(alpha: 0.8),
+                width: 1.1,
+              ),
+              color: colors.card,
             ),
-            child: Icon(FeatherIcons.star, color: colors.success, size: 22),
+            child: Icon(
+              Icons.close,
+              size: 18,
+              color: colors.foreground.withValues(alpha: 0.7),
+            ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
+        ),
+      ),
+    );
+  }
+}
+
+// ── Crown Icon Painter ─────────────────────────────────────────────────────────
+
+class _CrownIcon extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _CrownIcon({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size * 0.72),
+      painter: _CrownPainter(color: color),
+    );
+  }
+}
+
+class _CrownPainter extends CustomPainter {
+  final Color color;
+  _CrownPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final path = Path()
+      ..moveTo(0, size.height * 0.22)
+      ..lineTo(size.width * 0.25, size.height * 0.62)
+      ..lineTo(size.width * 0.5, 0)
+      ..lineTo(size.width * 0.75, size.height * 0.62)
+      ..lineTo(size.width, size.height * 0.22)
+      ..lineTo(size.width * 0.86, size.height)
+      ..lineTo(size.width * 0.14, size.height)
+      ..close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CrownPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+// ── Feature Row ────────────────────────────────────────────────────────────────
+
+class _FeatureItem extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _FeatureItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColorScheme.of(context);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 19, color: colors.primary),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.bold(14.5, color: colors.foreground),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: AppTypography.regular(
+                  12.5,
+                  color: colors.mutedForeground,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Plan Option Card (Side-by-side) ────────────────────────────────────────────
+
+class _PlanOptionCard extends StatelessWidget {
+  final AppColorScheme colors;
+  final String title;
+  final String mainPrice;
+  final String perPeriod;
+  final String subtitle;
+  final String? badgeText;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _PlanOptionCard({
+    required this.colors,
+    required this.title,
+    required this.mainPrice,
+    required this.perPeriod,
+    required this.subtitle,
+    this.badgeText,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? colors.primary.withValues(alpha: 0.1)
+                  : colors.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isSelected
+                    ? colors.primary
+                    : colors.border.withValues(alpha: 0.8),
+                width: isSelected ? 2.0 : 1.1,
+              ),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Premium Active',
-                    style: AppTypography.bold(14,
-                        color: colors.accentForeground)),
-                if (subscription.periodEndFormatted != null)
-                  Text(
-                    subscription.autoRenew
-                        ? 'Renews ${subscription.periodEndFormatted}'
-                        : 'Active until ${subscription.periodEndFormatted}',
-                    style: AppTypography.regular(12,
-                        color: colors.accentForeground.withOpacity(0.75)),
+                Text(
+                  title,
+                  style: AppTypography.semiBold(
+                    14,
+                    color: isSelected ? colors.primary : colors.foreground,
                   ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      mainPrice,
+                      style: AppTypography.bold(
+                        22,
+                        color: isSelected ? colors.primary : colors.foreground,
+                      ),
+                    ),
+                    Text(
+                      perPeriod,
+                      style: AppTypography.regular(
+                        12.5,
+                        color: isSelected
+                            ? colors.primary
+                            : colors.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: AppTypography.regular(
+                    11.5,
+                    color: isSelected
+                        ? colors.primary.withValues(alpha: 0.85)
+                        : colors.mutedForeground,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: colors.success.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              subscription.isMonthly ? 'Monthly' : 'Yearly',
-              style: AppTypography.semiBold(11, color: colors.success),
+        ),
+
+        // Hanging Badge on top
+        if (badgeText != null)
+          Positioned(
+            top: -10,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: colors.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                badgeText!,
+                style: AppTypography.bold(9.5, color: Colors.white),
+              ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-// ── Plan Selector ──────────────────────────────────────────────────────────────
+// ── Footer Link ────────────────────────────────────────────────────────────────
 
-class _PlanSelector extends StatelessWidget {
-  final AppColorScheme colors;
-  final SubscriptionController ctrl;
-  const _PlanSelector({required this.colors, required this.ctrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: ctrl.plans
-          .map((plan) => _PlanCard(
-                plan: plan,
-                colors: colors,
-                isSelected: ctrl.selectedPlanCode == plan.code,
-                onTap: () => ctrl.selectPlan(plan.code),
-                showBadge: plan.isYearly,
-              ))
-          .toList(),
-    );
-  }
-}
-
-class _PlanCard extends StatelessWidget {
-  final PlanEntity plan;
-  final AppColorScheme colors;
-  final bool isSelected;
-  final bool showBadge;
+class _FooterLink extends StatelessWidget {
+  final String text;
   final VoidCallback onTap;
+  final AppColorScheme colors;
 
-  const _PlanCard({
-    required this.plan,
-    required this.colors,
-    required this.isSelected,
-    required this.showBadge,
+  const _FooterLink({
+    required this.text,
     required this.onTap,
+    required this.colors,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? colors.primary.withOpacity(0.08) : colors.card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? colors.primary : colors.border,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: isSelected ? colors.primary : colors.border,
-                    width: 2),
-                color: isSelected ? colors.primary : Colors.transparent,
-              ),
-              child: isSelected
-                  ? const Icon(Icons.check, color: Colors.white, size: 12)
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(plan.name,
-                          style: AppTypography.semiBold(14,
-                              color: colors.foreground)),
-                      if (showBadge) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: colors.yellow.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text('Best Value',
-                              style: AppTypography.bold(10,
-                                  color: colors.yellow)),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    plan.description,
-                    style: AppTypography.regular(12,
-                        color: colors.mutedForeground),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              plan.formattedPrice,
-              style: AppTypography.bold(14,
-                  color: isSelected ? colors.primary : colors.foreground),
-            ),
-          ],
+      child: Text(
+        text,
+        style: AppTypography.medium(
+          12,
+          color: colors.mutedForeground,
         ),
       ),
     );
   }
 }
 
-// ── Benefits List ──────────────────────────────────────────────────────────────
+// ── Active Subscriber View ─────────────────────────────────────────────────────
 
-class _BenefitsList extends StatelessWidget {
-  final AppColorScheme colors;
-  const _BenefitsList({required this.colors});
-
-  static const _benefits = [
-    (FeatherIcons.zap, 'Unlimited AI mock interviews'),
-    (FeatherIcons.barChart2, 'Detailed performance analytics'),
-    (FeatherIcons.messageSquare, 'In-depth question-by-question feedback'),
-    (FeatherIcons.target, 'Role-specific interview preparation'),
-    (FeatherIcons.trendingUp, 'Progress tracking over time'),
-    (FeatherIcons.shield, 'Priority access to new features'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text("What's included",
-            style: AppTypography.semiBold(15, color: colors.foreground)),
-        const SizedBox(height: 12),
-        ..._benefits.map((b) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: colors.accent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child:
-                        Icon(b.$1, size: 16, color: colors.accentForeground),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(b.$2,
-                      style: AppTypography.regular(13,
-                          color: colors.foreground)),
-                ],
-              ),
-            )),
-      ],
-    );
-  }
-}
-
-// ── Subscribe Button ───────────────────────────────────────────────────────────
-
-class _SubscribeButton extends StatelessWidget {
+class _ActiveSubscriberView extends StatelessWidget {
   final AppColorScheme colors;
   final SubscriptionController ctrl;
-  const _SubscribeButton({required this.colors, required this.ctrl});
+
+  const _ActiveSubscriberView({
+    required this.colors,
+    required this.ctrl,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final plan = ctrl.selectedPlan;
-    final isLoading = ctrl.isSubscribing;
+    final sub = ctrl.subscription;
+    final renewDate = sub.periodEndFormatted ?? 'Ongoing';
+    final isAutoRenew = sub.autoRenew && !sub.isCancelled;
 
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: isLoading ? null : ctrl.subscribe,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colors.primary,
-              foregroundColor: colors.primaryForeground,
-              disabledBackgroundColor: colors.primary.withOpacity(0.5),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-              elevation: 0,
-            ),
-            child: isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : Text(
-                    plan != null
-                        ? 'Subscribe — ${plan.formattedPrice}'
-                        : 'Subscribe',
-                    style: AppTypography.bold(15, color: Colors.white),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Secure payment via Razorpay. Cancel anytime.',
-          style: AppTypography.regular(12, color: colors.mutedForeground),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-}
-
-// ── Manage Section (for existing subscribers) ──────────────────────────────────
-
-class _ManageSection extends StatelessWidget {
-  final AppColorScheme colors;
-  final SubscriptionController ctrl;
-  const _ManageSection({required this.colors, required this.ctrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        OutlinedButton.icon(
-          onPressed: ctrl.refreshSubscription,
-          icon: const Icon(FeatherIcons.refreshCw, size: 16),
-          label: const Text('Refresh Status'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: colors.primary,
-            side: BorderSide(color: colors.border),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-            minimumSize: const Size(double.infinity, 48),
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (ctrl.subscription.autoRenew && !ctrl.subscription.isCancelled)
-          TextButton(
-            onPressed: ctrl.isCancelling
-                ? null
-                : () => _showCancelConfirm(context, ctrl),
-            style: TextButton.styleFrom(
-              foregroundColor: colors.destructive,
-              minimumSize: const Size(double.infinity, 44),
-            ),
-            child: ctrl.isCancelling
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: colors.destructive),
-                  )
-                : const Text('Cancel Subscription'),
-          ),
-        if (ctrl.subscription.isCancelled) ...[
-          const SizedBox(height: 8),
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            width: 70,
+            height: 70,
             decoration: BoxDecoration(
-              color: colors.muted,
-              borderRadius: BorderRadius.circular(12),
+              color: colors.success.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            child: Row(
-              children: [
-                Icon(FeatherIcons.info,
-                    size: 16, color: colors.mutedForeground),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Your subscription has been cancelled. '
-                    'Access continues until '
-                    '${ctrl.subscription.periodEndFormatted ?? 'period end'}.',
-                    style: AppTypography.regular(12,
-                        color: colors.mutedForeground, height: 1.5),
+            child: Icon(FeatherIcons.checkCircle,
+                size: 36, color: colors.success),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Pro Member Active',
+            style: AppTypography.bold(22, color: colors.foreground),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isAutoRenew
+                ? 'Your ${sub.isYearly ? 'Annual' : 'Monthly'} plan renews on $renewDate.'
+                : 'Access active through $renewDate.',
+            style: AppTypography.regular(13.5,
+                color: colors.mutedForeground, height: 1.4),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const QuickInterviewSetupPage(),
                   ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: colors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
-              ],
+                elevation: 0,
+              ),
+              child: Text('Start Mock Interview',
+                  style: AppTypography.bold(14.5, color: Colors.white)),
             ),
           ),
+          const SizedBox(height: 14),
+          if (sub.autoRenew && !sub.isCancelled)
+            TextButton(
+              onPressed: ctrl.isCancelling
+                  ? null
+                  : () => _confirmCancel(context, ctrl),
+              child: Text(
+                'Cancel Subscription',
+                style: AppTypography.medium(13, color: colors.destructive),
+              ),
+            ),
         ],
-      ],
+      ),
     );
   }
 
-  void _showCancelConfirm(
-      BuildContext context, SubscriptionController ctrl) {
+  void _confirmCancel(BuildContext context, SubscriptionController ctrl) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Cancel subscription?'),
         content: const Text(
-          'Your Premium access will remain active until the end of the '
-          'current billing cycle, then your plan will revert to Free.',
+          'Your Pro access will remain active until the end of your billing cycle.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Keep Premium'),
+            child: const Text('Keep Pro'),
           ),
           TextButton(
             onPressed: () async {
@@ -574,7 +778,7 @@ class _ManageSection extends StatelessWidget {
               await ctrl.cancelSubscription(cancelAtCycleEnd: true);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Cancel at cycle end'),
+            child: const Text('Confirm Cancel'),
           ),
         ],
       ),
@@ -582,45 +786,18 @@ class _ManageSection extends StatelessWidget {
   }
 }
 
-// ── Overlays ───────────────────────────────────────────────────────────────────
-
-class _ProcessingOverlay extends StatelessWidget {
-  final AppColorScheme colors;
-  final String message;
-  const _ProcessingOverlay({required this.colors, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: colors.primary, strokeWidth: 3),
-            const SizedBox(height: 24),
-            Text(message,
-                style:
-                    AppTypography.semiBold(16, color: colors.foreground),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 8),
-            Text(
-              'Please do not close this screen.',
-              style:
-                  AppTypography.regular(13, color: colors.mutedForeground),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// ── Overlays: Success, Processing, Network Error, Error ────────────────────────
 
 class _SuccessOverlay extends StatelessWidget {
   final AppColorScheme colors;
   final VoidCallback onDone;
-  const _SuccessOverlay({required this.colors, required this.onDone});
+  final VoidCallback onStartPractice;
+
+  const _SuccessOverlay({
+    required this.colors,
+    required this.onDone,
+    required this.onStartPractice,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -631,41 +808,72 @@ class _SuccessOverlay extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
-              decoration:
-                  BoxDecoration(color: colors.accent, shape: BoxShape.circle),
-              child:
-                  Icon(FeatherIcons.star, color: colors.success, size: 40),
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: colors.success.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(FeatherIcons.check, color: colors.success, size: 36),
             ),
-            const SizedBox(height: 24),
-            Text('Premium Activated! 🎉',
-                style: AppTypography.bold(22, color: colors.foreground),
-                textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            Text(
+              'Welcome to Pro! 🎉',
+              style: AppTypography.bold(22, color: colors.foreground),
+            ),
             const SizedBox(height: 8),
             Text(
-              'You now have unlimited access to all AI interview features.',
-              style: AppTypography.regular(14,
-                  color: colors.mutedForeground, height: 1.5),
-              textAlign: TextAlign.center,
+              'Unlimited mock interviews unlocked.',
+              style: AppTypography.regular(13.5, color: colors.mutedForeground),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 50,
               child: ElevatedButton(
-                onPressed: onDone,
+                onPressed: onStartPractice,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: colors.primary,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
-                child: Text('Start Practicing',
-                    style: AppTypography.bold(15, color: Colors.white)),
+                child: Text('Start First Interview',
+                    style: AppTypography.bold(14, color: Colors.white)),
               ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: onDone,
+              child: Text('Done', style: AppTypography.medium(13, color: colors.mutedForeground)),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ProcessingOverlay extends StatelessWidget {
+  final AppColorScheme colors;
+  final String message;
+
+  const _ProcessingOverlay({required this.colors, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: colors.primary, strokeWidth: 2.8),
+          const SizedBox(height: 20),
+          Text(message, style: AppTypography.semiBold(15, color: colors.foreground)),
+          const SizedBox(height: 6),
+          Text('Please do not close this screen',
+              style: AppTypography.regular(12.5, color: colors.mutedForeground)),
+        ],
       ),
     );
   }
@@ -675,6 +883,7 @@ class _NetworkErrorOverlay extends StatelessWidget {
   final AppColorScheme colors;
   final String message;
   final VoidCallback onRefresh;
+
   const _NetworkErrorOverlay({
     required this.colors,
     required this.message,
@@ -689,30 +898,18 @@ class _NetworkErrorOverlay extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(FeatherIcons.wifi, size: 48, color: colors.yellow),
-            const SizedBox(height: 20),
-            Text('Checking Payment Status',
-                style: AppTypography.semiBold(16, color: colors.foreground),
-                textAlign: TextAlign.center),
+            Icon(FeatherIcons.wifi, size: 40, color: colors.yellow),
+            const SizedBox(height: 16),
+            Text('Checking Status',
+                style: AppTypography.semiBold(16, color: colors.foreground)),
             const SizedBox(height: 8),
-            Text(
-              message,
-              style: AppTypography.regular(13,
-                  color: colors.mutedForeground, height: 1.5),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 28),
-            OutlinedButton.icon(
+            Text(message,
+                style: AppTypography.regular(13, color: colors.mutedForeground),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            OutlinedButton(
               onPressed: onRefresh,
-              icon: const Icon(FeatherIcons.refreshCw, size: 16),
-              label: const Text('Check Status'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: colors.primary,
-                side: BorderSide(color: colors.primary),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                minimumSize: const Size(200, 48),
-              ),
+              child: const Text('Check Status'),
             ),
           ],
         ),
@@ -725,8 +922,12 @@ class _ErrorState extends StatelessWidget {
   final AppColorScheme colors;
   final String message;
   final VoidCallback onRetry;
-  const _ErrorState(
-      {required this.colors, required this.message, required this.onRetry});
+
+  const _ErrorState({
+    required this.colors,
+    required this.message,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -736,78 +937,22 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(FeatherIcons.alertCircle,
-                size: 40, color: colors.destructive),
-            const SizedBox(height: 16),
+            Icon(FeatherIcons.alertCircle, size: 36, color: colors.destructive),
+            const SizedBox(height: 14),
             Text(message,
-                style: AppTypography.regular(13,
-                    color: colors.mutedForeground, height: 1.5),
+                style: AppTypography.regular(13, color: colors.mutedForeground),
                 textAlign: TextAlign.center),
-            const SizedBox(height: 20),
-            OutlinedButton(
+            const SizedBox(height: 18),
+            ElevatedButton(
               onPressed: onRetry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: colors.primary,
+                foregroundColor: Colors.white,
+              ),
               child: const Text('Try Again'),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  final AppColorScheme colors;
-  final String message;
-  const _ErrorBanner({required this.colors, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colors.destructive.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.destructive.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(FeatherIcons.alertCircle,
-              size: 16, color: colors.destructive),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(message,
-                style:
-                    AppTypography.regular(12, color: colors.destructive)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoBanner extends StatelessWidget {
-  final AppColorScheme colors;
-  final String message;
-  const _InfoBanner({required this.colors, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colors.muted,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(FeatherIcons.info, size: 16, color: colors.mutedForeground),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(message,
-                style: AppTypography.regular(12,
-                    color: colors.mutedForeground)),
-          ),
-        ],
       ),
     );
   }

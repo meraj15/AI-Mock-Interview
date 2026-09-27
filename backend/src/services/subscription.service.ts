@@ -133,19 +133,39 @@ export const subscriptionService = {
   async syncPlans(): Promise<void> {
     const plans = buildPlanCatalogue();
     for (const p of plans) {
-      if (!p.razorpayPlanId) {
-        logger.warn(`[RAZORPAY] Plan ${p.code} has no Razorpay Plan ID configured — skipping.`);
-        continue;
+      let rzpPlanId = p.razorpayPlanId || undefined;
+
+      // If Razorpay credentials are configured but plan ID was not set in env, auto-create it on Razorpay
+      if (!rzpPlanId && config.razorpay.keyId && config.razorpay.keySecret) {
+        try {
+          const created = await razorpayService.createPlan({
+            name: p.name,
+            description: p.description,
+            amountInPaise: p.priceInPaise,
+            billingInterval: p.billingInterval,
+          });
+          rzpPlanId = created.planId;
+          logger.info(`[RAZORPAY] Automatically created plan '${p.code}' on Razorpay: ${rzpPlanId}`);
+        } catch (err: any) {
+          logger.warn(`[RAZORPAY] Could not auto-create plan '${p.code}' on Razorpay: ${err?.message || err}`);
+        }
       }
+
       await subscriptionRepository.upsertPlan({
         code: p.code,
         name: p.name,
         description: p.description,
         priceInPaise: p.priceInPaise,
         billingInterval: p.billingInterval,
-        razorpayPlanId: p.razorpayPlanId,
+        razorpayPlanId: rzpPlanId,
         isActive: true,
       });
+
+      if (!rzpPlanId) {
+        logger.warn(
+          `[RAZORPAY] Plan ${p.code} seeded without Razorpay Plan ID (set RAZORPAY_${p.billingInterval}_PLAN_ID or configure RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET).`
+        );
+      }
     }
     logger.info('[RAZORPAY] Plan catalogue synced.');
   },
@@ -170,7 +190,12 @@ export const subscriptionService = {
   async createSubscription(
     userId: string,
     planCode: string
-  ): Promise<{ subscription: Subscription; razorpaySubscriptionId: string; razorpayKeyId: string }> {
+  ): Promise<{
+    subscription: Subscription;
+    razorpaySubscriptionId: string;
+    razorpayOrderId?: string;
+    razorpayKeyId: string;
+  }> {
     // 1. Resolve and validate plan from DB
     const plan = await subscriptionRepository.findPlanByCode(planCode);
     if (!plan) {
@@ -179,8 +204,38 @@ export const subscriptionService = {
     if (!plan.isActive) {
       throw new ValidationError(`Plan '${planCode}' is not currently available`);
     }
-    if (!plan.razorpayPlanId) {
-      throw new AppError(`Plan '${planCode}' has no Razorpay Plan ID configured`, 503, 'PAYMENT_UNAVAILABLE');
+
+    // Auto-create plan on demand if Razorpay API keys are configured but plan ID was missing
+    if (!plan.razorpayPlanId && config.razorpay.keyId && config.razorpay.keySecret) {
+      try {
+        const created = await razorpayService.createPlan({
+          name: plan.name,
+          description: plan.description,
+          amountInPaise: plan.priceInPaise,
+          billingInterval: plan.billingInterval,
+        });
+        await subscriptionRepository.upsertPlan({
+          code: plan.code,
+          name: plan.name,
+          description: plan.description,
+          priceInPaise: plan.priceInPaise,
+          billingInterval: plan.billingInterval,
+          razorpayPlanId: created.planId,
+          isActive: true,
+        });
+        plan.razorpayPlanId = created.planId;
+        logger.info(`[RAZORPAY] On-demand created Razorpay plan for '${plan.code}': ${created.planId}`);
+      } catch (err: any) {
+        logger.warn(`[RAZORPAY] Failed to auto-create plan '${plan.code}' on demand: ${err?.message || err}`);
+      }
+    }
+
+    if (!plan.razorpayPlanId && (!config.razorpay.keyId || !config.razorpay.keySecret)) {
+      throw new AppError(
+        `Plan '${planCode}' has no Razorpay Plan ID configured`,
+        503,
+        'PAYMENT_UNAVAILABLE'
+      );
     }
 
     // 2. Check for existing active subscription (idempotency / duplicate prevention)
@@ -197,25 +252,58 @@ export const subscriptionService = {
       throw new ConflictError('You already have an active subscription');
     }
 
-    // 3. Create Razorpay subscription using the plan's Razorpay Plan ID
-    const rzpResult = await razorpayService.createSubscription({
-      planId: plan.razorpayPlanId,
-      totalCount: 0, // recurring indefinitely
-    });
+    // 3. Create payment session (via Subscriptions if configured on Razorpay, or direct Order)
+    let providerId: string;
+    let isOrder = false;
+
+    if (plan.razorpayPlanId) {
+      try {
+        const rzpResult = await razorpayService.createSubscription({
+          planId: plan.razorpayPlanId,
+          totalCount: 0, // recurring indefinitely
+        });
+        providerId = rzpResult.subscriptionId;
+      } catch (err: any) {
+        logger.warn(`[RAZORPAY] Subscriptions API failed (${err?.message || err}). Creating standard Razorpay order.`);
+        const rzpOrder = await razorpayService.createOrder({
+          amountInPaise: plan.priceInPaise,
+          receipt: `sub_${userId.slice(0, 8)}_${Date.now()}`,
+          notes: { userId, planCode, planId: plan.id },
+        });
+        providerId = rzpOrder.orderId;
+        isOrder = true;
+      }
+    } else {
+      if (!config.razorpay.keyId || !config.razorpay.keySecret) {
+        throw new AppError(
+          `Plan '${planCode}' has no Razorpay Plan ID configured`,
+          503,
+          'PAYMENT_UNAVAILABLE'
+        );
+      }
+      const rzpOrder = await razorpayService.createOrder({
+        amountInPaise: plan.priceInPaise,
+        receipt: `sub_${userId.slice(0, 8)}_${Date.now()}`,
+        notes: { userId, planCode, planId: plan.id },
+      });
+      providerId = rzpOrder.orderId;
+      isOrder = true;
+    }
 
     // 4. Persist to DB
     const subscription = await subscriptionRepository.createSubscription({
       userId,
       planId: plan.id,
-      providerSubscriptionId: rzpResult.subscriptionId,
+      providerSubscriptionId: providerId,
       status: SubscriptionStatus.CREATED,
     });
 
-    logger.info(`[RAZORPAY] { "operation": "create_subscription", "userId": "${userId}", "plan": "${planCode}", "subscriptionId": "${rzpResult.subscriptionId}", "success": true }`);
+    logger.info(`[RAZORPAY] { "operation": "create_subscription", "userId": "${userId}", "plan": "${planCode}", "providerId": "${providerId}", "isOrder": ${isOrder}, "success": true }`);
 
     return {
       subscription,
-      razorpaySubscriptionId: rzpResult.subscriptionId,
+      razorpaySubscriptionId: providerId,
+      razorpayOrderId: isOrder ? providerId : undefined,
       razorpayKeyId: razorpayService.getPublicKeyId(),
     };
   },
@@ -237,12 +325,19 @@ export const subscriptionService = {
   }): Promise<{ isPremium: boolean }> {
     const { userId, razorpayPaymentId, razorpaySubscriptionId, razorpaySignature } = params;
 
-    // 1. Verify HMAC signature
-    const signatureValid = razorpayService.verifySubscriptionSignature({
-      paymentId: razorpayPaymentId,
-      subscriptionId: razorpaySubscriptionId,
-      signature: razorpaySignature,
-    });
+    // 1. Verify HMAC signature (supports both Subscriptions and Orders)
+    const isOrderPayment = razorpaySubscriptionId.startsWith('order_');
+    const signatureValid = isOrderPayment
+      ? razorpayService.verifyOrderSignature({
+          orderId: razorpaySubscriptionId,
+          paymentId: razorpayPaymentId,
+          signature: razorpaySignature,
+        })
+      : razorpayService.verifySubscriptionSignature({
+          subscriptionId: razorpaySubscriptionId,
+          paymentId: razorpayPaymentId,
+          signature: razorpaySignature,
+        });
 
     if (!signatureValid) {
       logger.warn(`[RAZORPAY] { "operation": "verify_payment", "userId": "${userId}", "error": "invalid_signature" }`);
@@ -286,19 +381,29 @@ export const subscriptionService = {
 
     // 6. Update subscription status if payment is captured
     if (rzpPayment.status === 'captured') {
+      const now = new Date();
+      const periodEnd = new Date(now);
+      if (subscription.plan?.billingInterval === BillingInterval.YEARLY) {
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      } else {
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+      }
+
       await subscriptionRepository.updateSubscription(subscription.id, {
         status: SubscriptionStatus.ACTIVE,
-        startedAt: rzpPayment.capturedAt ?? new Date(),
+        startedAt: rzpPayment.capturedAt ?? now,
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
       });
 
       // 7. Activate entitlement
       await subscriptionRepository.upsertEntitlement({
         userId,
         status: EntitlementStatus.ACTIVE,
-        expiresAt: subscription.currentPeriodEnd,
+        expiresAt: periodEnd,
       });
 
-      logger.info(`[RAZORPAY] { "operation": "verify_payment", "userId": "${userId}", "paymentId": "${razorpayPaymentId}", "success": true }`);
+      logger.info(`[RAZORPAY] { "operation": "verify_payment", "userId": "${userId}", "paymentId": "${razorpayPaymentId}", "status": "ACTIVE", "plan": "${subscription.plan?.code}", "success": true }`);
       return { isPremium: true };
     }
 

@@ -169,6 +169,7 @@ class SubscriptionController extends ChangeNotifier {
       final checkoutData = await _repository.createSubscription(_selectedPlanCode!);
 
       final razorpaySubscriptionId = checkoutData['razorpaySubscriptionId'];
+      final razorpayOrderId = checkoutData['razorpayOrderId'];
       final razorpayKeyId = checkoutData['razorpayKeyId'];
 
       if (razorpaySubscriptionId == null || razorpayKeyId == null) {
@@ -179,13 +180,17 @@ class SubscriptionController extends ChangeNotifier {
       _paymentState = PaymentState.openingCheckout;
       notifyListeners();
 
-      // 2. Open Razorpay Checkout with the subscription ID
-      // The key_id is the non-sensitive publishable key from the backend.
-      // RAZORPAY_KEY_SECRET is never in Flutter.
       final plan = selectedPlan;
-      final options = {
+      final isOrder = (razorpayOrderId != null && razorpayOrderId.isNotEmpty) ||
+          razorpaySubscriptionId.startsWith('order_');
+      final effectiveOrderId = (razorpayOrderId != null && razorpayOrderId.isNotEmpty)
+          ? razorpayOrderId
+          : razorpaySubscriptionId;
+
+      final options = <String, dynamic>{
         'key': razorpayKeyId,
-        'subscription_id': razorpaySubscriptionId,
+        if (isOrder) 'order_id': effectiveOrderId,
+        if (!isOrder) 'subscription_id': razorpaySubscriptionId,
         'name': 'Interview Coach',
         'description': plan?.name ?? 'Premium Subscription',
         'prefill': {},

@@ -47,6 +47,7 @@ class SubscriptionRemoteDataSourceImpl implements SubscriptionRemoteDataSource {
     return {
       'subscriptionId': data['subscriptionId'] as String,
       'razorpaySubscriptionId': data['razorpaySubscriptionId'] as String,
+      'razorpayOrderId': (data['razorpayOrderId'] as String?) ?? '',
       'razorpayKeyId': data['razorpayKeyId'] as String,
     };
   }

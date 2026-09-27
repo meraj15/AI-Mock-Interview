@@ -76,9 +76,12 @@ jest.mock('../src/repositories/subscription.repository', () => ({
 jest.mock('../src/services/razorpay.service', () => ({
   razorpayService: {
     createSubscription: jest.fn(),
+    createOrder: jest.fn(),
+    createPlan: jest.fn(),
     cancelSubscription: jest.fn(),
     fetchPayment: jest.fn(),
     verifySubscriptionSignature: jest.fn(),
+    verifyOrderSignature: jest.fn(),
     verifyWebhookSignature: jest.fn(),
     getPublicKeyId: jest.fn().mockReturnValue('rzp_test_abc123'),
   },
@@ -206,6 +209,7 @@ describe('subscriptionService.createSubscription', () => {
 
   it('3b. Throws AppError if plan has no Razorpay Plan ID', async () => {
     repo.findPlanByCode.mockResolvedValue({ ...mockPlan, razorpayPlanId: null });
+    rzp.createOrder.mockRejectedValue(new AppError('Plan has no Razorpay Plan ID configured', 503, 'PAYMENT_UNAVAILABLE'));
     await expect(
       subscriptionService.createSubscription('user-uuid-1', 'PREMIUM_MONTHLY')
     ).rejects.toThrow(AppError);

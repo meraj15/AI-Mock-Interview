@@ -6,10 +6,16 @@ import { subscriptionService } from './services/subscription.service';
 const app = createApp();
 
 const server = app.listen(config.port, '0.0.0.0', async () => {
+  const razorpayStatus = !config.razorpay.keyId || !config.razorpay.keySecret
+    ? '⚠️  DISABLED (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set)'
+    : config.razorpay.isTestMode
+      ? '🧪 TEST MODE'
+      : '🔴 LIVE MODE';
+
   logger.info(`🚀 Server running on http://0.0.0.0:${config.port} (accessible via localhost and 10.0.2.2)`);
   logger.info(`   Environment : ${config.nodeEnv}`);
   logger.info(`   Health check: http://localhost:${config.port}/health`);
-  logger.info(`   Razorpay    : ${config.razorpay.isTestMode ? '🧪 TEST MODE' : '🔴 LIVE MODE'}`);
+  logger.info(`   Razorpay    : ${razorpayStatus}`);
 
   // Sync plan catalogue to the database.
   // Safe to run on every start — uses upsert so existing data is preserved.

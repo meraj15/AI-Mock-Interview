@@ -13,19 +13,33 @@ import crypto from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
-// ── Razorpay client singleton ──────────────────────────────────────────────────
+// ── Razorpay client — lazy singleton ──────────────────────────────────────────
+// The client is NOT created at module load time.
+// This allows the server to start cleanly even without Razorpay credentials
+// (e.g. in development without a Razorpay account).
+// The client is constructed on the first actual payment operation.
 
-function createRazorpayClient(): Razorpay {
+let _razorpayClient: Razorpay | null = null;
+
+function getRazorpayClient(): Razorpay {
+  if (_razorpayClient) return _razorpayClient;
+
   if (!config.razorpay.keyId || !config.razorpay.keySecret) {
-    logger.warn('[RAZORPAY] API credentials not configured. Payment features disabled.');
+    throw new Error(
+      'Razorpay credentials (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) are not configured. ' +
+      'Add them to your .env file to enable payment features.'
+    );
   }
-  return new Razorpay({
+
+  _razorpayClient = new Razorpay({
     key_id: config.razorpay.keyId,
     key_secret: config.razorpay.keySecret,
   });
+
+  logger.info('[RAZORPAY] Client initialised.');
+  return _razorpayClient;
 }
 
-const razorpayClient = createRazorpayClient();
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -55,6 +69,32 @@ export interface RazorpayPaymentResult {
 
 export const razorpayService = {
   /**
+   * Create a plan in Razorpay programmatically.
+   * Enables automated plan generation when API keys are configured.
+   */
+  async createPlan(params: {
+    name: string;
+    description: string;
+    amountInPaise: number;
+    billingInterval: string;
+  }): Promise<{ planId: string }> {
+    const payload = {
+      period: params.billingInterval.toLowerCase() === 'yearly' ? 'yearly' : 'monthly',
+      interval: 1,
+      item: {
+        name: params.name,
+        amount: params.amountInPaise,
+        currency: 'INR',
+        description: params.description,
+      },
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const plan = await (getRazorpayClient().plans.create as any)(payload);
+    return { planId: plan.id as string };
+  },
+
+  /**
    * Create a Razorpay subscription for the given plan.
    * This does NOT trigger payment — it returns a subscription_id
    * that Flutter uses to open the checkout.
@@ -70,7 +110,7 @@ export const razorpayService = {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sub = await (razorpayClient.subscriptions.create as any)(payload);
+    const sub = await (getRazorpayClient().subscriptions.create as any)(payload);
 
     return {
       subscriptionId: sub.id as string,
@@ -88,7 +128,7 @@ export const razorpayService = {
     providerSubscriptionId: string,
     cancelAtCycleEnd = true
   ): Promise<void> {
-    await razorpayClient.subscriptions.cancel(
+    await getRazorpayClient().subscriptions.cancel(
       providerSubscriptionId,
       cancelAtCycleEnd
     );
@@ -100,7 +140,7 @@ export const razorpayService = {
    */
   async fetchPayment(paymentId: string): Promise<RazorpayPaymentResult> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payment = await (razorpayClient.payments.fetch as any)(paymentId) as any;
+    const payment = await (getRazorpayClient().payments.fetch as any)(paymentId) as any;
     return {
       paymentId: payment.id as string,
       amount: payment.amount as number,
@@ -111,6 +151,49 @@ export const razorpayService = {
         ? new Date((payment.captured_at as number) * 1000)
         : undefined,
     };
+  },
+
+  /**
+   * Create a standard Razorpay order.
+   * Works immediately on all Razorpay accounts for direct plan checkout.
+   */
+  async createOrder(params: {
+    amountInPaise: number;
+    receipt: string;
+    notes?: Record<string, string>;
+  }): Promise<{ orderId: string; amount: number; currency: string }> {
+    const payload = {
+      amount: params.amountInPaise,
+      currency: 'INR',
+      receipt: params.receipt,
+      notes: params.notes ?? {},
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const order = await (getRazorpayClient().orders.create as any)(payload);
+    return {
+      orderId: order.id as string,
+      amount: order.amount as number,
+      currency: order.currency as string,
+    };
+  },
+
+  /**
+   * Verify HMAC-SHA256 signature for standard orders:
+   *   razorpay_order_id + "|" + razorpay_payment_id
+   */
+  verifyOrderSignature(params: {
+    orderId: string;
+    paymentId: string;
+    signature: string;
+  }): boolean {
+    const { orderId, paymentId, signature } = params;
+    const message = `${orderId}|${paymentId}`;
+    const expected = crypto
+      .createHmac('sha256', config.razorpay.keySecret)
+      .update(message)
+      .digest('hex');
+    return expected === signature;
   },
 
   /**
