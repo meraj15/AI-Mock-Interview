@@ -539,11 +539,21 @@ export const subscriptionService = {
       throw new ConflictError(`Subscription is already ${subscription.status.toLowerCase()} and cannot be cancelled`);
     }
 
-    // Cancel with Razorpay
-    await razorpayService.cancelSubscription(
-      subscription.providerSubscriptionId,
-      cancelAtCycleEnd
-    );
+    if (subscription.cancelledAt !== null || !subscription.autoRenew) {
+      throw new ConflictError('Subscription is already scheduled for cancellation');
+    }
+
+    // Cancel with Razorpay (safely guarded against non-recurring IDs and upstream errors)
+    try {
+      await razorpayService.cancelSubscription(
+        subscription.providerSubscriptionId,
+        cancelAtCycleEnd
+      );
+    } catch (err: any) {
+      logger.warn(
+        `[RAZORPAY] Razorpay cancel failed for ${subscription.providerSubscriptionId} (${err?.error?.description || err?.message || err}). Proceeding with internal cancellation.`
+      );
+    }
 
     const now = new Date();
     await subscriptionRepository.updateSubscription(subscriptionId, {

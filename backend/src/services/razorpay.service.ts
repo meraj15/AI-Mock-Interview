@@ -128,6 +128,12 @@ export const razorpayService = {
     providerSubscriptionId: string,
     cancelAtCycleEnd = true
   ): Promise<void> {
+    if (!providerSubscriptionId.startsWith('sub_')) {
+      logger.warn(
+        `[RAZORPAY] Cannot cancel non-recurring subscription ID (${providerSubscriptionId}) via Razorpay subscriptions API`
+      );
+      return;
+    }
     await getRazorpayClient().subscriptions.cancel(
       providerSubscriptionId,
       cancelAtCycleEnd
