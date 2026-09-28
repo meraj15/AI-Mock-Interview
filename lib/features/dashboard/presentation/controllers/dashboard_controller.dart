@@ -13,9 +13,12 @@ class DashboardController extends ChangeNotifier {
 
   // ── State ─────────────────────────────────────────────────────────────────
 
+  static const int _pageSize = 10;
   DashboardLoadState _loadState = DashboardLoadState.idle;
   InterviewStatsModel _stats = InterviewStatsModel.empty;
   List<InterviewSessionSummary> _recentSessions = [];
+  bool _isLoadingMore = false;
+  bool _hasMoreSessions = true;
   String? _errorMessage;
 
   // ── Analytics Timeframe State ──────────────────────────────────────────────
@@ -31,6 +34,8 @@ class DashboardController extends ChangeNotifier {
   InterviewStatsModel get stats => _stats;
   List<InterviewSessionSummary> get recentSessions => _recentSessions;
   bool get isLoading => _loadState == DashboardLoadState.loading;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMoreSessions => _hasMoreSessions;
   bool get hasData => _loadState == DashboardLoadState.loaded;
   String? get errorMessage => _errorMessage;
 
@@ -84,8 +89,8 @@ class DashboardController extends ChangeNotifier {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  /// Load stats + sessions from backend. Safe to call multiple times.
-  Future<void> load() async {
+  /// Load stats + sessions from backend with pagination limit (default: 10).
+  Future<void> load({int limit = _pageSize}) async {
     if (_loadState == DashboardLoadState.loading) return;
     _loadState = DashboardLoadState.loading;
     _errorMessage = null;
@@ -94,11 +99,12 @@ class DashboardController extends ChangeNotifier {
     try {
       final results = await Future.wait([
         _dataSource.getStats(),
-        _dataSource.listSessions(limit: 50),
+        _dataSource.listSessions(limit: limit, offset: 0, page: 1),
       ]);
 
       _stats          = results[0] as InterviewStatsModel;
-      _recentSessions = results[1] as List<InterviewSessionSummary>;
+      _recentSessions = List<InterviewSessionSummary>.from(results[1] as List<InterviewSessionSummary>);
+      _hasMoreSessions = _recentSessions.length >= limit;
       if (_analyticsDays == 30 && _analyticsStats == InterviewStatsModel.empty) {
         _analyticsStats = _stats;
         _analyticsCache[30] = _stats;
@@ -116,6 +122,42 @@ class DashboardController extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  /// Fetches the next page of interview sessions when scrolling down.
+  Future<void> loadMoreSessions({int limit = _pageSize}) async {
+    if (_isLoadingMore || !_hasMoreSessions || _loadState != DashboardLoadState.loaded) {
+      return;
+    }
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      final nextOffset = _recentSessions.length;
+      final nextPage = (nextOffset ~/ limit) + 1;
+      final newSessions = await _dataSource.listSessions(
+        limit: limit,
+        offset: nextOffset,
+        page: nextPage,
+      );
+
+      if (newSessions.isEmpty) {
+        _hasMoreSessions = false;
+      } else {
+        final existingIds = _recentSessions.map((s) => s.id).toSet();
+        final uniqueNew = newSessions.where((s) => !existingIds.contains(s.id)).toList();
+        _recentSessions.addAll(uniqueNew);
+        if (newSessions.length < limit) {
+          _hasMoreSessions = false;
+        }
+      }
+    } catch (_) {
+      // Retain existing sessions on network errors
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
+    }
   }
 
   /// Sets the analytics timeframe (7, 15, or 30 days) and loads stats.

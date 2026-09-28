@@ -188,7 +188,11 @@ class InterviewSessionSummary {
 abstract class InterviewRemoteDataSource {
   Future<void> saveSession(SaveInterviewRequest request);
   Future<InterviewStatsModel> getStats({int? days});
-  Future<List<InterviewSessionSummary>> listSessions({int limit, int offset});
+  Future<List<InterviewSessionSummary>> listSessions({
+    int limit = 10,
+    int offset = 0,
+    int? page,
+  });
   Future<Map<String, dynamic>> getSessionDetails(String sessionId);
   Future<Map<String, dynamic>> exportPdfReport(String sessionId);
 }
@@ -220,10 +224,18 @@ class InterviewRemoteDataSourceImpl implements InterviewRemoteDataSource {
   Future<List<InterviewSessionSummary>> listSessions({
     int limit = 10,
     int offset = 0,
+    int? page,
   }) async {
+    final queryParameters = <String, dynamic>{
+      'limit': limit,
+      'offset': offset,
+    };
+    if (page != null) {
+      queryParameters['page'] = page;
+    }
     final response = await apiClient.get(
       ApiConfig.interviewsEndpoint,
-      queryParameters: {'limit': limit, 'offset': offset},
+      queryParameters: queryParameters,
     );
     final raw = response.data;
     if (raw is! List) return [];

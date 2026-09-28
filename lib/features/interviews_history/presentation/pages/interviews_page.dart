@@ -28,14 +28,32 @@ class InterviewsPage extends StatefulWidget {
 
 class _InterviewsPageState extends State<InterviewsPage> {
   String _sortBy = 'Newest';
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     // Refresh sessions when entering the page
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardController>().load();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (currentScroll >= (maxScroll - 200)) {
+      context.read<DashboardController>().loadMoreSessions();
+    }
   }
 
   String _formatDate(DateTime dt) {
@@ -321,6 +339,7 @@ class _InterviewsPageState extends State<InterviewsPage> {
         backgroundColor: colors.card,
         onRefresh: () => dashboard.load(),
         child: SingleChildScrollView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
@@ -525,6 +544,22 @@ class _InterviewsPageState extends State<InterviewsPage> {
                     ),
                   ),
                 ],
+              ],
+              if (dashboard.isLoadingMore) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ),
+                ),
               ],
               const SizedBox(height: 20),
             ],

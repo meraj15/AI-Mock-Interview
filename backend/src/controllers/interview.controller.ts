@@ -483,16 +483,25 @@ export const interviewController = {
       const userId = req.user!.id;
       const entitlement = await entitlementService.getUserEntitlement(userId);
 
-      const parsedLimit = parseInt(String(req.query.limit ?? '20'), 10);
-      const parsedOffset = parseInt(String(req.query.offset ?? '0'), 10);
+      const parsedLimit = parseInt(String(req.query.limit ?? '10'), 10);
+      let parsedOffset = req.query.offset !== undefined ? parseInt(String(req.query.offset), 10) : NaN;
+
+      if (Number.isNaN(parsedOffset) && req.query.page !== undefined) {
+        const parsedPage = parseInt(String(req.query.page), 10);
+        if (!Number.isNaN(parsedPage) && parsedPage > 1) {
+          parsedOffset = (parsedPage - 1) * (Number.isNaN(parsedLimit) ? 10 : parsedLimit);
+        } else {
+          parsedOffset = 0;
+        }
+      } else if (Number.isNaN(parsedOffset)) {
+        parsedOffset = 0;
+      }
 
       let limit = Number.isNaN(parsedLimit)
-        ? 20
+        ? 10
         : Math.min(Math.max(parsedLimit, 1), 100);
 
-      let offset = Number.isNaN(parsedOffset)
-        ? 0
-        : Math.max(parsedOffset, 0);
+      let offset = Math.max(parsedOffset, 0);
 
       // Free tier: only last 3 sessions accessible
       if (entitlement.tier === 'FREE') {
