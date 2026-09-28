@@ -31,6 +31,7 @@ model User {
   subscriptions        Subscription[]
   entitlements         Entitlement[]
   paymentTransactions  PaymentTransaction[]
+  usageQuotas          UserUsageQuota[]
 
   @@map("users")
 }
@@ -227,6 +228,7 @@ model Plan {
   description       String          @default("")
   priceInPaise      Int             // Amount in smallest currency unit (paise)
   currency          String          @default("INR")
+  tier              String          @default("PRO") // "FREE" | "PRO"
   billingInterval   BillingInterval
   razorpayPlanId    String?         // From Razorpay Dashboard (or env)
   isActive          Boolean         @default(true)
@@ -320,4 +322,24 @@ model WebhookEvent {
 
   @@index([eventId])
   @@map("webhook_events")
+}
+
+// ── UserUsageQuota ────────────────────────────────────────────────────────────
+// Tracks monthly or billing-period usage counters (interviews, resume scans, voice).
+// Quota corresponds to billing cycle for paid subscriptions, calendar month for Free.
+model UserUsageQuota {
+  id               String   @id @default(uuid())
+  userId           String
+  periodKey        String   // e.g. "free_2026-09" or "sub_<subId>_<startMs>"
+  interviewsUsed   Int      @default(0)
+  resumeScansUsed  Int      @default(0)
+  voiceSecondsUsed Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodKey])
+  @@index([userId])
+  @@map("user_usage_quotas")
 }

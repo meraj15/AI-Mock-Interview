@@ -30,6 +30,7 @@ import {
   AppError,
 } from '../errors/AppError';
 import { Plan, Subscription } from '@prisma/client';
+import { entitlementService, UserEntitlementContext } from './entitlement.service';
 
 // ── Plan catalogue ─────────────────────────────────────────────────────────────
 // Prices are in paise (INR). 1 INR = 100 paise.
@@ -48,19 +49,38 @@ interface PlanSeedConfig {
 function buildPlanCatalogue(): PlanSeedConfig[] {
   return [
     {
-      code: 'PREMIUM_MONTHLY',
-      name: 'Premium Monthly',
-      description: 'Unlimited AI mock interviews, detailed evaluations, and analytics — billed monthly.',
-      priceInPaise: 19900, // ₹199/month — update via env if pricing changes
+      code: 'PRO_MONTHLY',
+      name: 'Pro Monthly',
+      description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed monthly (GST-inclusive).',
+      priceInPaise: 29900, // ₹299/month GST-inclusive
       billingInterval: BillingInterval.MONTHLY,
       razorpayPlanId: config.razorpay.monthlyPlanId,
       totalCount: 0, // recurring indefinitely
     },
     {
+      code: 'PRO_YEARLY',
+      name: 'Pro Yearly',
+      description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed yearly (GST-inclusive, best value).',
+      priceInPaise: 199900, // ₹1,999/year GST-inclusive
+      billingInterval: BillingInterval.YEARLY,
+      razorpayPlanId: config.razorpay.yearlyPlanId,
+      totalCount: 0,
+    },
+    // Aliases for backward-compatibility
+    {
+      code: 'PREMIUM_MONTHLY',
+      name: 'Pro Monthly',
+      description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed monthly (GST-inclusive).',
+      priceInPaise: 29900,
+      billingInterval: BillingInterval.MONTHLY,
+      razorpayPlanId: config.razorpay.monthlyPlanId,
+      totalCount: 0,
+    },
+    {
       code: 'PREMIUM_YEARLY',
-      name: 'Premium Yearly',
-      description: 'Unlimited AI mock interviews, detailed evaluations, and analytics — billed yearly (best value).',
-      priceInPaise: 199900, // ₹1999/year — update via env if pricing changes
+      name: 'Pro Yearly',
+      description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed yearly (GST-inclusive, best value).',
+      priceInPaise: 199900,
       billingInterval: BillingInterval.YEARLY,
       razorpayPlanId: config.razorpay.yearlyPlanId,
       totalCount: 0,
@@ -175,7 +195,12 @@ export const subscriptionService = {
    * Prices and plan codes come from the DB — not hardcoded in Flutter.
    */
   async getActivePlans(): Promise<Plan[]> {
-    return subscriptionRepository.listActivePlans();
+    const plans = await subscriptionRepository.listActivePlans();
+    const proPlans = plans.filter((p) => p.code.startsWith('PRO_'));
+    if (proPlans.length >= 2) {
+      return proPlans;
+    }
+    return plans.filter((p) => !p.code.startsWith('PREMIUM_') || proPlans.length === 0);
   },
 
   /**
@@ -196,8 +221,14 @@ export const subscriptionService = {
     razorpayOrderId?: string;
     razorpayKeyId: string;
   }> {
-    // 1. Resolve and validate plan from DB
-    const plan = await subscriptionRepository.findPlanByCode(planCode);
+    // 1. Resolve and validate plan from DB (with alias support)
+    let plan = await subscriptionRepository.findPlanByCode(planCode);
+    if (!plan) {
+      if (planCode === 'PRO_MONTHLY') plan = await subscriptionRepository.findPlanByCode('PREMIUM_MONTHLY');
+      else if (planCode === 'PRO_YEARLY') plan = await subscriptionRepository.findPlanByCode('PREMIUM_YEARLY');
+      else if (planCode === 'PREMIUM_MONTHLY') plan = await subscriptionRepository.findPlanByCode('PRO_MONTHLY');
+      else if (planCode === 'PREMIUM_YEARLY') plan = await subscriptionRepository.findPlanByCode('PRO_YEARLY');
+    }
     if (!plan) {
       throw new NotFoundError(`Plan '${planCode}' not found`);
     }
@@ -425,9 +456,11 @@ export const subscriptionService = {
     currentPeriodEnd: Date | null;
     autoRenew: boolean;
     cancelledAt: Date | null;
+    entitlement: UserEntitlementContext;
   }> {
     const subscription = await subscriptionRepository.findLatestSubscriptionForUser(userId);
     const isPremium = await subscriptionRepository.hasActivePremiumEntitlement(userId);
+    const entitlement = await entitlementService.getUserEntitlement(userId);
 
     if (!subscription) {
       return {
@@ -439,6 +472,7 @@ export const subscriptionService = {
         currentPeriodEnd: null,
         autoRenew: false,
         cancelledAt: null,
+        entitlement,
       };
     }
 
@@ -451,6 +485,7 @@ export const subscriptionService = {
       currentPeriodEnd: subscription.currentPeriodEnd,
       autoRenew: subscription.autoRenew,
       cancelledAt: subscription.cancelledAt,
+      entitlement,
     };
   },
 

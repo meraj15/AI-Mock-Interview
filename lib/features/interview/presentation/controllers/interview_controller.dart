@@ -399,6 +399,16 @@ class InterviewController extends ChangeNotifier {
     _fetchFinalEvaluation();
   }
 
+  /// Requests authoritative assessment PDF report from the backend.
+  Future<Map<String, dynamic>?> exportPdf(String targetSessionId) async {
+    try {
+      return await remoteDataSource?.exportPdfReport(targetSessionId);
+    } catch (e) {
+      debugPrint('[InterviewController] PDF Export failed: $e');
+      rethrow;
+    }
+  }
+
   void reset() {
     _config = InterviewConfigEntity.initial();
     _interviewActive = false;

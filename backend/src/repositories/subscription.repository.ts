@@ -11,6 +11,7 @@ import {
   PaymentTransaction,
   Entitlement,
   WebhookEvent,
+  UserUsageQuota,
   SubscriptionStatus,
   EntitlementStatus,
   TransactionStatus,
@@ -308,6 +309,42 @@ export const subscriptionRepository = {
         eventId: data.eventId,
         eventType: data.eventType,
         payload: data.payload,
+      },
+    });
+  },
+
+  // ── Usage Quotas ───────────────────────────────────────────────────────────
+
+  async findUsageQuota(userId: string, periodKey: string): Promise<UserUsageQuota | null> {
+    return prisma.userUsageQuota.findUnique({
+      where: { userId_periodKey: { userId, periodKey } },
+    });
+  },
+
+  async incrementInterviewUsage(userId: string, periodKey: string): Promise<UserUsageQuota> {
+    return prisma.userUsageQuota.upsert({
+      where: { userId_periodKey: { userId, periodKey } },
+      create: {
+        userId,
+        periodKey,
+        interviewsUsed: 1,
+      },
+      update: {
+        interviewsUsed: { increment: 1 },
+      },
+    });
+  },
+
+  async incrementResumeScanUsage(userId: string, periodKey: string): Promise<UserUsageQuota> {
+    return prisma.userUsageQuota.upsert({
+      where: { userId_periodKey: { userId, periodKey } },
+      create: {
+        userId,
+        periodKey,
+        resumeScansUsed: 1,
+      },
+      update: {
+        resumeScansUsed: { increment: 1 },
       },
     });
   },

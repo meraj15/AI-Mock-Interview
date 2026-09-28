@@ -17,6 +17,9 @@ router.post('/:id/answer', interviewController.submitAnswer);
 // GET /api/v1/interviews/:id/result — Get final evaluation scorecard (saves to DB)
 router.get('/:id/result', interviewController.getFinalResult);
 
+// GET /api/v1/interviews/:id/pdf — Export PDF assessment report (Pro only)
+router.get('/:id/pdf', interviewController.exportPdf);
+
 // ── Stats (must be before /:id to avoid shadowing) ───────────────────────────
 // GET /api/v1/interviews/stats
 router.get('/stats', interviewController.getStats);

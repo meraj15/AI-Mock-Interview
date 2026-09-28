@@ -5,9 +5,11 @@ import '../../../../core/services/ai_interview_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_header.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 import '../controllers/interview_controller.dart';
 
 class QuestionReviewPage extends StatefulWidget {
@@ -446,6 +448,56 @@ class _QuestionReviewPageState extends State<QuestionReviewPage> {
                       color: colors.foreground,
                       height: 1.55,
                     ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (!context.watch<SubscriptionController>().isPro) ...[
+            const SectionTitle(title: 'Expected / Model Answer'),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: colors.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(FeatherIcons.lock, size: 16, color: colors.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Model Answer Locked',
+                          style: AppTypography.bold(13, color: colors.foreground),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Upgrade to Pro to unlock model answers & rubrics for all questions.',
+                          style: AppTypography.regular(11.5, color: colors.mutedForeground),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => AppPaywallSheet.show(
+                      context,
+                      feature: 'EXPECTED_ANSWERS',
+                      title: 'Detailed Expected Answers',
+                      description: 'Unlock model answers, response blueprints, and strong candidate examples for all interview turns.',
+                    ),
+                    child: Text('Unlock', style: AppTypography.bold(12, color: colors.primary)),
                   ),
                 ],
               ),

@@ -5,11 +5,13 @@ import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_shimmer.dart';
 import '../../../dashboard/presentation/controllers/dashboard_controller.dart';
 import '../../../interview/data/datasources/interview_remote_data_source.dart';
 import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 
 class AnalyticsPage extends StatefulWidget {
   const AnalyticsPage({super.key});
@@ -35,6 +37,19 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   }
 
   void _onTimeframeSelected(int days) {
+    if (days > 7) {
+      final subCtrl = context.read<SubscriptionController>();
+      if (!subCtrl.canUseAdvancedAnalytics) {
+        AppPaywallSheet.show(
+          context,
+          feature: 'ADVANCED_ANALYTICS',
+          title: 'Advanced Analytics',
+          description:
+              'Unlock 15-day, 30-day, and all-time readiness analytics, skill breakdown, and weakness analysis with Pro.',
+        );
+        return;
+      }
+    }
     setState(() => _selectedPointIndex = null);
     context.read<DashboardController>().setAnalyticsDays(days);
   }
@@ -129,6 +144,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 selectedIndex: _selectedPointIndex,
                 onSelectPoint: (i) => setState(() => _selectedPointIndex = i),
                 colors: colors,
+                isPro: context.watch<SubscriptionController>().isPro,
               ),
 
               const SizedBox(height: 18),
@@ -410,6 +426,7 @@ class _ScoreTrajectoryCard extends StatelessWidget {
   final int? selectedIndex;
   final ValueChanged<int?> onSelectPoint;
   final AppColorScheme colors;
+  final bool isPro;
 
   const _ScoreTrajectoryCard({
     required this.days,
@@ -421,6 +438,7 @@ class _ScoreTrajectoryCard extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelectPoint,
     required this.colors,
+    this.isPro = true,
   });
 
   @override
@@ -492,6 +510,7 @@ class _ScoreTrajectoryCard extends StatelessWidget {
                       days: 15,
                       isSelected: days == 15,
                       isLoading: days == 15 && isSwitching,
+                      isLocked: !isPro,
                       onTap: () => onSelectDays(15),
                       colors: colors,
                     ),
@@ -500,6 +519,7 @@ class _ScoreTrajectoryCard extends StatelessWidget {
                       days: 30,
                       isSelected: days == 30,
                       isLoading: days == 30 && isSwitching,
+                      isLocked: !isPro,
                       onTap: () => onSelectDays(30),
                       colors: colors,
                     ),
@@ -669,6 +689,7 @@ class _TimeframeChip extends StatelessWidget {
   final int days;
   final bool isSelected;
   final bool isLoading;
+  final bool isLocked;
   final VoidCallback onTap;
   final AppColorScheme colors;
 
@@ -677,6 +698,7 @@ class _TimeframeChip extends StatelessWidget {
     required this.days,
     required this.isSelected,
     required this.isLoading,
+    this.isLocked = false,
     required this.onTap,
     required this.colors,
   });
@@ -721,9 +743,17 @@ class _TimeframeChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? colors.foreground : colors.mutedForeground,
+                color: isSelected
+                    ? colors.foreground
+                    : isLocked
+                        ? colors.mutedForeground.withValues(alpha: 0.6)
+                        : colors.mutedForeground,
               ),
             ),
+            if (isLocked) ...[
+              const SizedBox(width: 3),
+              Icon(FeatherIcons.lock, size: 9, color: colors.mutedForeground),
+            ],
           ],
         ),
       ),

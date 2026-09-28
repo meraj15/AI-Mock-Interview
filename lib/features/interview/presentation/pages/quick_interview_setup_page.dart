@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/profile_controller.dart';
 import '../../../resume/presentation/controllers/resume_controller.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_session_page.dart';
 
@@ -123,6 +125,19 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage>
   }
 
   void _selectMode(_InterviewMode mode) {
+    if (mode.id == 'deep') {
+      final sub = context.read<SubscriptionController>();
+      if (!sub.canUseDeepDive) {
+        AppPaywallSheet.show(
+          context,
+          title: 'Deep Dive Interview',
+          description:
+              'Go beyond basic questions with up to 12 questions and deeper follow-up questions.',
+          ctaLabel: 'Unlock Pro — ₹299/month',
+        );
+        return;
+      }
+    }
     if (_selectedMode.id == mode.id) return;
     _fadeCtrl.forward(from: 0);
     setState(() => _selectedMode = mode);
@@ -130,6 +145,19 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage>
 
   void _startInterview() {
     if (_isStartingSession) return;
+
+    final sub = context.read<SubscriptionController>();
+    if (sub.interviewsRemaining <= 0) {
+      AppPaywallSheet.show(
+        context,
+        title: 'Interview Limit Reached',
+        description:
+            'You have completed your free interviews for this period. Upgrade to Pro for 30 interviews every month!',
+        ctaLabel: 'Unlock Pro — ₹299/month',
+      );
+      return;
+    }
+
     setState(() => _isStartingSession = true);
 
     final ic = context.read<InterviewController>();
@@ -261,13 +289,26 @@ class _QuickInterviewSetupPageState extends State<QuickInterviewSetupPage>
                     children: _focusAreas.map((area) {
                       final sel = _selectedFocusAreas.contains(area);
                       return GestureDetector(
-                        onTap: () => setState(() {
-                          if (sel) {
-                            _selectedFocusAreas.remove(area);
-                          } else {
-                            _selectedFocusAreas.add(area);
+                        onTap: () {
+                          final sub = context.read<SubscriptionController>();
+                          if (!sel && !sub.isPro && _selectedFocusAreas.isNotEmpty) {
+                            AppPaywallSheet.show(
+                              context,
+                              title: 'Unlimited Focus Topics',
+                              description:
+                                  'Free accounts can select 1 focus topic. Upgrade to Pro for unlimited topic customization!',
+                              ctaLabel: 'Unlock Pro — ₹299/month',
+                            );
+                            return;
                           }
-                        }),
+                          setState(() {
+                            if (sel) {
+                              _selectedFocusAreas.remove(area);
+                            } else {
+                              _selectedFocusAreas.add(area);
+                            }
+                          });
+                        },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 160),
                           padding: const EdgeInsets.symmetric(
@@ -571,6 +612,29 @@ class _ModeCard extends StatelessWidget {
                             'Popular',
                             style: AppTypography.bold(8,
                                 color: colors.primary),
+                          ),
+                        ),
+                      ],
+                      if (mode.id == 'deep') ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: colors.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(FeatherIcons.lock, size: 8, color: colors.primary),
+                              const SizedBox(width: 3),
+                              Text(
+                                'PRO',
+                                style: AppTypography.bold(8,
+                                    color: colors.primary),
+                              ),
+                            ],
                           ),
                         ),
                       ],

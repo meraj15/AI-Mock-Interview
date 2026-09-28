@@ -190,6 +190,7 @@ abstract class InterviewRemoteDataSource {
   Future<InterviewStatsModel> getStats({int? days});
   Future<List<InterviewSessionSummary>> listSessions({int limit, int offset});
   Future<Map<String, dynamic>> getSessionDetails(String sessionId);
+  Future<Map<String, dynamic>> exportPdfReport(String sessionId);
 }
 
 class InterviewRemoteDataSourceImpl implements InterviewRemoteDataSource {
@@ -235,6 +236,17 @@ class InterviewRemoteDataSourceImpl implements InterviewRemoteDataSource {
   @override
   Future<Map<String, dynamic>> getSessionDetails(String sessionId) async {
     final response = await apiClient.get('${ApiConfig.interviewsEndpoint}/$sessionId');
+    final data = response.data is Map<String, dynamic>
+        ? response.data as Map<String, dynamic>
+        : <String, dynamic>{};
+    return data['data'] is Map<String, dynamic>
+        ? data['data'] as Map<String, dynamic>
+        : data;
+  }
+
+  @override
+  Future<Map<String, dynamic>> exportPdfReport(String sessionId) async {
+    final response = await apiClient.get('${ApiConfig.interviewsEndpoint}/$sessionId/pdf');
     final data = response.data is Map<String, dynamic>
         ? response.data as Map<String, dynamic>
         : <String, dynamic>{};

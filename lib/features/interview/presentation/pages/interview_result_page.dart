@@ -9,8 +9,10 @@ import '../../../../core/services/ai_interview_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../../core/widgets/app_shimmer.dart';
 import '../../../dashboard/presentation/pages/main_nav_page.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'question_review_page.dart';
 import 'quick_interview_setup_page.dart';
@@ -95,10 +97,41 @@ class _InterviewResultPageState extends State<InterviewResultPage>
     );
   }
 
+  Future<void> _handlePdfExport() async {
+    final subCtrl = context.read<SubscriptionController>();
+    if (!subCtrl.canExportPdf) {
+      AppPaywallSheet.show(
+        context,
+        feature: 'PDF_REPORT',
+        title: 'PDF Assessment Report',
+        description:
+            'Export an executive-ready PDF report of your score, question breakdowns, and tailored roadmap.',
+      );
+      return;
+    }
+
+    final ic = context.read<InterviewController>();
+    if (ic.sessionId == null) return;
+
+    try {
+      Fluttertoast.showToast(msg: 'Generating assessment report...');
+      final res = await ic.exportPdf(ic.sessionId!);
+      if (res != null && mounted) {
+        Fluttertoast.showToast(msg: 'PDF assessment report generated successfully!');
+      }
+    } catch (e) {
+      if (mounted) {
+        Fluttertoast.showToast(msg: 'Unable to generate PDF report: $e');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColorScheme.of(context);
     final ic = context.watch<InterviewController>();
+    final subCtrl = context.watch<SubscriptionController>();
+    final isPro = subCtrl.isPro;
     final eval = (ic.lastEvaluatedSessionId == ic.sessionId) ? ic.lastEvaluation : null;
     final config = ic.config;
 
@@ -200,6 +233,7 @@ class _InterviewResultPageState extends State<InterviewResultPage>
               band,
               config.role.isNotEmpty ? config.role : 'Candidate',
             ),
+            onPdf: _handlePdfExport,
           ),
 
           // ── Segmented Tab Selector ─────────────────────────────────────────
@@ -234,6 +268,7 @@ class _InterviewResultPageState extends State<InterviewResultPage>
                         strengths: strengths,
                         improvements: improvements,
                         colors: colors,
+                        isPro: isPro,
                       ),
                     ] else if (_selectedTab == 1) ...[
                       // ── Tab 1: Q&A Analysis ────────────────────────────────
@@ -247,13 +282,14 @@ class _InterviewResultPageState extends State<InterviewResultPage>
                         ),
                       ),
                     ] else ...[
-                      // ── Tab 2: Learning Roadmap ────────────────────────────
+                      // ── Tab 2: Learning Roadmap ────────────────────
                       _RoadmapTab(
                         recommendations: recommendations,
                         role: config.role.isNotEmpty
                             ? config.role
                             : 'Candidate',
                         colors: colors,
+                        isPro: isPro,
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -913,6 +949,7 @@ class _ExecutiveHeroSection extends StatelessWidget {
   final AppColorScheme colors;
   final VoidCallback onClose;
   final VoidCallback onShare;
+  final VoidCallback? onPdf;
 
   const _ExecutiveHeroSection({
     required this.score,
@@ -930,6 +967,7 @@ class _ExecutiveHeroSection extends StatelessWidget {
     required this.colors,
     required this.onClose,
     required this.onShare,
+    this.onPdf,
   });
 
   @override
@@ -999,24 +1037,51 @@ class _ExecutiveHeroSection extends StatelessWidget {
                       letterSpacing: 1.0,
                     ),
                   ),
-                  InkWell(
-                    onTap: onShare,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (onPdf != null) ...[
+                        InkWell(
+                          onTap: onPdf,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: const Icon(
+                              FeatherIcons.fileText,
+                              size: 15,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      InkWell(
+                        onTap: onShare,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12),
+                        child: Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.12),
+                            ),
+                          ),
+                          child: const Icon(
+                            FeatherIcons.share2,
+                            size: 15,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                      child: const Icon(
-                        FeatherIcons.share2,
-                        size: 15,
-                        color: Colors.white,
-                      ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1534,11 +1599,13 @@ class _KeyTakeawaysCard extends StatelessWidget {
   final List<String> strengths;
   final List<String> improvements;
   final AppColorScheme colors;
+  final bool isPro;
 
   const _KeyTakeawaysCard({
     required this.strengths,
     required this.improvements,
     required this.colors,
+    this.isPro = true,
   });
 
   @override
@@ -1653,6 +1720,44 @@ class _KeyTakeawaysCard extends StatelessWidget {
                         style: AppTypography.regular(12.5, color: colors.foreground, height: 1.45),
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          if (!isPro) ...[
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () => AppPaywallSheet.show(
+                context,
+                feature: 'FULL_EVALUATION',
+                title: 'Comprehensive Evaluation',
+                description:
+                    'Unlock complete role-specific rubric, detailed strengths, actionable feedback, and comprehensive metrics with Pro.',
+              ),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: colors.primary.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(FeatherIcons.lock, size: 13, color: colors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Unlock full multi-criteria rubric & in-depth strengths with Pro',
+                        style: AppTypography.medium(11.5, color: colors.primary),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(FeatherIcons.chevronRight, size: 14, color: colors.primary),
                   ],
                 ),
               ),
@@ -1956,11 +2061,13 @@ class _RoadmapTab extends StatelessWidget {
   final List<String> recommendations;
   final String role;
   final AppColorScheme colors;
+  final bool isPro;
 
   const _RoadmapTab({
     required this.recommendations,
     required this.role,
     required this.colors,
+    this.isPro = true,
   });
 
   @override
@@ -2046,6 +2153,76 @@ class _RoadmapTab extends StatelessWidget {
               ),
             );
           }),
+
+        if (!isPro) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colors.primary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: colors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(FeatherIcons.compass, size: 16, color: colors.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Complete 4-Week Action Plan',
+                        style: AppTypography.bold(14, color: colors.foreground),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Unlock week-by-week practice milestones, deep dive study recommendations, and targeted drills tailored to $role.',
+                  style: AppTypography.regular(12, color: colors.mutedForeground, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      AppPaywallSheet.show(
+                        context,
+                        feature: 'FULL_ROADMAP',
+                        title: 'Targeted Learning Roadmap',
+                        description:
+                            'Unlock structured 4-week preparation milestones, targeted study drills, and weakness analysis.',
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: colors.primary,
+                      foregroundColor: colors.primaryForeground,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      'Unlock Full Roadmap — ₹299/mo',
+                      style: AppTypography.bold(12, color: colors.primaryForeground),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

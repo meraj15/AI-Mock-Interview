@@ -11,11 +11,13 @@ import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/services/ai_interview_service.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../dashboard/presentation/controllers/dashboard_controller.dart';
 import '../../../interview/data/datasources/interview_remote_data_source.dart';
 import '../../../interview/presentation/controllers/interview_controller.dart';
 import '../../../interview/presentation/pages/question_review_page.dart';
 import '../../../interview/presentation/pages/quick_interview_setup_page.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 
 class InterviewsPage extends StatefulWidget {
   const InterviewsPage({super.key});
@@ -470,6 +472,59 @@ class _InterviewsPageState extends State<InterviewsPage> {
                     ),
                   );
                 }),
+                if (context.watch<SubscriptionController>().isFree && sessions.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: colors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(FeatherIcons.archive, size: 16, color: colors.primary),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Showing last 3 sessions (Free Plan)',
+                                style: AppTypography.bold(12.5, color: colors.foreground),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Upgrade to Pro for unlimited interview archives & deep historical replay.',
+                                style: AppTypography.regular(11, color: colors.mutedForeground),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () {
+                            AppPaywallSheet.show(
+                              context,
+                              feature: 'UNLIMITED_HISTORY',
+                              title: 'Unlimited Interview History',
+                              description:
+                                  'Access your complete interview archives, past question turns, and historical progress benchmarks.',
+                            );
+                          },
+                          child: Text('Upgrade', style: AppTypography.bold(12, color: colors.primary)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
               const SizedBox(height: 20),
             ],

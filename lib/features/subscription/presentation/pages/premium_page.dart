@@ -140,13 +140,13 @@ class _PremiumPageState extends State<PremiumPage> {
     final isYearlySelected =
         selectedPlan?.isYearly ?? (ctrl.selectedPlanCode == yearlyPlan?.code);
 
-    final monthlyPrice = monthlyPlan?.amountInRupees ?? 199;
+    final monthlyPrice = monthlyPlan?.amountInRupees ?? 299;
     final yearlyTotal = yearlyPlan?.amountInRupees ?? 1999;
     final yearlyPerMonth = yearlyPlan?.monthlyEquivalentRupees ?? 166;
 
     final buttonLabel = isYearlySelected
-        ? 'Start annual plan — ₹$yearlyTotal/yr'
-        : 'Start monthly plan — ₹$monthlyPrice/mo';
+        ? 'Continue with Pro — ₹$yearlyTotal/yr'
+        : 'Continue with Pro — ₹$monthlyPrice/mo';
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -172,15 +172,15 @@ class _PremiumPageState extends State<PremiumPage> {
 
           // Main Headline
           Text(
-            'Go Pro. Nail every interview.',
-            style: AppTypography.bold(23, color: colors.foreground),
+            'Unlock your full interview potential',
+            style: AppTypography.bold(22, color: colors.foreground),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
 
           // Subtitle
           Text(
-            'Unlimited AI coaching, real-time feedback,\nand company-specific question banks.',
+            'Everything you need to practice, improve, and get hired.',
             style: AppTypography.regular(
               13.5,
               color: colors.mutedForeground,
@@ -188,34 +188,27 @@ class _PremiumPageState extends State<PremiumPage> {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 26),
+          const SizedBox(height: 24),
 
-          // 4 Feature Items
+          // 3 Feature Items (Section 20 specification)
           const _FeatureItem(
-            icon: FeatherIcons.zap,
-            title: 'Unlimited mock interviews',
-            subtitle: 'Coding, system design, behavioral — no daily cap',
+            icon: FeatherIcons.checkCircle,
+            title: '30 AI interviews every month',
+            subtitle: 'Up to 12 questions, dynamic follow-ups, and Deep Dive mode',
           ),
           const SizedBox(height: 16),
           const _FeatureItem(
             icon: FeatherIcons.barChart2,
-            title: 'Full evaluation rubric',
-            subtitle:
-                'Scored on clarity, depth, correctness, and communication',
-          ),
-          const SizedBox(height: 16),
-          const _FeatureItem(
-            icon: FeatherIcons.target,
-            title: 'Target company calibration',
-            subtitle: 'Questions modeled on Google, Amazon, Meta, and more',
+            title: 'Full AI feedback & improvement roadmap',
+            subtitle: 'Comprehensive rubric scores, STAR model answers, and action plans',
           ),
           const SizedBox(height: 16),
           const _FeatureItem(
             icon: FeatherIcons.mic,
-            title: 'Voice AI with follow-ups',
-            subtitle: 'Realistic interviewer pressure and pushbacks',
+            title: 'Voice interviews & realistic personas',
+            subtitle: 'Real-time conversational voice and diverse interviewer styles',
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
 
           // Side-by-side Plan Cards
           Row(

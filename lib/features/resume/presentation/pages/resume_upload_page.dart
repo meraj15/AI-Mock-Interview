@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/progress_bar.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 import '../controllers/resume_controller.dart';
 import 'edit_parsed_resume_page.dart';
 
@@ -58,37 +60,95 @@ class _ResumeUploadPageState extends State<ResumeUploadPage> {
   }
 
   Future<void> _submitUpload() async {
+    final subCtrl = context.read<SubscriptionController>();
+    if (subCtrl.resumeScansRemaining <= 0) {
+      AppPaywallSheet.show(
+        context,
+        feature: 'RESUME_SCANS',
+        title: 'Resume Limit Reached',
+        description: subCtrl.isFree
+            ? 'Free users can scan 1 resume. Upgrade to Pro for up to 5 scans per billing period.'
+            : 'You have reached your limit of 5 resume scans for this billing cycle.',
+      );
+      return;
+    }
+
     if (_pickedFileName == null) {
       await _pickFile();
       return;
     }
-    final resumeCtrl = context.read<ResumeController>();
-    final parsed = await resumeCtrl.uploadFromFilePicker(
-      fileName: _pickedFileName!,
-      filePath: _pickedFilePath,
-    );
-    if (widget.isReplacing && widget.replaceId != null) {
-      resumeCtrl.replaceResume(widget.replaceId!, parsed);
-    }
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => EditParsedResumePage(resume: parsed)),
+
+    try {
+      final resumeCtrl = context.read<ResumeController>();
+      final parsed = await resumeCtrl.uploadFromFilePicker(
+        fileName: _pickedFileName!,
+        filePath: _pickedFilePath,
       );
+      if (widget.isReplacing && widget.replaceId != null) {
+        resumeCtrl.replaceResume(widget.replaceId!, parsed);
+      }
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => EditParsedResumePage(resume: parsed)),
+        );
+      }
+    } catch (e) {
+      if (e.toString().contains('QUOTA_EXHAUSTED') || e.toString().contains('LIMIT')) {
+        if (mounted) {
+          AppPaywallSheet.show(
+            context,
+            feature: 'RESUME_SCANS',
+            title: 'Resume Limit Reached',
+            description: subCtrl.isFree
+                ? 'Free users can scan 1 resume. Upgrade to Pro for up to 5 scans per billing period.'
+                : 'You have reached your limit of 5 resume scans for this billing cycle.',
+          );
+        }
+      }
     }
   }
 
   Future<void> _submitPaste() async {
     final text = _pasteCtrl.text.trim();
     if (text.isEmpty) return;
-    final resumeCtrl = context.read<ResumeController>();
-    final parsed = await resumeCtrl.pasteAndParse(text);
-    if (widget.isReplacing && widget.replaceId != null) {
-      resumeCtrl.replaceResume(widget.replaceId!, parsed);
-    }
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => EditParsedResumePage(resume: parsed)),
+
+    final subCtrl = context.read<SubscriptionController>();
+    if (subCtrl.resumeScansRemaining <= 0) {
+      AppPaywallSheet.show(
+        context,
+        feature: 'RESUME_SCANS',
+        title: 'Resume Limit Reached',
+        description: subCtrl.isFree
+            ? 'Free users can scan 1 resume. Upgrade to Pro for up to 5 scans per billing period.'
+            : 'You have reached your limit of 5 resume scans for this billing cycle.',
       );
+      return;
+    }
+
+    try {
+      final resumeCtrl = context.read<ResumeController>();
+      final parsed = await resumeCtrl.pasteAndParse(text);
+      if (widget.isReplacing && widget.replaceId != null) {
+        resumeCtrl.replaceResume(widget.replaceId!, parsed);
+      }
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => EditParsedResumePage(resume: parsed)),
+        );
+      }
+    } catch (e) {
+      if (e.toString().contains('QUOTA_EXHAUSTED') || e.toString().contains('LIMIT')) {
+        if (mounted) {
+          AppPaywallSheet.show(
+            context,
+            feature: 'RESUME_SCANS',
+            title: 'Resume Limit Reached',
+            description: subCtrl.isFree
+                ? 'Free users can scan 1 resume. Upgrade to Pro for up to 5 scans per billing period.'
+                : 'You have reached your limit of 5 resume scans for this billing cycle.',
+          );
+        }
+      }
     }
   }
 

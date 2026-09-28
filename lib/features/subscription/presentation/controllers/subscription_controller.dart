@@ -67,6 +67,23 @@ class SubscriptionController extends ChangeNotifier {
   bool get isSubscribing => _isSubscribing;
   bool get isCancelling => _isCancelling;
   bool get isPremium => _subscription.isPremium;
+  PlanTier get planTier => _subscription.planTier;
+  bool get isPro => _subscription.isPro;
+  bool get isFree => _subscription.isFree;
+  int get interviewsRemaining => _subscription.interviewsRemaining;
+  int get interviewsLimit => _subscription.interviewsLimit;
+  int get interviewsUsed => _subscription.interviewsUsed;
+  int get maxQuestionsPerSession => _subscription.maxQuestionsPerSession;
+  bool get canUseVoice => _subscription.canUseVoice;
+  bool get canUseAdvancedPersonas => _subscription.canUseAdvancedPersonas;
+  bool get canUseDeepDive => _subscription.canUseDeepDive;
+  bool get canUseFullEvaluation => _subscription.canUseFullEvaluation;
+  bool get canUseFullRoadmap => _subscription.canUseFullRoadmap;
+  bool get canUseAdvancedAnalytics => _subscription.canUseAdvancedAnalytics;
+  bool get canExportPdf => _subscription.canExportPdf;
+  int get maxResumeScans => _subscription.maxResumeScans;
+  int get resumeScansUsed => _subscription.resumeScansUsed;
+  int get resumeScansRemaining => _subscription.resumeScansRemaining;
 
   PlanEntity? get selectedPlan {
     if (_selectedPlanCode == null) return null;

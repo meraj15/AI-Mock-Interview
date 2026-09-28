@@ -42,6 +42,9 @@ jest.mock('../src/repositories/subscription.repository', () => ({
     hasActivePremiumEntitlement: jest.fn(),
     findWebhookEvent: jest.fn(),
     createWebhookEvent: jest.fn(),
+    findUsageQuota: jest.fn(),
+    incrementInterviewUsage: jest.fn(),
+    incrementResumeScanUsage: jest.fn(),
   },
   SubscriptionStatus: {
     CREATED: 'CREATED',
@@ -105,6 +108,7 @@ const mockPlan = {
   description: 'Monthly plan',
   priceInPaise: 19900,
   currency: 'INR',
+  tier: 'PRO',
   billingInterval: BillingInterval.MONTHLY,
   razorpayPlanId: 'plan_razorpay_abc',
   isActive: true,

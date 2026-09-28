@@ -5,16 +5,36 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/confirmation_dialog.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 import '../controllers/resume_controller.dart';
 import 'resume_preview_page.dart';
 import 'resume_upload_page.dart';
 
 class ResumePage extends StatelessWidget {
   const ResumePage({super.key});
+
+  void _onAddResume(BuildContext context) {
+    final subCtrl = context.read<SubscriptionController>();
+    if (subCtrl.resumeScansRemaining <= 0) {
+      AppPaywallSheet.show(
+        context,
+        feature: 'RESUME_SCANS',
+        title: 'Resume Limit Reached',
+        description: subCtrl.isFree
+            ? 'Free users can scan 1 resume. Upgrade to Pro for up to 5 scans per billing period.'
+            : 'You have reached your limit of 5 resume scans for this billing cycle.',
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ResumeUploadPage()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,11 +55,7 @@ class ResumePage extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
             right: IconButton(
               icon: Icon(FeatherIcons.plus, size: 20, color: colors.foreground),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ResumeUploadPage()),
-                );
-              },
+              onPressed: () => _onAddResume(context),
             ),
           ),
 
@@ -82,11 +98,7 @@ class ResumePage extends StatelessWidget {
                   AppButton(
                     label: 'Upload & Parse Resume',
                     icon: FeatherIcons.uploadCloud,
-                    onPress: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ResumeUploadPage()),
-                      );
-                    },
+                    onPress: () => _onAddResume(context),
                   ),
                 ],
               ),

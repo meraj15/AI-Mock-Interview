@@ -5,9 +5,11 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_header.dart';
+import '../../../../core/widgets/app_paywall_sheet.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/pill_badge.dart';
 import '../../../../core/widgets/section_title.dart';
+import '../../../subscription/presentation/controllers/subscription_controller.dart';
 import '../controllers/interview_controller.dart';
 import 'interview_session_page.dart';
 
@@ -91,6 +93,18 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
   }
 
   void _saveAndStart() async {
+    final sub = context.read<SubscriptionController>();
+    if (sub.interviewsRemaining <= 0) {
+      AppPaywallSheet.show(
+        context,
+        title: 'Interview Limit Reached',
+        description:
+            'You have completed your free interviews for this month. Upgrade to Pro for 30 interviews every month!',
+        ctaLabel: 'Unlock Pro — ₹299/month',
+      );
+      return;
+    }
+
     final interviewCtrl = context.read<InterviewController>();
     interviewCtrl.resetSessionForNewInterview();
     interviewCtrl.updateConfig(
@@ -210,18 +224,33 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
                 ),
                 Slider(
                   min: 3,
-                  max: 20,
-                  divisions: 17,
-                  value: _questionCount.toDouble(),
+                  max: 12,
+                  divisions: 9,
+                  value: _questionCount.clamp(3, 12).toDouble(),
                   activeColor: colors.primary,
                   inactiveColor: colors.secondary,
-                  onChanged: (v) => setState(() => _questionCount = v.round()),
+                  onChanged: (v) {
+                    final val = v.round();
+                    final sub = context.read<SubscriptionController>();
+                    if (val > 5 && !sub.isPro) {
+                      AppPaywallSheet.show(
+                        context,
+                        title: 'Extended Interviews',
+                        description:
+                            'Free practice is capped at 5 questions per session. Upgrade to Pro for deep sessions up to 12 questions!',
+                        ctaLabel: 'Unlock Pro — ₹299/month',
+                      );
+                      setState(() => _questionCount = 5);
+                      return;
+                    }
+                    setState(() => _questionCount = val);
+                  },
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('3 (Quick)', style: AppTypography.regular(10, color: colors.mutedForeground)),
-                    Text('20 (Deep Dive)', style: AppTypography.regular(10, color: colors.mutedForeground)),
+                    Text('12 (Deep Dive)', style: AppTypography.regular(10, color: colors.mutedForeground)),
                   ],
                 ),
               ],
@@ -301,13 +330,26 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
                   children: _allFocusTopics.map((topic) {
                     final isSelected = _selectedFocusTopics.contains(topic);
                     return InkWell(
-                      onTap: () => setState(() {
-                        if (isSelected) {
-                          _selectedFocusTopics.remove(topic);
-                        } else {
-                          _selectedFocusTopics.add(topic);
+                      onTap: () {
+                        final sub = context.read<SubscriptionController>();
+                        if (!isSelected && !sub.isPro && _selectedFocusTopics.isNotEmpty) {
+                          AppPaywallSheet.show(
+                            context,
+                            title: 'Unlimited Focus Topics',
+                            description:
+                                'Free accounts can select 1 focus topic. Upgrade to Pro for unlimited topic customization!',
+                            ctaLabel: 'Unlock Pro — ₹299/month',
+                          );
+                          return;
                         }
-                      }),
+                        setState(() {
+                          if (isSelected) {
+                            _selectedFocusTopics.remove(topic);
+                          } else {
+                            _selectedFocusTopics.add(topic);
+                          }
+                        });
+                      },
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -337,7 +379,22 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
             icon: FeatherIcons.user,
             options: _aiPersonas,
             colors: colors,
-            onSelected: (v) => setState(() => _selectedAiPersona = v),
+            onSelected: (v) {
+              if (v != 'Professional Interviewer') {
+                final sub = context.read<SubscriptionController>();
+                if (!sub.canUseAdvancedPersonas) {
+                  AppPaywallSheet.show(
+                    context,
+                    title: 'Advanced AI Personas',
+                    description:
+                        'Practice with specialized interviewer styles including Startup CTO, Senior Tech Lead, and Strict Panel.',
+                    ctaLabel: 'Unlock Pro — ₹299/month',
+                  );
+                  return;
+                }
+              }
+              setState(() => _selectedAiPersona = v);
+            },
           ),
 
           // ── Coding Language ─────────────────────────────────────
@@ -394,7 +451,22 @@ class _InterviewConfigPageState extends State<InterviewConfigPage> {
                   description: 'AI reads questions aloud. Answer verbally.',
                   icon: FeatherIcons.mic,
                   value: _enableVoiceMode,
-                  onChanged: (v) => setState(() => _enableVoiceMode = v),
+                  onChanged: (v) {
+                    if (v) {
+                      final sub = context.read<SubscriptionController>();
+                      if (!sub.canUseVoice) {
+                        AppPaywallSheet.show(
+                          context,
+                          title: 'Voice Interviews',
+                          description:
+                              'Practice speaking with a real-time AI interviewer and experience natural interview follow-ups.',
+                          ctaLabel: 'Unlock Pro — ₹299/month',
+                        );
+                        return;
+                      }
+                    }
+                    setState(() => _enableVoiceMode = v);
+                  },
                   colors: colors,
                 ),
               ],
