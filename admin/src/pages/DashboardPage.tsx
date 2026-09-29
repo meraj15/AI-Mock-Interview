@@ -170,30 +170,34 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* ── BUSINESS CONTRIBUTION MARGIN BANNER ─────────────────────────────── */}
-      <div className="p-4 rounded-xl bg-gradient-to-r from-surface-900 to-surface-850 border border-surface-800 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <Banknote className="w-5 h-5" />
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-surface-900/90 via-surface-900/80 to-brand-950/20 backdrop-blur-md border border-white/[0.08] shadow-lg flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 shadow-md shadow-emerald-500/10">
+            <Banknote className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs text-slate-400">Estimated Contribution Margin (Revenue – AI Cost)</div>
-            <div className="text-lg font-bold text-white flex items-center gap-2">
-              <span>₹{contributionMarginRupees.toLocaleString()}</span>
-              <span className="text-[11px] font-normal text-slate-400">
-                (Gross Margin: {kpis.revenueRupees.value > 0 ? Math.round((contributionMarginRupees / kpis.revenueRupees.value) * 100) : 0}%)
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Contribution Margin <span className="text-[10px] text-slate-500 font-normal lowercase">(revenue minus estimated inference)</span>
+            </div>
+            <div className="text-xl font-extrabold text-white flex items-center gap-2.5 mt-0.5">
+              <span className="text-emerald-400 font-mono tracking-tight">₹{contributionMarginRupees.toLocaleString()}</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                {kpis.revenueRupees.value > 0 ? Math.round((contributionMarginRupees / kpis.revenueRupees.value) * 100) : 0}% Margin
               </span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-6 text-xs text-slate-400">
-          <div>
-            Revenue: <span className="font-semibold text-slate-200">₹{kpis.revenueRupees.value.toLocaleString()}</span>
+        <div className="flex items-center gap-6 text-xs text-slate-400 font-medium">
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase text-slate-500 font-semibold">Gross Revenue</span>
+            <span className="font-bold text-white font-mono text-sm">₹{kpis.revenueRupees.value.toLocaleString()}</span>
           </div>
-          <div>
-            AI Cost: <span className="font-semibold text-slate-200">₹{kpis.aiCostRupees.value.toLocaleString()}</span>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase text-slate-500 font-semibold">AI Compute</span>
+            <span className="font-bold text-amber-400 font-mono text-sm">₹{kpis.aiCostRupees.value.toLocaleString()}</span>
           </div>
-          <div className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-            Estimated application-side
+          <div className="text-[10px] font-semibold text-brand-300 bg-brand-500/10 px-2.5 py-1 rounded-lg border border-brand-500/25">
+            Unit Economics
           </div>
         </div>
       </div>
@@ -542,24 +546,28 @@ const KpiCard: React.FC<KpiCardProps> = ({ title, value, changePercent, icon: Ic
   };
 
   return (
-    <div className="p-4 rounded-xl bg-surface-900 border border-surface-800 flex flex-col justify-between transition hover:border-surface-700">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-medium text-slate-400">{title}</span>
-        <div className={`p-2 rounded-lg border ${colorMap[color]}`}>
+    <div className="p-4 rounded-2xl bg-surface-900/90 backdrop-blur-sm border border-white/[0.06] hover:border-white/[0.15] flex flex-col justify-between transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 group relative overflow-hidden">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] font-semibold text-slate-400 tracking-wide">{title}</span>
+        <div className={`p-2 rounded-xl border ${colorMap[color]} shadow-sm transition group-hover:scale-105`}>
           <Icon className="w-4 h-4" />
         </div>
       </div>
 
       <div>
-        <div className="text-xl font-bold text-white tracking-tight">{value}</div>
-        <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+        <div className="text-2xl font-extrabold text-white tracking-tight">{value}</div>
+        <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
           {changePercent !== null ? (
-            <span className={`flex items-center gap-0.5 font-semibold ${changePercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            <span className={`inline-flex items-center gap-0.5 font-bold px-1.5 py-0.5 rounded-full ${
+              changePercent >= 0 
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+            }`}>
               {changePercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
               {changePercent >= 0 ? `+${changePercent}%` : `${changePercent}%`}
             </span>
           ) : null}
-          <span className="text-slate-500">{subtext || (changePercent !== null ? 'vs previous period' : '')}</span>
+          <span className="text-slate-400 font-medium">{subtext || (changePercent !== null ? 'vs last period' : '')}</span>
         </div>
       </div>
     </div>

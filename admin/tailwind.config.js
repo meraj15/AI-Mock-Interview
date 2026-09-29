@@ -29,14 +29,20 @@ export default {
           400: '#94a3b8',
           500: '#64748b',
           600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#090d16',
+          700: '#232f45',
+          800: '#141d2e',
+          900: '#0d131f',
+          950: '#080c14',
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      boxShadow: {
+        'glow-brand': '0 0 25px -5px rgba(124, 58, 237, 0.25)',
+        'glow-emerald': '0 0 25px -5px rgba(16, 185, 129, 0.25)',
+        'glow-amber': '0 0 25px -5px rgba(245, 158, 11, 0.25)',
       }
     },
   },
