@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { config } from '../../config';
 import { AppError } from '../../errors/AppError';
+import { telemetryService } from '../telemetry.service';
 import {
   AIOperation,
   AIExecutionMetadata,
@@ -89,6 +90,7 @@ export class AIOrchestrator {
     if (!config.ai.enableTelemetry) return;
     // Never log API keys, JWTs, passwords, full resumes, or raw candidate answers.
     console.log('[TELEMETRY]', JSON.stringify(telemetry));
+    telemetryService.recordAiTelemetry(telemetry).catch(() => {});
   }
 
   // ==========================================================
@@ -390,6 +392,20 @@ export class AIOrchestrator {
         errorMessage: lastError?.message || 'Unavailable',
       })}`,
     );
+
+    telemetryService.recordAiTelemetry({
+      operation,
+      provider: primaryProviderId,
+      model: primaryModel,
+      latencyMs: Date.now() - totalStartTime,
+      totalLatencyMs: Date.now() - totalStartTime,
+      attemptCount: maxRetries + 1,
+      retryCount,
+      sessionId,
+      status: Number(lastError?.status || lastError?.statusCode || 503) || 503,
+      errorCategory: Number(lastError?.status || lastError?.statusCode) === 429 ? 'RATE_LIMIT' : 'SERVICE_UNAVAILABLE',
+      errorMessage: lastError?.message || 'Unavailable',
+    }).catch(() => {});
 
     // Optional Gemini fallback model (sequential, configuration-driven)
     if (config.ai.fallbackModel && config.ai.fallbackModel !== primaryModel) {

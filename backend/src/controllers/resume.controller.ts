@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { resumeService } from '../services/resume.service';
 import { entitlementService } from '../services/entitlement.service';
+import { telemetryService } from '../services/telemetry.service';
 import { logger } from '../utils/logger';
 
 export const resumeController = {
@@ -11,8 +12,21 @@ export const resumeController = {
    * Enforces server-side resume scan quota (Free: 1 scan, Pro: 5 scans per billing period)
    */
   async parseResume(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const startTime = Date.now();
+    const userId = (req as any).user?.id;
+    const file = req.file;
+
     try {
-      if (!req.file) {
+      if (!file) {
+        telemetryService.recordResumeParse({
+          userId,
+          fileName: 'unknown',
+          fileSize: 0,
+          status: 'FAILED',
+          errorReason: 'NO_FILE_UPLOADED',
+          durationMs: Date.now() - startTime,
+        }).catch(() => {});
+
         res.status(400).json({
           success: false,
           message: 'No file uploaded. Please attach a resume file with field name "file".',
@@ -20,7 +34,6 @@ export const resumeController = {
         return;
       }
 
-      const userId = (req as any).user?.id;
       if (userId) {
         const entitlement = await entitlementService.getUserEntitlement(userId);
         if (entitlement.resumeScansRemaining <= 0) {
@@ -38,11 +51,20 @@ export const resumeController = {
         }
       }
 
-      const { buffer, originalname, size } = req.file;
+      const { buffer, originalname, size } = file;
 
       logger.info(`Resume parse request: ${originalname} (${(size / 1024).toFixed(1)} KB)`);
 
       if (size > 10 * 1024 * 1024) {
+        telemetryService.recordResumeParse({
+          userId,
+          fileName: originalname,
+          fileSize: size,
+          status: 'FAILED',
+          errorReason: 'FILE_TOO_LARGE',
+          durationMs: Date.now() - startTime,
+        }).catch(() => {});
+
         res.status(400).json({
           success: false,
           message: 'File too large. Maximum size is 10 MB.',
@@ -56,11 +78,29 @@ export const resumeController = {
         await entitlementService.consumeResumeScanQuota(userId);
       }
 
+      telemetryService.recordResumeParse({
+        userId,
+        fileName: originalname,
+        fileSize: size,
+        status: 'SUCCESS',
+        durationMs: Date.now() - startTime,
+      }).catch(() => {});
+
       res.status(200).json({
         success: true,
         profile,
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (file) {
+        telemetryService.recordResumeParse({
+          userId,
+          fileName: file.originalname,
+          fileSize: file.size,
+          status: 'FAILED',
+          errorReason: error?.message ?? 'PARSING_ERROR',
+          durationMs: Date.now() - startTime,
+        }).catch(() => {});
+      }
       logger.error('Resume parse failed:', error);
       next(error);
     }

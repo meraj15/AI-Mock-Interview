@@ -13,8 +13,13 @@ const TEST_PASSWORD = 'Test1234!';
 async function main() {
   const existing = await prisma.user.findUnique({ where: { email: TEST_EMAIL } });
   if (existing) {
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { role: 'ADMIN', isAdmin: true },
+    });
     console.log(`User already exists: ${TEST_EMAIL}`);
     console.log(`Password: ${TEST_PASSWORD}`);
+    console.log(`Updated user role to ADMIN`);
     return;
   }
 
@@ -25,6 +30,8 @@ async function main() {
       passwordHash: hash,
       isVerified: true,
       isActive: true,
+      role: 'ADMIN',
+      isAdmin: true,
     },
   });
 

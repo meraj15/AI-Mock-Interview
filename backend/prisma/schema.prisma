@@ -19,6 +19,8 @@ model User {
   isVerified           Boolean        @default(false)
   emailVerifiedAt      DateTime?      // null = unverified; timestamp = when verified
   isActive             Boolean        @default(true)
+  isAdmin              Boolean        @default(false)
+  role                 String         @default("USER") // "USER" | "ADMIN"
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?
@@ -33,6 +35,8 @@ model User {
   paymentTransactions  PaymentTransaction[]
   usageQuotas          UserUsageQuota[]
 
+  @@index([role])
+  @@index([createdAt])
   @@map("users")
 }
 
@@ -343,3 +347,95 @@ model UserUsageQuota {
   @@index([userId])
   @@map("user_usage_quotas")
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN & OBSERVABILITY MODELS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── AuditLog ──────────────────────────────────────────────────────────────────
+// Tracks administrative and privileged operations for accountability and security.
+model AuditLog {
+  id            String   @id @default(uuid())
+  adminId       String
+  action        String   // e.g. "USER_SUSPEND", "ENTITLEMENT_GRANT", "PLAN_UPDATE"
+  targetType    String   // "USER", "SUBSCRIPTION", "PLAN", "SYSTEM"
+  targetId      String?
+  previousValue Json?
+  newValue      Json?
+  reason        String?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ── AiTelemetryLog ────────────────────────────────────────────────────────────
+// Stores detailed AI latency, token usage, errors, and costs for admin observability.
+model AiTelemetryLog {
+  id             String   @id @default(uuid())
+  sessionId      String?
+  userId         String?
+  operation      String   // 'plan' | 'live_turn' | 'final_evaluation' | 'resume_parsing'
+  provider       String   // 'gemini' | 'openai'
+  model          String
+  latencyMs      Int
+  promptBuildMs  Int?
+  aiLatencyMs    Int?
+  parseMs        Int?
+  dbMs           Int?
+  totalLatencyMs Int?
+  attemptCount   Int      @default(1)
+  retryCount     Int      @default(0)
+  retryReason    String?
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  totalTokens    Int      @default(0)
+  status         Int      @default(200) // 200, 429, 503, 504, 500
+  errorCategory  String?  // 'RATE_LIMIT' | 'SERVICE_UNAVAILABLE' | 'TIMEOUT' | 'JSON_PARSE' | 'AUTH' | 'OTHER'
+  errorMessage   String?  // Sanitized error message (no secrets/PII)
+  degraded       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([operation])
+  @@index([provider])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([status])
+  @@map("ai_telemetry_logs")
+}
+
+// ── ResumeParseLog ────────────────────────────────────────────────────────────
+// Stores analytics for resume parsing requests, failures, and file metadata.
+model ResumeParseLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  fileName    String
+  fileSize    Int
+  status      String   // 'SUCCESS' | 'FAILED'
+  errorReason String?  // 'EMPTY_TEXT' | 'AI_FAILURE' | 'FILE_TOO_LARGE' | 'TIMEOUT'
+  durationMs  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("resume_parse_logs")
+}
+
+// ── SystemConfig ──────────────────────────────────────────────────────────────
+// Stores dynamic administrative configurations such as quotas, pricing, and toggles.
+model SystemConfig {
+  key         String   @id
+  value       Json
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_configs")
+}
+

@@ -10,6 +10,8 @@ export interface UserResponse {
   isProfileComplete: boolean;
   isVerified: boolean;
   isActive: boolean;
+  role?: string;
+  isAdmin?: boolean;
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt: Date | null;
@@ -31,6 +33,8 @@ export interface AuthenticatedUser {
   email: string;
   isVerified: boolean;
   isActive: boolean;
+  role?: string;
+  isAdmin?: boolean;
 }
 
 export interface VerificationRequiredResult {

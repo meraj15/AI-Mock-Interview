@@ -46,6 +46,8 @@ export class AuthService {
       isProfileComplete,
       isVerified: user.isVerified,
       isActive: user.isActive,
+      role: (user as any).role ?? 'USER',
+      isAdmin: (user as any).isAdmin ?? false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       lastLoginAt: user.lastLoginAt,

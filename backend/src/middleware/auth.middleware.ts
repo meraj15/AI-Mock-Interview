@@ -41,6 +41,8 @@ export async function authMiddleware(
       email: user.email,
       isVerified: user.isVerified,
       isActive: user.isActive,
+      role: (user as any).role ?? 'USER',
+      isAdmin: (user as any).isAdmin ?? false,
     };
 
     next();
