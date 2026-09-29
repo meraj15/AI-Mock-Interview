@@ -20,6 +20,7 @@ export const UsersPage: React.FC = () => {
 
   // Filters & Search state
   const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [tier, setTier] = useState('ALL');
   const [status, setStatus] = useState('ALL');
   const [sort, setSort] = useState('newest');
@@ -39,17 +40,20 @@ export const UsersPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (overrideSearch?: string, overridePage?: number) => {
     setLoading(true);
     try {
+      const activeSearch = overrideSearch !== undefined ? overrideSearch : appliedSearch;
+      const activePage = overridePage !== undefined ? overridePage : pagination.page;
+
       const q = new URLSearchParams({
-        page: pagination.page.toString(),
+        page: activePage.toString(),
         limit: pagination.limit.toString(),
         tier,
         status,
         sort,
       });
-      if (search.trim()) q.append('search', search.trim());
+      if (activeSearch.trim()) q.append('search', activeSearch.trim());
       if (paymentFailed) q.append('paymentFailed', 'true');
 
       const res = await api.get(`/api/v1/admin/users?${q.toString()}`);
@@ -66,12 +70,47 @@ export const UsersPage: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, [pagination.page, tier, status, sort, paymentFailed, refreshKey]);
+  }, [pagination.page, tier, status, sort, paymentFailed, appliedSearch, refreshKey]);
+
+  // Live debounced search & instant reset when input is cleared ("when nothing then show all users")
+  useEffect(() => {
+    if (search.trim() === '') {
+      if (appliedSearch !== '') {
+        setAppliedSearch('');
+        setPagination((prev) => ({ ...prev, page: 1 }));
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (search.trim() !== appliedSearch) {
+        setAppliedSearch(search.trim());
+        setPagination((prev) => ({ ...prev, page: 1 }));
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [search, appliedSearch]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = search.trim();
     setPagination((prev) => ({ ...prev, page: 1 }));
-    fetchUsers();
+    if (trimmed === appliedSearch) {
+      fetchUsers(trimmed, 1);
+    } else {
+      setAppliedSearch(trimmed);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearch('');
+    setPagination((prev) => ({ ...prev, page: 1 }));
+    if (appliedSearch === '') {
+      fetchUsers('', 1);
+    } else {
+      setAppliedSearch('');
+    }
   };
 
   const handleOpenDetail = async (userId: string) => {
@@ -120,7 +159,7 @@ export const UsersPage: React.FC = () => {
 
   const handleExportCsv = () => {
     const q = new URLSearchParams({ tier, status, sort });
-    if (search.trim()) q.append('search', search.trim());
+    if (appliedSearch.trim()) q.append('search', appliedSearch.trim());
     api.downloadCsv(`/api/v1/admin/users/export?${q.toString()}`, 'interview-coach-users.csv');
   };
 
@@ -131,14 +170,31 @@ export const UsersPage: React.FC = () => {
         {/* Search */}
         <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 flex-1 min-w-[240px] max-w-md">
           <div className="relative w-full">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="Search by name, email, or user ID..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-surface-800 border border-surface-700/60 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500"
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearch(val);
+                if (!val.trim() && appliedSearch) {
+                  setPagination((p) => ({ ...p, page: 1 }));
+                  setAppliedSearch('');
+                }
+              }}
+              className="w-full bg-surface-800 border border-surface-700/60 rounded-lg pl-9 pr-8 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 transition"
             />
+            {search.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded transition"
+                title="Clear search and show all users"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <button
             type="submit"

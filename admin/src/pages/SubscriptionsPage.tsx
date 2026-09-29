@@ -5,6 +5,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
 
 export const SubscriptionsPage: React.FC = () => {
@@ -14,22 +15,26 @@ export const SubscriptionsPage: React.FC = () => {
   const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
 
-  // Filters
+  // Filters & Search state
   const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [status, setStatus] = useState('ALL');
 
   // Cancel action modal
   const [cancelModal, setCancelModal] = useState<{ sub: any; reason: string } | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  const fetchSubscriptions = async () => {
+  const fetchSubscriptions = async (overrideSearch?: string, overridePage?: number) => {
     setLoading(true);
     try {
+      const activeSearch = overrideSearch !== undefined ? overrideSearch : appliedSearch;
+      const activePage = overridePage !== undefined ? overridePage : pagination.page;
+
       const q = new URLSearchParams({
-        page: pagination.page.toString(),
+        page: activePage.toString(),
         limit: pagination.limit.toString(),
       });
-      if (search.trim()) q.append('search', search.trim());
+      if (activeSearch.trim()) q.append('search', activeSearch.trim());
       if (status !== 'ALL') q.append('status', status);
 
       const [listRes, statsRes] = await Promise.all([
@@ -53,7 +58,48 @@ export const SubscriptionsPage: React.FC = () => {
 
   useEffect(() => {
     fetchSubscriptions();
-  }, [pagination.page, status, refreshKey]);
+  }, [pagination.page, status, appliedSearch, refreshKey]);
+
+  // Live debounced search & instant reset when input is cleared ("when nothing then show all")
+  useEffect(() => {
+    if (search.trim() === '') {
+      if (appliedSearch !== '') {
+        setAppliedSearch('');
+        setPagination((p) => ({ ...p, page: 1 }));
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (search.trim() !== appliedSearch) {
+        setAppliedSearch(search.trim());
+        setPagination((p) => ({ ...p, page: 1 }));
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [search, appliedSearch]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = search.trim();
+    setPagination((p) => ({ ...p, page: 1 }));
+    if (trimmed === appliedSearch) {
+      fetchSubscriptions(trimmed, 1);
+    } else {
+      setAppliedSearch(trimmed);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearch('');
+    setPagination((p) => ({ ...p, page: 1 }));
+    if (appliedSearch === '') {
+      fetchSubscriptions('', 1);
+    } else {
+      setAppliedSearch('');
+    }
+  };
 
   const handleCancelSubscription = async () => {
     if (!cancelModal) return;
@@ -106,16 +152,33 @@ export const SubscriptionsPage: React.FC = () => {
 
       {/* ── FILTER & SEARCH ──────────────────────────────────────────────── */}
       <div className="p-4 rounded-xl bg-surface-900 border border-surface-800 flex flex-wrap items-center justify-between gap-4">
-        <form onSubmit={(e) => { e.preventDefault(); setPagination(p => ({ ...p, page: 1 })); fetchSubscriptions(); }} className="flex items-center gap-2 flex-1 min-w-[240px] max-w-md">
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 flex-1 min-w-[240px] max-w-md">
           <div className="relative w-full">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="Search by customer email or Razorpay subscription ID..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-surface-800 border border-surface-700/60 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500"
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearch(val);
+                if (!val.trim() && appliedSearch) {
+                  setPagination((p) => ({ ...p, page: 1 }));
+                  setAppliedSearch('');
+                }
+              }}
+              className="w-full bg-surface-800 border border-surface-700/60 rounded-lg pl-9 pr-8 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 transition"
             />
+            {search.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded transition"
+                title="Clear search and show all"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <button
             type="submit"

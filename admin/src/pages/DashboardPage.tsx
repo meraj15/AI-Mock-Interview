@@ -29,6 +29,20 @@ import {
   CartesianGrid,
 } from 'recharts';
 
+const formatDateTick = (dateStr: string) => {
+  if (!dateStr) return '';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    return dateStr;
+  } catch {
+    return dateStr;
+  }
+};
+
 export const DashboardPage: React.FC = () => {
   const { dateRange, customStart, customEnd, refreshKey } = useFilter();
   const [data, setData] = useState<any>(null);
@@ -205,34 +219,36 @@ export const DashboardPage: React.FC = () => {
       {/* ── CHARTS SECTION ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Revenue Over Time */}
-        <div className="p-5 rounded-2xl bg-surface-900 border border-surface-800">
+        <div className="p-5 rounded-2xl bg-surface-900/90 backdrop-blur-sm border border-white/[0.06] shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-white">Revenue Over Time</h2>
+              <h2 className="text-sm font-bold text-white">Revenue Over Time</h2>
               <p className="text-[11px] text-slate-400">Daily successful payment transactions</p>
             </div>
-            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
               Captured Only
             </span>
           </div>
           <div className="h-56">
             {charts.revenueOverTime.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={charts.revenueOverTime}>
+                <AreaChart data={charts.revenueOverTime} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} tickFormatter={(v) => `₹${v}`} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} vertical={false} />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} tickFormatter={formatDateTick} />
+                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} tickFormatter={(v) => `₹${v}`} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }}
+                    cursor={{ stroke: '#10b981', strokeWidth: 1, strokeDasharray: '3 3' }}
+                    contentStyle={{ backgroundColor: '#0d131f', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)' }}
+                    labelFormatter={(label) => formatDateTick(String(label))}
                     formatter={(val: any) => [`₹${Number(val).toLocaleString()}`, 'Revenue']}
                   />
-                  <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#revGrad)" />
+                  <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#revGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -244,28 +260,30 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* User Signups Growth */}
-        <div className="p-5 rounded-2xl bg-surface-900 border border-surface-800">
+        <div className="p-5 rounded-2xl bg-surface-900/90 backdrop-blur-sm border border-white/[0.06] shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-white">User Growth</h2>
+              <h2 className="text-sm font-bold text-white">User Growth</h2>
               <p className="text-[11px] text-slate-400">New registered candidates per day</p>
             </div>
-            <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+            <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
               Registrations
             </span>
           </div>
           <div className="h-56">
             {charts.userGrowthOverTime.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={charts.userGrowthOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                <LineChart data={charts.userGrowthOverTime} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} vertical={false} />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} tickFormatter={formatDateTick} />
+                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} allowDecimals={false} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }}
+                    cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '3 3' }}
+                    contentStyle={{ backgroundColor: '#0d131f', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)' }}
+                    labelFormatter={(label) => formatDateTick(String(label))}
                     formatter={(val: any) => [`${val} users`, 'New Signups']}
                   />
-                  <Line type="monotone" dataKey="users" stroke="#6366f1" strokeWidth={2} dot={{ r: 2 }} />
+                  <Line type="monotone" dataKey="users" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 3, fill: '#6366f1' }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -280,28 +298,62 @@ export const DashboardPage: React.FC = () => {
       {/* ── ROW: INTERVIEW ACTIVITY & SUBSCRIPTIONS BREAKDOWN ────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Interview Activity Chart */}
-        <div className="lg:col-span-2 p-5 rounded-2xl bg-surface-900 border border-surface-800">
+        <div className="lg:col-span-2 p-5 rounded-2xl bg-surface-900/90 backdrop-blur-sm border border-white/[0.06] shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-white">Interview Activity</h2>
-              <p className="text-[11px] text-slate-400">Sessions practiced and average candidate performance</p>
+              <h2 className="text-sm font-bold text-white">Interview Activity</h2>
+              <p className="text-[11px] text-slate-400">Sessions practiced across candidates</p>
             </div>
-            <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+            <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20">
               Sessions
             </span>
           </div>
           <div className="h-56">
             {charts.interviewActivityOverTime.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={charts.interviewActivityOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }}
-                    formatter={(val: any, name: any) => [name === 'total' ? `${val} sessions` : `${val}/100`, name === 'total' ? 'Sessions' : 'Avg Score']}
+                <BarChart data={charts.interviewActivityOverTime} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="actGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#0891b2" stopOpacity={0.25} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    tickFormatter={formatDateTick}
                   />
-                  <Bar dataKey="total" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    allowDecimals={false}
+                    domain={[0, 'auto']}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.04)', radius: 6 }}
+                    contentStyle={{
+                      backgroundColor: '#0d131f',
+                      borderColor: 'rgba(255,255,255,0.1)',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
+                    }}
+                    labelFormatter={(label) => formatDateTick(String(label))}
+                    formatter={(val: any, name: any) => [
+                      name === 'total' ? `${val} sessions` : `${val}/100`,
+                      name === 'total' ? 'Sessions' : 'Avg Score',
+                    ]}
+                  />
+                  <Bar
+                    dataKey="total"
+                    fill="url(#actGrad)"
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={32}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -313,9 +365,9 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* Subscription Tier Distribution */}
-        <div className="p-5 rounded-2xl bg-surface-900 border border-surface-800 flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-surface-900/90 backdrop-blur-sm border border-white/[0.06] shadow-sm flex flex-col justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-white mb-1">Subscription Tiers</h2>
+            <h2 className="text-sm font-bold text-white mb-1">Subscription Tiers</h2>
             <p className="text-[11px] text-slate-400 mb-4">Customer membership classification</p>
 
             <div className="space-y-3.5">

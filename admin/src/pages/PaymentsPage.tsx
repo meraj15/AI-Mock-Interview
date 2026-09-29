@@ -32,6 +32,7 @@ export const PaymentsPage: React.FC = () => {
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 1 });
   const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [status, setStatus] = useState('ALL');
 
   // Webhooks state
@@ -56,15 +57,18 @@ export const PaymentsPage: React.FC = () => {
   };
 
   // Fetch Payments List
-  const fetchPayments = async () => {
+  const fetchPayments = async (overrideSearch?: string, overridePage?: number) => {
     setPaymentsLoading(true);
     try {
+      const activeSearch = overrideSearch !== undefined ? overrideSearch : appliedSearch;
+      const activePage = overridePage !== undefined ? overridePage : pagination.page;
+
       const q = new URLSearchParams({
-        page: pagination.page.toString(),
+        page: activePage.toString(),
         limit: pagination.limit.toString(),
         status,
       });
-      if (search.trim()) q.append('search', search.trim());
+      if (activeSearch.trim()) q.append('search', activeSearch.trim());
 
       const res = await api.get(`/api/v1/admin/payments?${q.toString()}`);
       if (res.success) {
@@ -108,17 +112,52 @@ export const PaymentsPage: React.FC = () => {
     } else {
       fetchWebhooks();
     }
-  }, [activeTab, pagination.page, status, webhookPagination.page, refreshKey]);
+  }, [activeTab, pagination.page, status, appliedSearch, webhookPagination.page, refreshKey]);
+
+  // Live debounced search & instant reset when input is cleared ("when nothing then show all payments")
+  useEffect(() => {
+    if (search.trim() === '') {
+      if (appliedSearch !== '') {
+        setAppliedSearch('');
+        setPagination((prev) => ({ ...prev, page: 1 }));
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (search.trim() !== appliedSearch) {
+        setAppliedSearch(search.trim());
+        setPagination((prev) => ({ ...prev, page: 1 }));
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [search, appliedSearch]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = search.trim();
     setPagination((prev) => ({ ...prev, page: 1 }));
-    fetchPayments();
+    if (trimmed === appliedSearch) {
+      fetchPayments(trimmed, 1);
+    } else {
+      setAppliedSearch(trimmed);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearch('');
+    setPagination((prev) => ({ ...prev, page: 1 }));
+    if (appliedSearch === '') {
+      fetchPayments('', 1);
+    } else {
+      setAppliedSearch('');
+    }
   };
 
   const handleExportCsv = () => {
     const q = new URLSearchParams({ status });
-    if (search.trim()) q.append('search', search.trim());
+    if (appliedSearch.trim()) q.append('search', appliedSearch.trim());
     api.downloadCsv(`/api/v1/admin/payments/export?${q.toString()}`, 'payments.csv');
   };
 
@@ -288,15 +327,40 @@ export const PaymentsPage: React.FC = () => {
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <form onSubmit={handleSearchSubmit} className="flex-1 relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by Razorpay Payment ID, Order ID, or User Email..."
-                className="w-full bg-surface-900 border border-surface-800 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500/50"
-              />
+            <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 flex-1">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSearch(val);
+                    if (!val.trim() && appliedSearch) {
+                      setPagination((p) => ({ ...p, page: 1 }));
+                      setAppliedSearch('');
+                    }
+                  }}
+                  placeholder="Search by Razorpay Payment ID, Order ID, or User Email..."
+                  className="w-full bg-surface-900 border border-surface-800 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500/50 transition"
+                />
+                {search.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded transition"
+                    title="Clear search and show all"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="px-3 py-2 bg-surface-900 hover:bg-surface-800 border border-surface-800 text-xs font-medium text-slate-200 rounded-lg transition"
+              >
+                Search
+              </button>
             </form>
 
             <div className="flex items-center gap-2">
