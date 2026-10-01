@@ -14,6 +14,7 @@ import aiRouter from './routes/ai.routes';
 import subscriptionRouter from './routes/subscription.routes';
 import webhookRouter from './routes/webhook.routes';
 import adminRouter from './routes/admin.routes';
+import appRouter from './routes/app.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp(): Application {
   app.use('/api/resume', resumeRouter);
   app.use('/api/v1/subscriptions', subscriptionRouter);
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/v1/app', appRouter);
 
   // 404 fallthrough
   app.use((_req: Request, res: Response) => {

@@ -439,3 +439,45 @@ model SystemConfig {
   @@map("system_configs")
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// APP UPDATE MANAGEMENT
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum AppPlatform {
+  ANDROID
+  IOS
+  BOTH
+}
+
+enum AppUpdateStatus {
+  DRAFT
+  PUBLISHED
+  DISABLED
+}
+
+model AppUpdate {
+  id              String          @id @default(uuid())
+  platform        AppPlatform
+  latestVersion   String
+  minimumVersion  String
+  forceUpdate     Boolean         @default(false)
+  title           String
+  message         String          @db.Text
+  whatsNew        String[]        @default([])
+  androidStoreUrl String?
+  iosStoreUrl     String?
+  status          AppUpdateStatus @default(DRAFT)
+  publishedAt     DateTime?
+  releaseDate     DateTime?
+  createdBy       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([platform])
+  @@index([status])
+  @@index([platform, status])
+  @@index([createdAt])
+  @@map("app_updates")
+}
+
+

@@ -31,15 +31,15 @@ class ApiConfig {
       'https://ai-mock-interview-production-09fa.up.railway.app';
 
   /// Local / UAT Base URL
-  /// Connected to your local development machine IP (192.168.0.142:3000)
+  /// Connected to your local development machine IP (192.168.0.126:3000)
   /// so physical mobile devices on the Wi-Fi network and emulators can reach the backend.
   static String uatBaseUrl = const String.fromEnvironment('UAT_BASE_URL',
           defaultValue: '')
       .isNotEmpty
       ? const String.fromEnvironment('UAT_BASE_URL')
       : (defaultTargetPlatform == TargetPlatform.android
-          ? 'http://192.168.0.142:3000'
-          : 'http://192.168.0.142:3000');
+          ? 'http://192.168.0.126:3000'
+          : 'http://192.168.0.126:3000');
 
   /// Convenient alias for uatBaseUrl
   static String get localBaseUrl => uatBaseUrl;
@@ -136,6 +136,9 @@ class ApiConfig {
   static const String subscriptionVerifyEndpoint  = '/api/v1/subscriptions/verify-payment';
   static const String subscriptionMeCancelEndpoint = '/api/v1/subscriptions/me/cancel';
   static String subscriptionCancelEndpoint(String id) => '/api/v1/subscriptions/$id/cancel';
+
+  // ── App Update Endpoints ───────────────────────────────────────────────────
+  static const String appVersionEndpoint = '/api/v1/app/version';
 
 
   // ── Network Timeouts ───────────────────────────────────────────────────────

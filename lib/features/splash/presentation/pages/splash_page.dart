@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/models/app_version_info.dart';
+import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
@@ -52,6 +54,25 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
     while (authCtrl.isLoading && waited < 15 && mounted) {
       await Future.delayed(const Duration(milliseconds: 100));
       waited++;
+    }
+
+    if (!mounted) return;
+
+    // Check for App Updates on cold launch
+    try {
+      final decision = await AppUpdateService.instance
+          .checkForUpdate(
+            context: context,
+            forceCheck: true,
+          )
+          .timeout(const Duration(seconds: 3));
+
+      if (decision == UpdateDecision.force) {
+        // App is locked by force update dialog; do not navigate away
+        return;
+      }
+    } catch (_) {
+      // Continue even if network timed out or offline
     }
 
     if (!mounted) return;

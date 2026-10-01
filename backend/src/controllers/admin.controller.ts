@@ -12,6 +12,8 @@ import { adminPlansService } from '../services/admin/admin.plans.service';
 import { adminHealthService } from '../services/admin/admin.health.service';
 import { adminAuditService } from '../services/admin/admin.audit.service';
 import { adminSettingsService } from '../services/admin/admin.settings.service';
+import { adminAppUpdatesService } from '../services/admin/admin.app-updates.service';
+import { createAppUpdateSchema, updateAppUpdateSchema } from '../validators/app-update.validator';
 
 export const adminController = {
   // ── Dashboard Overview ───────────────────────────────────────────────────────
@@ -332,6 +334,75 @@ export const adminController = {
       const ip = req.ip || req.socket.remoteAddress;
       const result = await adminSettingsService.updateSettings(adminId, settings, reason, ip);
       res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ── App Updates Management ─────────────────────────────────────────────────
+  async listAppUpdates(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await adminAppUpdatesService.listAppUpdates(req.query as any);
+      res.status(200).json({ success: true, ...result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getAppUpdate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const update = await adminAppUpdatesService.getAppUpdateById(id);
+      res.status(200).json({ success: true, data: update });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async createAppUpdate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user!.id;
+      const validated = createAppUpdateSchema.parse(req.body);
+      const ip = req.ip || req.socket.remoteAddress;
+      const created = await adminAppUpdatesService.createAppUpdate(adminId, validated as any, ip);
+      res.status(201).json({ success: true, data: created });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateAppUpdate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user!.id;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const validated = updateAppUpdateSchema.parse(req.body);
+      const ip = req.ip || req.socket.remoteAddress;
+      const updated = await adminAppUpdatesService.updateAppUpdate(adminId, id, validated as any, ip);
+      res.status(200).json({ success: true, data: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async publishAppUpdate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user!.id;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const ip = req.ip || req.socket.remoteAddress;
+      const published = await adminAppUpdatesService.publishAppUpdate(adminId, id, ip);
+      res.status(200).json({ success: true, data: published });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async disableAppUpdate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user!.id;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const ip = req.ip || req.socket.remoteAddress;
+      const disabled = await adminAppUpdatesService.disableAppUpdate(adminId, id, ip);
+      res.status(200).json({ success: true, data: disabled });
     } catch (err) {
       next(err);
     }

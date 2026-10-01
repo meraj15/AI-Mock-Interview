@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:interview_coach/core/services/app_update_service.dart';
 import 'package:interview_coach/core/widgets/exit_app_dialog.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
@@ -31,6 +32,16 @@ class _InterviewCoachAppState extends State<InterviewCoachApp>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final context = rootNavigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        AppUpdateService.instance.checkForUpdate(context: context);
+      }
+    }
+  }
+
+  @override
   Future<bool> didPopRoute() async {
     final navigator = rootNavigatorKey.currentState;
     if (navigator == null) return false;
@@ -45,7 +56,7 @@ class _InterviewCoachAppState extends State<InterviewCoachApp>
     // 2. If nothing was popped, there is NO screen left in the stack.
     // Instead of exiting the app abruptly, prompt the user with the confirmation dialogue.
     final context = rootNavigatorKey.currentContext;
-    if (context != null) {
+    if (context != null && context.mounted) {
       final shouldExit = await ExitAppDialog.show(context);
       if (shouldExit == true) {
         await SystemNavigator.pop();

@@ -60,4 +60,12 @@ router.get('/audit-logs', adminController.listAuditLogs as any);
 router.get('/settings', adminController.getSettings as any);
 router.put('/settings', adminController.updateSettings as any);
 
+// ── App Updates Management ─────────────────────────────────────────────────
+router.get('/app-updates', adminController.listAppUpdates as any);
+router.post('/app-updates', adminController.createAppUpdate as any);
+router.get('/app-updates/:id', adminController.getAppUpdate as any);
+router.put('/app-updates/:id', adminController.updateAppUpdate as any);
+router.post('/app-updates/:id/publish', adminController.publishAppUpdate as any);
+router.post('/app-updates/:id/disable', adminController.disableAppUpdate as any);
+
 export default router;

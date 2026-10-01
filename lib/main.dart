@@ -3,6 +3,7 @@ import 'package:interview_coach/app.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/network/api_client.dart';
+import 'core/services/app_update_service.dart';
 import 'core/storage/token_storage.dart';
 import 'features/auth/data/datasources/auth_local_data_source.dart';
 import 'features/auth/data/datasources/auth_remote_data_source.dart';
@@ -28,6 +29,12 @@ void main() async {
   // Storage & Network
   final tokenStorage = TokenStorageImpl(sharedPreferences: sharedPreferences);
   final apiClient = ApiClient(tokenStorage: tokenStorage);
+
+  // App Update Service
+  AppUpdateService.instance.initialize(
+    apiClient: apiClient,
+    preferences: sharedPreferences,
+  );
 
   // Data sources
   final authLocalDataSource = AuthLocalDataSourceImpl(sharedPreferences: sharedPreferences);

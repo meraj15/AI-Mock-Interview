@@ -13,6 +13,7 @@ import {
   Activity,
   ShieldAlert,
   Settings,
+  Smartphone,
   RefreshCw,
   LogOut,
   Calendar,
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { label: 'Resumes', path: '/resumes', icon: FileText },
   { label: 'Plans', path: '/plans', icon: Layers },
   { label: 'System Health', path: '/system-health', icon: Activity },
+  { label: 'App Updates', path: '/app-updates', icon: Smartphone },
   { label: 'Audit Logs', path: '/audit-logs', icon: ShieldAlert },
   { label: 'Settings', path: '/settings', icon: Settings },
 ];

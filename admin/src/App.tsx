@@ -18,6 +18,7 @@ import { PlansPage } from './pages/PlansPage';
 import { SystemHealthPage } from './pages/SystemHealthPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AppUpdatesPage } from './pages/AppUpdatesPage';
 
 // Protected Route Guard
 const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="resumes" element={<ResumesPage />} />
               <Route path="plans" element={<PlansPage />} />
               <Route path="system-health" element={<SystemHealthPage />} />
+              <Route path="app-updates" element={<AppUpdatesPage />} />
               <Route path="audit-logs" element={<AuditLogsPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
