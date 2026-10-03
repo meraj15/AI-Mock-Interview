@@ -13,7 +13,16 @@ export class AdminPlansService {
       },
     });
 
-    return plans.map((p: any) => ({
+    const hasProMonthly = plans.some((p: any) => p.code === 'PRO_MONTHLY');
+    const hasProYearly = plans.some((p: any) => p.code === 'PRO_YEARLY');
+
+    const canonicalPlans = plans.filter((p: any) => {
+      if (p.code === 'PREMIUM_MONTHLY' && hasProMonthly) return false;
+      if (p.code === 'PREMIUM_YEARLY' && hasProYearly) return false;
+      return true;
+    });
+
+    return canonicalPlans.map((p: any) => ({
       id: p.id,
       name: p.name,
       code: p.code,

@@ -79,6 +79,12 @@ export const PlansPage: React.FC = () => {
     }
   };
 
+  const displayedPlans = plans.filter((plan) => {
+    if (plan.code === 'PREMIUM_MONTHLY' && plans.some((p) => p.code === 'PRO_MONTHLY')) return false;
+    if (plan.code === 'PREMIUM_YEARLY' && plans.some((p) => p.code === 'PRO_YEARLY')) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* ── HEADER ────────────────────────────────────────────────────────── */}
@@ -103,12 +109,12 @@ export const PlansPage: React.FC = () => {
               <span>Loading subscription plans...</span>
             </div>
           </div>
-        ) : plans.length === 0 ? (
+        ) : displayedPlans.length === 0 ? (
           <div className="col-span-3 py-16 text-center text-slate-500">
             No plans configured in database.
           </div>
         ) : (
-          plans.map((plan) => {
+          displayedPlans.map((plan) => {
             const isPro = plan.tier === 'PRO';
             return (
               <div

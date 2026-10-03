@@ -30,6 +30,7 @@ import {
   AppError,
 } from '../errors/AppError';
 import { Plan, Subscription } from '@prisma/client';
+import { prisma } from '../config/database';
 import { entitlementService, UserEntitlementContext } from './entitlement.service';
 
 // ── Plan catalogue ─────────────────────────────────────────────────────────────
@@ -62,25 +63,6 @@ function buildPlanCatalogue(): PlanSeedConfig[] {
       name: 'Pro Yearly',
       description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed yearly (GST-inclusive, best value).',
       priceInPaise: 199900, // ₹1,999/year GST-inclusive
-      billingInterval: BillingInterval.YEARLY,
-      razorpayPlanId: config.razorpay.yearlyPlanId,
-      totalCount: 0,
-    },
-    // Aliases for backward-compatibility
-    {
-      code: 'PREMIUM_MONTHLY',
-      name: 'Pro Monthly',
-      description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed monthly (GST-inclusive).',
-      priceInPaise: 29900,
-      billingInterval: BillingInterval.MONTHLY,
-      razorpayPlanId: config.razorpay.monthlyPlanId,
-      totalCount: 0,
-    },
-    {
-      code: 'PREMIUM_YEARLY',
-      name: 'Pro Yearly',
-      description: '30 AI mock interviews every month, detailed evaluations, voice practice, and analytics — billed yearly (GST-inclusive, best value).',
-      priceInPaise: 199900,
       billingInterval: BillingInterval.YEARLY,
       razorpayPlanId: config.razorpay.yearlyPlanId,
       totalCount: 0,
@@ -187,6 +169,39 @@ export const subscriptionService = {
         );
       }
     }
+
+    // Clean up duplicate legacy alias plans (PREMIUM_*) if canonical PRO_* exist
+    try {
+      const proMonthly = await subscriptionRepository.findPlanByCode('PRO_MONTHLY');
+      const proYearly = await subscriptionRepository.findPlanByCode('PRO_YEARLY');
+
+      if (proMonthly) {
+        const legacyMonthly = await subscriptionRepository.findPlanByCode('PREMIUM_MONTHLY');
+        if (legacyMonthly) {
+          await prisma.subscription.updateMany({
+            where: { planId: legacyMonthly.id },
+            data: { planId: proMonthly.id },
+          });
+          await prisma.plan.delete({ where: { id: legacyMonthly.id } });
+          logger.info('[RAZORPAY] Cleaned up duplicate legacy plan PREMIUM_MONTHLY');
+        }
+      }
+
+      if (proYearly) {
+        const legacyYearly = await subscriptionRepository.findPlanByCode('PREMIUM_YEARLY');
+        if (legacyYearly) {
+          await prisma.subscription.updateMany({
+            where: { planId: legacyYearly.id },
+            data: { planId: proYearly.id },
+          });
+          await prisma.plan.delete({ where: { id: legacyYearly.id } });
+          logger.info('[RAZORPAY] Cleaned up duplicate legacy plan PREMIUM_YEARLY');
+        }
+      }
+    } catch (cleanupErr) {
+      logger.warn('[RAZORPAY] Legacy duplicate plan cleanup notice:', cleanupErr);
+    }
+
     logger.info('[RAZORPAY] Plan catalogue synced.');
   },
 
