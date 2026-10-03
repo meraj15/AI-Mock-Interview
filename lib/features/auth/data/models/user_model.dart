@@ -19,7 +19,7 @@ class UserModel extends UserEntity {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
-    final email = json['email'] as String? ?? 'user@example.com';
+    final email = json['email'] as String? ?? '';
     // If name is not provided in backend User model, generate a friendly initial name from email
     final defaultName = email.contains('@') ? email.split('@').first : 'User';
     final rawName = json['fullName'] as String? ?? json['name'] as String?;
@@ -28,21 +28,20 @@ class UserModel extends UserEntity {
         : defaultName;
 
     return UserModel(
-      id: json['id'] as String? ?? 'usr_1',
+      id: json['id'] as String? ?? '',
       name: name,
       email: email,
-      targetRole: json['targetRole'] as String? ?? 'Software Developer',
-      experienceYears: json['experienceYears'] as String? ?? '2 years',
+      targetRole: json['targetRole'] as String? ?? '',
+      experienceYears: json['experienceYears'] as String? ?? '',
       avatarUrl: json['avatarUrl'] as String?,
-      streakDays: json['streakDays'] as int? ?? 4,
-      weeklyGoalTarget: json['weeklyGoalTarget'] as int? ?? 3,
-      interviewsCompleted: json['interviewsCompleted'] as int? ?? 12,
-      averageScore: json['averageScore'] as int? ?? 78,
-      bestScore: json['bestScore'] as int? ?? 91,
+      streakDays: json['streakDays'] as int? ?? 0,
+      weeklyGoalTarget: json['weeklyGoalTarget'] as int? ?? 0,
+      interviewsCompleted: json['interviewsCompleted'] as int? ?? 0,
+      averageScore: json['averageScore'] as int? ?? 0,
+      bestScore: json['bestScore'] as int? ?? 0,
       isEmailVerified: json['isVerified'] as bool? ?? (json['isEmailVerified'] as bool? ?? true),
       isProfileComplete: json['isProfileComplete'] as bool? ?? false,
-      bio: json['bio'] as String? ??
-          'Mobile software engineer passionate about clean architecture and high-performance cross-platform applications.',
+      bio: json['bio'] as String? ?? '',
     );
   }
 

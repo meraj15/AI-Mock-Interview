@@ -124,19 +124,12 @@ class AuthController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 300));
 
-    _user = const UserEntity(
-      id: 'usr_google_1',
-      name: 'Meraj Khan (Google)',
-      email: 'meraj.khan@gmail.com',
-      targetRole: 'Software Developer',
-      experienceYears: '2.0 years',
-    );
-    _status = AuthStatus.authenticated;
-    _isOnboarded = true;
+    _errorMessage = 'Social sign-in is not yet configured. Please sign in with email and password.';
+    _status = AuthStatus.error;
     notifyListeners();
-    return true;
+    return false;
   }
 
   Future<bool> signInWithApple() async {
@@ -144,19 +137,12 @@ class AuthController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 300));
 
-    _user = const UserEntity(
-      id: 'usr_apple_1',
-      name: 'Meraj Khan',
-      email: 'meraj.khan@icloud.com',
-      targetRole: 'Software Developer',
-      experienceYears: '2.0 years',
-    );
-    _status = AuthStatus.authenticated;
-    _isOnboarded = true;
+    _errorMessage = 'Social sign-in is not yet configured. Please sign in with email and password.';
+    _status = AuthStatus.error;
     notifyListeners();
-    return true;
+    return false;
   }
 
   /// Returns true when registration succeeds and OTP verification is required.

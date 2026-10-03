@@ -100,18 +100,23 @@ void main() async {
           },
         ),
         // DashboardController owns the stats and recent sessions.
-        ChangeNotifierProvider<DashboardController>(
-          create: (_) {
-            final dashboard = DashboardController(
-              dataSource: interviewRemoteDataSource,
-            );
-            return dashboard;
+        // Reacts to auth state changes: loads stats on login, clears all data on logout.
+        ChangeNotifierProxyProvider<AuthController, DashboardController>(
+          create: (_) => DashboardController(
+            dataSource: interviewRemoteDataSource,
+          ),
+          update: (_, authCtrl, dashboardCtrl) {
+            if (authCtrl.isAuthenticated) {
+              dashboardCtrl!.load();
+            } else {
+              dashboardCtrl!.clear();
+            }
+            return dashboardCtrl;
           },
         ),
         // InterviewController is wired to call dashboard.refresh() after
-        // saving a session. We use a lazy closure so the DashboardController
-        // instance is captured once — no ProxyProvider needed.
-        ChangeNotifierProvider<InterviewController>(
+        // saving a session, and clears all session state and transcripts on logout.
+        ChangeNotifierProxyProvider2<AuthController, DashboardController, InterviewController>(
           create: (context) {
             final dashboard = context.read<DashboardController>();
             final ctrl = InterviewController(
@@ -121,15 +126,29 @@ void main() async {
             ctrl.setOnSessionSaved(dashboard.refresh);
             return ctrl;
           },
+          update: (_, authCtrl, dashboardCtrl, interviewCtrl) {
+            interviewCtrl!.setOnSessionSaved(dashboardCtrl.refresh);
+            if (!authCtrl.isAuthenticated) {
+              interviewCtrl.clear();
+            }
+            return interviewCtrl;
+          },
         ),
-        ChangeNotifierProvider(
+        // ResumeController holds candidate resumes in memory; clears them on logout.
+        ChangeNotifierProxyProvider<AuthController, ResumeController>(
           create: (_) => ResumeController(
             remoteDataSource: resumeRemoteDataSource,
           ),
+          update: (_, authCtrl, resumeCtrl) {
+            if (!authCtrl.isAuthenticated) {
+              resumeCtrl!.clear();
+            }
+            return resumeCtrl;
+          },
         ),
         // SubscriptionController reacts to auth state changes.
         // When authenticated → load subscription status.
-        // When signed out → reset to free state.
+        // When signed out → clear all user subscription and entitlement data.
         ChangeNotifierProxyProvider<AuthController, SubscriptionController>(
           create: (_) => SubscriptionController(
             repository: subscriptionRepository,
@@ -138,7 +157,7 @@ void main() async {
             if (authCtrl.isAuthenticated) {
               subCtrl!.refreshSubscription();
             } else {
-              subCtrl!.resetPaymentState();
+              subCtrl!.clear();
             }
             return subCtrl;
           },

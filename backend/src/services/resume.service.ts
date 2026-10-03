@@ -481,7 +481,7 @@ ${truncated}
         typeof p.target_role === 'string' &&
         p.target_role.trim()
           ? p.target_role.trim()
-          : 'Software Engineer',
+          : '',
 
       experience_years:
         typeof p.experience_years === 'number' &&

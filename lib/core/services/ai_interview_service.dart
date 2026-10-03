@@ -120,7 +120,7 @@ class QuestionReview {
         answer: j['answer'] as String? ?? '',
         expectedAnswer: j['expectedAnswer'] as String? ?? '',
         feedback: j['feedback'] as String? ?? '',
-        score: (j['score'] as num?)?.toInt() ?? 75,
+        score: (j['score'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -176,7 +176,7 @@ class AIEvaluationResult {
     final rawRecs = (j['recommendations'] as List?)?.map((e) => e.toString()).toList() ?? [];
     final rawReviews = (j['questionReviews'] as List?) ?? [];
 
-    final overall = (j['overallScore'] as num?)?.toInt() ?? 75;
+    final overall = (j['overallScore'] as num?)?.toInt() ?? 0;
     final level = j['performanceLevel'] as String? ?? 'Good';
     final summary = j['summary'] as String? ?? '';
 
@@ -258,6 +258,10 @@ class GeminiAIInterviewService implements AIInterviewService {
       'difficulty': config.difficulty,
       'questionCount': config.questions,
       if (config.experience.isNotEmpty) 'experience': config.experience,
+      if (config.company.isNotEmpty) 'company': config.company,
+      if (config.focusTopics.isNotEmpty) 'focusArea': config.focusTopics,
+      'enableVoiceMode': config.enableVoiceMode,
+      'aiPersona': config.aiPersona,
     };
 
     debugPrint('======================================================');

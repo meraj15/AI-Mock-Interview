@@ -182,8 +182,17 @@ class InterviewController extends ChangeNotifier {
         if (resume.experience.isNotEmpty) effectiveExp = resume.experience;
       }
 
+      final finalRole = effectiveRole.isNotEmpty ? effectiveRole : _config.role;
+      if (finalRole.trim().isEmpty) {
+        _errorMessage = 'Please specify a target role before starting the interview.';
+        _sessionStatus = SessionStatus.error;
+        _interviewActive = false;
+        notifyListeners();
+        return;
+      }
+
       _config = _config.copyWith(
-        role: effectiveRole.isNotEmpty ? effectiveRole : 'Software Developer',
+        role: finalRole,
         skills: effectiveSkills,
         experience: effectiveExp,
       );
@@ -389,7 +398,7 @@ class InterviewController extends ChangeNotifier {
     if (s.any((e) => e.contains('android') || e.contains('kotlin'))) return 'Android Developer';
     if (s.any((e) => e.contains('ios') || e.contains('swift'))) return 'iOS Developer';
     if (s.any((e) => e.contains('data') || e.contains('ml') || e.contains('tensorflow') || e.contains('pandas'))) return 'Data / ML Engineer';
-    return _config.role.isNotEmpty ? _config.role : 'Software Developer';
+    return _config.role;
   }
 
   void finishInterview() {
@@ -431,6 +440,11 @@ class InterviewController extends ChangeNotifier {
     _currentTurnNumber = 1;
     _sessionHistory.clear();
     notifyListeners();
+  }
+
+  /// Clears all interview state and configuration on user logout.
+  void clear() {
+    reset();
   }
 
   /// Resets session runtime state (including previous evaluations and turn counts)

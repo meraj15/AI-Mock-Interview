@@ -1,3 +1,5 @@
+import { parseExperienceLevel } from '../../../utils/experience-level';
+
 export function buildInterviewPlanPrompt(params: {
   role: string;
   experience?: string;
@@ -38,21 +40,9 @@ export function buildInterviewPlanPrompt(params: {
     : '';
 
   // ── Experience detection ────────────────────────────────────────────────
-  const expLevel = experienceText.toLowerCase();
-  const isFresher =
-    expLevel.includes('0') ||
-    expLevel.includes('fresher') ||
-    expLevel.includes('intern') ||
-    expLevel.includes('junior') ||
-    expLevel.includes('entry') ||
-    expLevel.includes('1 year') ||
-    expLevel.includes('1year');
-  const isSenior =
-    expLevel.includes('senior') ||
-    expLevel.includes('lead') ||
-    expLevel.includes('principal') ||
-    expLevel.includes('architect') ||
-    expLevel.includes('manager');
+  const expInfo = parseExperienceLevel(experienceText);
+  const isFresher = expInfo.isFresher;
+  const isSenior = expInfo.isSenior;
 
   // ── Opening question rules per experience ───────────────────────────────
   const openerRule = isFresher

@@ -206,4 +206,20 @@ class DashboardController extends ChangeNotifier {
       loadAnalytics(forceRefresh: true),
     ]);
   }
+
+  /// Clears in-memory dashboard stats and sessions on user logout.
+  void clear() {
+    _loadState = DashboardLoadState.idle;
+    _stats = InterviewStatsModel.empty;
+    _recentSessions = [];
+    _isLoadingMore = false;
+    _hasMoreSessions = true;
+    _errorMessage = null;
+    _analyticsDays = 30;
+    _analyticsStats = InterviewStatsModel.empty;
+    _isAnalyticsLoading = false;
+    _analyticsError = null;
+    _analyticsCache.clear();
+    notifyListeners();
+  }
 }

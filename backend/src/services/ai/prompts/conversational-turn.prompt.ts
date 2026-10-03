@@ -1,3 +1,4 @@
+import { parseExperienceLevel } from '../../../utils/experience-level';
 import { ConversationalTurnParams } from '../ai.types';
 
 export function buildConversationalTurnPrompt(params: ConversationalTurnParams): {
@@ -62,21 +63,9 @@ export function buildConversationalTurnPrompt(params: ConversationalTurnParams):
       : '';
 
   // ── Experience detection ─────────────────────────────────────────────────
-  const expText = (experience || '').toLowerCase();
-  const isFresher =
-    expText.includes('0') ||
-    expText.includes('fresher') ||
-    expText.includes('intern') ||
-    expText.includes('junior') ||
-    expText.includes('entry') ||
-    expText.includes('1 year') ||
-    expText.includes('1year');
-  const isSenior =
-    expText.includes('senior') ||
-    expText.includes('lead') ||
-    expText.includes('principal') ||
-    expText.includes('architect') ||
-    expText.includes('manager');
+  const expInfo = parseExperienceLevel(experience);
+  const isFresher = expInfo.isFresher;
+  const isSenior = expInfo.isSenior;
 
   // ── Experience calibration block ─────────────────────────────────────────
   const experienceCalibration = isFresher

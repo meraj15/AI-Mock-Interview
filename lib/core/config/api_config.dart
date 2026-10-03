@@ -21,7 +21,7 @@ class ApiConfig {
   /// In debug / profile builds, default is false (UAT / local dev).
   static bool _isProduction = const bool.fromEnvironment(
     'IS_PRODUCTION',
-    defaultValue: kReleaseMode,
+    defaultValue: true,
   );
 
   static bool get isProduction => _isProduction;

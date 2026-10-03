@@ -374,6 +374,20 @@ class SubscriptionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears in-memory subscription data and resets to FREE tier on logout.
+  void clear() {
+    _loadStatus = SubscriptionLoadStatus.initial;
+    _paymentState = PaymentState.idle;
+    _plans = [];
+    _subscription = SubscriptionEntity.free;
+    _errorMessage = null;
+    _selectedPlanCode = null;
+    _isSubscribing = false;
+    _isCancelling = false;
+    _activeRazorpaySubscriptionId = null;
+    notifyListeners();
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   String _friendlyError(Object e) {

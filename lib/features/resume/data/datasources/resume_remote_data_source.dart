@@ -40,7 +40,7 @@ class ParsedResumeProfile {
       name: json['name'] as String? ?? '',
       email: json['email'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
-      targetRole: json['target_role'] as String? ?? 'Software Engineer',
+      targetRole: json['target_role'] as String? ?? '',
       experienceYears: (json['experience_years'] as num?)?.toDouble() ?? 0.0,
       skills: (json['skills'] as List<dynamic>?)?.cast<String>() ?? [],
       summary: json['summary'] as String? ?? '',
@@ -82,7 +82,7 @@ class ParsedResumeProfile {
         .map(
           (p) => ResumeProjectItem(
             title: p['name'] as String? ?? '',
-            role: 'Developer',
+            role: (p['role'] as String?)?.trim().isNotEmpty == true ? (p['role'] as String).trim() : '',
             description: p['description'] as String? ?? '',
             techStack: (p['technologies'] as List<dynamic>?)?.cast<String>() ?? [],
           ),

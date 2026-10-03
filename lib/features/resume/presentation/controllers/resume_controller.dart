@@ -280,6 +280,16 @@ class ResumeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears in-memory resume list and active selection on user logout.
+  void clear() {
+    _resumes = [];
+    _activeResumeId = null;
+    _isParsing = false;
+    _parsingProgress = null;
+    _hasUserUploadedResume = false;
+    notifyListeners();
+  }
+
   String _formattedToday() {
     final now = DateTime.now();
     const months = [

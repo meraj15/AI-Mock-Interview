@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 
 abstract class AuthLocalDataSource {
@@ -14,6 +15,7 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   final SharedPreferences sharedPreferences;
   static const String keyAuth = 'interview-coach-auth';
   static const String keyOnboarding = 'interview-coach-onboarding';
+  static const String keyUserId = 'interview-coach-user-id';
   static const String keyUserName = 'interview-coach-name';
   static const String keyUserEmail = 'interview-coach-email';
   static const String keyUserRole = 'interview-coach-role';
@@ -22,12 +24,23 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<UserModel> getCachedUser() async {
-    final name = sharedPreferences.getString(keyUserName) ?? 'Meraj Khan';
-    final email = sharedPreferences.getString(keyUserEmail) ?? 'meraj.khan@email.com';
-    final role = sharedPreferences.getString(keyUserRole) ?? 'Software Engineer';
+    final isAuth = await isAuthenticated();
+    if (!isAuth) {
+      throw CacheException('No active authentication found');
+    }
+
+    final id = sharedPreferences.getString(keyUserId);
+    final email = sharedPreferences.getString(keyUserEmail);
+
+    if (id == null || id.isEmpty || email == null || email.isEmpty) {
+      throw CacheException('No valid cached user data found');
+    }
+
+    final name = sharedPreferences.getString(keyUserName) ?? (email.contains('@') ? email.split('@').first : 'User');
+    final role = sharedPreferences.getString(keyUserRole) ?? '';
 
     return UserModel(
-      id: 'usr_1',
+      id: id,
       name: name,
       email: email,
       targetRole: role,
@@ -37,6 +50,7 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   @override
   Future<void> saveUser(UserModel user) async {
     await sharedPreferences.setBool(keyAuth, true);
+    await sharedPreferences.setString(keyUserId, user.id);
     await sharedPreferences.setString(keyUserName, user.name);
     await sharedPreferences.setString(keyUserEmail, user.email);
     await sharedPreferences.setString(keyUserRole, user.targetRole);
@@ -45,6 +59,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   @override
   Future<void> clearAuth() async {
     await sharedPreferences.remove(keyAuth);
+    await sharedPreferences.remove(keyUserId);
+    await sharedPreferences.remove(keyUserName);
+    await sharedPreferences.remove(keyUserEmail);
+    await sharedPreferences.remove(keyUserRole);
   }
 
   @override

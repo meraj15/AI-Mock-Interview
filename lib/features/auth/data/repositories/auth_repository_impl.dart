@@ -4,7 +4,6 @@ import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_data_source.dart';
 import '../datasources/auth_remote_data_source.dart';
-import '../models/user_model.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource remoteDataSource;
@@ -59,13 +58,10 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     }
 
-    final user = response.user ??
-        UserModel(
-          id: 'usr_login',
-          name: email.contains('@') ? email.split('@').first : 'Candidate',
-          email: email,
-          isProfileComplete: true,
-        );
+    final user = response.user;
+    if (user == null) {
+      throw ServerException('Authentication succeeded but user profile was not returned by server');
+    }
 
     // Cache user locally and set onboarding complete
     await localDataSource.saveUser(user);
@@ -90,13 +86,10 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     }
 
-    final user = response.user ??
-        UserModel(
-          id: 'usr_registered',
-          name: name.isNotEmpty ? name : (email.contains('@') ? email.split('@').first : 'Candidate'),
-          email: email,
-          isProfileComplete: false,
-        );
+    final user = response.user;
+    if (user == null) {
+      throw ServerException('Registration succeeded but user profile was not returned by server');
+    }
 
     // Cache user locally and set onboarding complete
     await localDataSource.saveUser(user);

@@ -66,9 +66,9 @@ class InterviewConfigEntity {
   }
 
   static InterviewConfigEntity initial() => const InterviewConfigEntity(
-        role: 'Software Developer',
-        company: 'General interview',
-        experience: '1–2 years',
+        role: '',
+        company: '',
+        experience: '',
         difficulty: 'Adaptive',
         questions: 10,
         skills: [],

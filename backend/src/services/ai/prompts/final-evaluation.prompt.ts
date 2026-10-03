@@ -1,3 +1,4 @@
+import { parseExperienceLevel } from '../../../utils/experience-level';
 import { FinalEvaluationParams } from '../ai.types';
 
 export function buildFinalEvaluationPrompt(params: FinalEvaluationParams): string {
@@ -10,21 +11,9 @@ export function buildFinalEvaluationPrompt(params: FinalEvaluationParams): strin
     cleanedSkills.length > 0 ? cleanedSkills.join(', ') : 'No specific skills provided';
 
   // ── Experience detection ─────────────────────────────────────────────────
-  const expText = (experience || '').toLowerCase();
-  const isFresher =
-    expText.includes('0') ||
-    expText.includes('fresher') ||
-    expText.includes('intern') ||
-    expText.includes('junior') ||
-    expText.includes('entry') ||
-    expText.includes('1 year') ||
-    expText.includes('1year');
-  const isSenior =
-    expText.includes('senior') ||
-    expText.includes('lead') ||
-    expText.includes('principal') ||
-    expText.includes('architect') ||
-    expText.includes('manager');
+  const expInfo = parseExperienceLevel(experience);
+  const isFresher = expInfo.isFresher;
+  const isSenior = expInfo.isSenior;
 
   // ── Scoring calibration ──────────────────────────────────────────────────
   const scoringCalibration = isFresher
