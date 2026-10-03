@@ -28,11 +28,22 @@ export function createApp(): Application {
   app.use(helmet());
 
   // ── CORS ─────────────────────────────────────────────────────────────────
+  const allowedOrigins = config.cors.allowedOrigins;
   app.use(
     cors({
-      origin: config.isDevelopment ? '*' : [],
+      origin: (requestOrigin, callback) => {
+        // Non-browser / mobile requests (no Origin header) and dev requests are allowed
+        if (!requestOrigin || config.isDevelopment) {
+          return callback(null, true);
+        }
+        if (allowedOrigins.length > 0 && allowedOrigins.includes(requestOrigin)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`Origin ${requestOrigin} not allowed by CORS`));
+      },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
     })
   );
 

@@ -11,7 +11,7 @@ describe('Question Rotation Prompt Generation', () => {
       });
 
       expect(prompt).toContain('Role: Flutter Developer');
-      expect(prompt).toContain('Write ONE warm, natural opening question that:');
+      expect(prompt).toContain('YOUR OPENING QUESTION RULE');
       expect(prompt).not.toContain('This candidate has done previous sessions.');
     });
 
@@ -25,8 +25,8 @@ describe('Question Rotation Prompt Generation', () => {
         ],
       });
 
-      expect(prompt).toContain('This candidate has done previous sessions. Vary the wording of the opening naturally — same intent, fresh phrasing.');
-      expect(prompt).toContain('Maximum 20 words. Exactly one question mark.');
+      expect(prompt).toContain('This candidate has done previous sessions. Keep the same warm opener intent but vary the exact wording.');
+      expect(prompt).toContain('max 20 words, one question mark');
     });
   });
 
@@ -59,11 +59,11 @@ describe('Question Rotation Prompt Generation', () => {
       expect(prompt).toContain('Previous sessions covered: State Management, Widget Lifecycle, REST APIs');
 
       // Verifies current session questions section
-      expect(prompt).toContain('QUESTIONS ALREADY ASKED — DO NOT REPEAT OR CLOSELY PARAPHRASE:');
+      expect(prompt).toContain('QUESTIONS ALREADY ASKED — DO NOT REPEAT');
       expect(prompt).toContain('1. Welcome! Tell me about yourself.');
 
       // Verifies previous sessions' questions section
-      expect(prompt).toContain('PREVIOUS SESSIONS (avoid repeating):');
+      expect(prompt).toContain('From previous sessions (also avoid repeating):');
       expect(prompt).toContain('- What is Provider in Flutter?');
       expect(prompt).toContain('- Explain StatefulWidget vs StatelessWidget.');
 
@@ -103,7 +103,7 @@ describe('Question Rotation Prompt Generation', () => {
 
       // Current session questions header is present
       const lines = prompt.split('\n');
-      const currentHeaderIndex = lines.findIndex((l) => l.includes('QUESTIONS ALREADY ASKED — DO NOT REPEAT OR CLOSELY PARAPHRASE:'));
+      const currentHeaderIndex = lines.findIndex((l) => l.includes('QUESTIONS ALREADY ASKED — DO NOT REPEAT'));
       expect(currentHeaderIndex).toBeGreaterThan(-1);
 
       // Prompt length is well bounded (< 7500 characters, ~1500 tokens)

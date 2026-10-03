@@ -3,10 +3,37 @@ import dotenv from 'dotenv';
 // Reload environment variables (updated to gemini-3.7-flash)
 dotenv.config();
 
+const isProduction = (process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+
+// Strict production validation for JWT secrets
+if (isProduction) {
+  const accessSecret = process.env.JWT_ACCESS_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  const devAccessDefault = 'default_access_secret_for_dev_min_32_chars';
+  const devRefreshDefault = 'default_refresh_secret_for_dev_min_32_chars';
+
+  if (!accessSecret || accessSecret.trim() === devAccessDefault || accessSecret.trim().length < 32) {
+    throw new Error(
+      '[FATAL CONFIG ERROR] JWT_ACCESS_SECRET is required in production and must be at least 32 characters long. Insecure development defaults are forbidden.'
+    );
+  }
+
+  if (!refreshSecret || refreshSecret.trim() === devRefreshDefault || refreshSecret.trim().length < 32) {
+    throw new Error(
+      '[FATAL CONFIG ERROR] JWT_REFRESH_SECRET is required in production and must be at least 32 characters long. Insecure development defaults are forbidden.'
+    );
+  }
+}
+
 export const config = {
   port: parseInt(process.env.PORT ?? '3000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   isDevelopment: process.env.NODE_ENV !== 'production',
+  cors: {
+    allowedOrigins: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+      : [],
+  },
   database: {
     url: process.env.DATABASE_URL ?? '',
   },

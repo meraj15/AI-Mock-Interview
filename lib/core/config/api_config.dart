@@ -16,8 +16,13 @@ class ApiConfig {
   ///
   /// Or override via CLI:
   ///   flutter run --dart-define=IS_PRODUCTION=true
-  static bool _isProduction =
-      const bool.fromEnvironment('IS_PRODUCTION', defaultValue: false);
+  ///
+  /// Safe default: In release builds (kReleaseMode), default is true.
+  /// In debug / profile builds, default is false (UAT / local dev).
+  static bool _isProduction = const bool.fromEnvironment(
+    'IS_PRODUCTION',
+    defaultValue: kReleaseMode,
+  );
 
   static bool get isProduction => _isProduction;
 
@@ -38,8 +43,8 @@ class ApiConfig {
       .isNotEmpty
       ? const String.fromEnvironment('UAT_BASE_URL')
       : (defaultTargetPlatform == TargetPlatform.android
-          ? 'http://192.168.0.126:3000'
-          : 'http://192.168.0.126:3000');
+          ? 'http://192.168.0.118:3000'
+          : 'http://192.168.0.118:3000');
 
   /// Convenient alias for uatBaseUrl
   static String get localBaseUrl => uatBaseUrl;
@@ -67,7 +72,9 @@ class ApiConfig {
       }
       return Environment.uat;
     }
-    return _isProduction ? Environment.production : Environment.uat;
+    return kReleaseMode
+        ? Environment.production
+        : (_isProduction ? Environment.production : Environment.uat);
   }
 
   static Environment _environment = _detectInitialEnvironment();

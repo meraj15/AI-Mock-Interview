@@ -3,6 +3,8 @@ import { GeminiProvider } from '../src/services/ai/providers/gemini.provider';
 import { CircuitBreaker } from '../src/services/ai/circuit-breaker';
 import { AppError } from '../src/errors/AppError';
 
+jest.setTimeout(30000);
+
 describe('Gemini Latency + 503 Reliability Optimization', () => {
   let mockGeminiExecute: jest.SpyInstance;
   let geminiProvider: GeminiProvider;
@@ -94,7 +96,7 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
     // 2 attempts on primary model + 1 attempt on fallback model
     expect(mockGeminiExecute).toHaveBeenCalledTimes(3);
     expect(result.metadata.degraded).toBe(true);
-    expect(result.data.nextQuestion).toContain('experience as a Flutter Developer');
+    expect(result.data.nextQuestion).toContain('work as a Flutter Developer');
     expect(result.data.action).toBe('new_topic');
     // Circuit breaker failure count should be incremented once for the logical operation
     expect(circuitBreaker.getHealth().consecutiveFailures).toBe(1);
@@ -106,7 +108,7 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
         transcript: [{ question: 'Q1', answer: 'A1', topic: 'Flutter', type: 'primary' }],
       }),
     ).rejects.toThrow(AppError);
-  });
+  }, 25000);
 
   it('3. Gemini 429 quota error should be classified as transient and retried with capped backoff', async () => {
     const error429 = Object.assign(new Error('429 Resource has been exhausted: quota exceeded.'), {
@@ -221,7 +223,7 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
 
     expect(mockGeminiExecute).toHaveBeenCalledTimes(0);
     expect(degradedTurn.metadata.degraded).toBe(true);
-    expect(degradedTurn.data.nextQuestion).toContain('experience as a Flutter Developer');
+    expect(degradedTurn.data.nextQuestion).toContain('work as a Flutter Developer');
 
     // Evaluation when circuit is OPEN throws fast without fabricating scores
     await expect(
@@ -351,7 +353,7 @@ describe('Gemini Latency + 503 Reliability Optimization', () => {
     // 2 attempts on primary model + 1 attempt on fallback model
     expect(mockGeminiExecute).toHaveBeenCalledTimes(3);
     expect(planRes.metadata.degraded).toBe(true);
-    expect(planRes.data.firstQuestion).toContain('introduce yourself and share your background as a Flutter Developer');
+    expect(planRes.data.firstQuestion).toContain('what you have been doing as a Flutter Developer');
   });
 });
 

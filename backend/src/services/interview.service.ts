@@ -61,6 +61,7 @@ export interface ActiveConversationalSession {
 
   createdAt: Date;
   startedAt: number;
+  lastActivityAt?: number;
 }
 
 export class InterviewService {
@@ -68,6 +69,45 @@ export class InterviewService {
     string,
     ActiveConversationalSession
   >();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    this.startCleanupTimer();
+  }
+
+  /**
+   * Periodic background sweeper to prevent unbounded memory growth from
+   * abandoned sessions. Completed sessions are removed after 30 minutes;
+   * abandoned in-progress sessions after ttlMs (default: 2 hours).
+   */
+  private startCleanupTimer(): void {
+    if (this.cleanupInterval) return;
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredSessions();
+    }, 15 * 60 * 1000); // Check every 15 minutes
+
+    // Unref timer so it does not block Node process exit or Jest tests
+    if (this.cleanupInterval && typeof this.cleanupInterval.unref === 'function') {
+      this.cleanupInterval.unref();
+    }
+  }
+
+  public cleanupExpiredSessions(ttlMs: number = 2 * 60 * 60 * 1000): number {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [id, session] of this.activeSessions.entries()) {
+      const lastActive = session.lastActivityAt ?? session.startedAt ?? session.createdAt.getTime();
+      const maxAge = session.status === 'completed' ? 30 * 60 * 1000 : ttlMs;
+      if (now - lastActive > maxAge) {
+        this.activeSessions.delete(id);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      logger.info(`[InterviewService] Cleaned up ${cleaned} expired/abandoned sessions from memory (remaining: ${this.activeSessions.size})`);
+    }
+    return cleaned;
+  }
 
   /**
    * STAGE 1
@@ -238,6 +278,7 @@ export class InterviewService {
       status: 'in_progress',
       createdAt: new Date(),
       startedAt: Date.now(),
+      lastActivityAt: Date.now(),
     };
 
     this.activeSessions.set(
@@ -340,6 +381,8 @@ export class InterviewService {
         { statusCode: 403 },
       );
     }
+
+    session.lastActivityAt = Date.now();
 
     if (session.status === 'completed') {
       return {
@@ -792,6 +835,8 @@ export class InterviewService {
         { statusCode: 403 },
       );
     }
+
+    session.lastActivityAt = Date.now();
 
     // In-memory idempotency check: if evaluation already computed, return it
     if (session.finalEvaluation) {
