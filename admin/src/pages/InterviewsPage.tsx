@@ -101,6 +101,7 @@ export const InterviewsPage: React.FC = () => {
 
   const handleOpenDetail = async (id: string) => {
     setSelectedSessionId(id);
+    setSessionDetail(null);
     setDetailLoading(true);
     try {
       const res = await api.get(`/api/v1/admin/interviews/${id}`);
@@ -317,7 +318,10 @@ export const InterviewsPage: React.FC = () => {
                   <p className="text-xs text-slate-400 font-mono">{selectedSessionId}</p>
                 </div>
                 <button
-                  onClick={() => setSelectedSessionId(null)}
+                  onClick={() => {
+                    setSelectedSessionId(null);
+                    setSessionDetail(null);
+                  }}
                   className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-surface-800"
                 >
                   <X className="w-5 h-5" />

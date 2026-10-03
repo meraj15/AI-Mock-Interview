@@ -115,6 +115,7 @@ export const UsersPage: React.FC = () => {
 
   const handleOpenDetail = async (userId: string) => {
     setSelectedUserId(userId);
+    setSelectedUserDetail(null);
     setDetailLoading(true);
     try {
       const res = await api.get(`/api/v1/admin/users/${userId}`);
@@ -423,7 +424,10 @@ export const UsersPage: React.FC = () => {
                   <p className="text-xs text-slate-400 font-mono">{selectedUserId}</p>
                 </div>
                 <button
-                  onClick={() => setSelectedUserId(null)}
+                  onClick={() => {
+                    setSelectedUserId(null);
+                    setSelectedUserDetail(null);
+                  }}
                   className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-surface-800"
                 >
                   <X className="w-5 h-5" />
